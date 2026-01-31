@@ -26,6 +26,11 @@ use databend_meta_types::raft_types::NodeId;
 use crate::ondisk::DATA_VERSION;
 use crate::raft_log_v004;
 
+// Size unit constants
+const KB: u64 = 1024;
+const MB: u64 = 1024 * KB;
+const GB: u64 = 1024 * MB;
+
 /// Configuration for a Raft node including networking, storage paths, and performance tuning.
 ///
 /// Controls cluster behavior, network endpoints, storage persistence, and operational parameters
@@ -188,20 +193,20 @@ impl Default for RaftConfig {
             raft_dir: "./.databend/meta".to_string(),
 
             log_cache_max_items: 1_000_000,
-            log_cache_capacity: 1024 * 1024 * 1024,
+            log_cache_capacity: 1 * GB,
             log_wal_chunk_max_records: 100_000,
-            log_wal_chunk_max_size: 256 * 1024 * 1024,
+            log_wal_chunk_max_size: 256 * MB,
 
             snapshot_logs_since_last: 1024,
             heartbeat_interval: 1000,
             install_snapshot_timeout: 4000,
             max_applied_log_to_keep: 1000,
-            snapshot_chunk_size: 4194304, // 4MB
+            snapshot_chunk_size: 4 * MB,
 
             snapshot_db_debug_check: true,
             snapshot_db_block_keys: 8000,
             snapshot_db_block_cache_item: 1024,
-            snapshot_db_block_cache_size: 1073741824,
+            snapshot_db_block_cache_size: 1 * GB,
 
             compact_immutables_ms: None,
             single: false,
