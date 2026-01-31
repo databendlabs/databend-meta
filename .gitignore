@@ -35,3 +35,4 @@ Thumbs.db
 *.profraw
 lcov.info
 coverage/
+Cargo.lock

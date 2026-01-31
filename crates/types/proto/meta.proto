@@ -296,7 +296,7 @@ message RaftLogStatus {
 }
 
 message ClientInfo {
-  // The address of the connected in form of "<ip>:<port>"
+  // The address of the connected in form of `<ip>:<port>`
   string client_addr = 10;
 
   // The timestamp when the meta-server received the request in milliseconds since 1970 .

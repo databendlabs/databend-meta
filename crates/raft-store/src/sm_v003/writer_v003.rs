@@ -32,7 +32,7 @@ use crate::sm_v003::writer_stat::WriterStat;
 use crate::snapshot_config::SnapshotConfig;
 use crate::state_machine::MetaSnapshotId;
 
-/// Write kv pair snapshot data to [`SnapshotStoreV002`].
+/// Write kv pair snapshot data to `SnapshotStoreV002`.
 pub struct WriterV003<SP: SpawnApi> {
     db_builder: DBBuilder,
 
@@ -139,9 +139,9 @@ impl<SP: SpawnApi> WriterV003<SP> {
     /// Internally it calls `SP::spawn_blocking`.
     ///
     /// When a [`WriteEntry::Finish`] is received, the thread will flush the data to disk and return
-    /// a [`TempSnapshotDataV003`] and a [`SnapshotStat`].
+    /// a `TempSnapshotDataV003` and a `SnapshotStat`.
     ///
-    /// [`TempSnapshotDataV003`] is a temporary snapshot data that will be renamed to the final path by the caller.
+    /// `TempSnapshotDataV003` is a temporary snapshot data that will be renamed to the final path by the caller.
     #[allow(clippy::type_complexity)]
     pub fn spawn_writer_thread(
         self,

@@ -21,6 +21,9 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo install taplo-cli --locked
       - run: taplo fmt --check
+      - run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
 
   test:
     runs-on: ubuntu-latest

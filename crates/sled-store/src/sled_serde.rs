@@ -39,7 +39,7 @@ pub trait SledSerde: Serialize + DeserializeOwned {
 /// Serialize/deserialize(ser/de) to/from sled values and keeps order after serializing.
 ///
 /// E.g. serde_json does not preserve the order of u64:
-/// 9 -> [57], 10 -> [49, 48]
+/// 9 -> `[57]`, 10 -> `[49, 48]`
 /// While BigEndian encoding preserve the order.
 ///
 /// A type that is used as a sled db key should be serialized with order preserved, such as log index.

@@ -82,8 +82,8 @@ pub trait SledKeySpace {
 
     /// Convert user key range bound to sled::IVec bound.
     /// A u8 prefix is prepended to the bound value and an open bound is converted to a namespaced bound.
-    /// E.g., use the [PREFIX] as the left side closed bound,
-    /// and use the [PREFIX+1] as the right side open bound.
+    /// E.g., use the `PREFIX` as the left side closed bound,
+    /// and use the `PREFIX+1` as the right side open bound.
     fn serialize_bound(v: Bound<&Self::K>, dir: &str) -> Result<Bound<sled::IVec>, SledBytesError> {
         let res = match v {
             Bound::Included(v) => Bound::Included(Self::serialize_key(v)?),

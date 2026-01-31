@@ -231,7 +231,7 @@ pub enum SMEntry {
 }
 
 impl SMEntry {
-    /// Serialize a key-value entry into a two elt vec of vec<u8>: `[key, value]`.
+    /// Serialize a key-value entry into a two elt vec of `Vec<u8>`: `[key, value]`.
     #[rustfmt::skip]
     pub fn serialize(kv: &SMEntry) -> Result<(sled::IVec, sled::IVec), io::Error> {
 
@@ -336,7 +336,7 @@ impl RaftStoreEntry {
         }
     }
 
-    /// Serialize a key-value entry into a two elt vec of vec<u8>: `[key, value]`.
+    /// Serialize a key-value entry into a two elt vec of `Vec<u8>`: `[key, value]`.
     #[rustfmt::skip]
     pub fn serialize(kv: &RaftStoreEntry) -> Result<(sled::IVec, sled::IVec), io::Error> {
 

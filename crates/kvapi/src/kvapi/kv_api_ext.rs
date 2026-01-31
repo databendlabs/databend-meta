@@ -82,7 +82,7 @@ pub trait KvApiExt: KVApi {
 
     /// List key-value starting with the specified prefix and return a [`Vec`]
     ///
-    /// Same as [`Self::list_kv`] but return a [`Vec`] instead of a stream.
+    /// Same as [`KVApi::list_kv`] but return a [`Vec`] instead of a stream.
     async fn list_kv_collect(
         &self,
         opts: ListOptions<'_, str>,
