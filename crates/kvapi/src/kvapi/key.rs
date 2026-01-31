@@ -25,9 +25,6 @@ pub enum KeyError {
     #[error(transparent)]
     FromUtf8Error(#[from] FromUtf8Error),
 
-    #[error("Non-ascii char are not supported: '{non_ascii}'")]
-    AsciiError { non_ascii: String },
-
     #[error("Expect {i}-th segment to be '{expect}', but: '{got}'")]
     InvalidSegment {
         i: usize,

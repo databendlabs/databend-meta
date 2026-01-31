@@ -21,10 +21,10 @@ use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use databend_base::string_util::prefix_to_range;
 use databend_meta::meta_service::MetaNode;
 use databend_meta_client::ClientHandle;
 use databend_meta_client::MetaGrpcClient;
-use databend_meta_kvapi::kvapi;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_types::ConditionResult;
@@ -283,9 +283,9 @@ async fn test_watch() -> anyhow::Result<()> {
         let txn_key = s(k1);
         let txn_val = b("txn_val");
 
-        let (start, end) = kvapi::prefix_to_range(watch_prefix)?;
+        let (start, end) = prefix_to_range(watch_prefix);
 
-        let watch = WatchRequest::new(start, Some(end));
+        let watch = WatchRequest::new(start, end);
 
         let conditions = vec![TxnCondition {
             key: txn_key.clone(),
@@ -471,8 +471,8 @@ async fn test_watch_expired_events() -> anyhow::Result<()> {
     info!("--- start watching");
     let watch_client = make_client(&addr)?;
     let mut client_stream = {
-        let (start, end) = kvapi::prefix_to_range(watch_prefix)?;
-        let watch = WatchRequest::new(start, Some(end));
+        let (start, end) = prefix_to_range(watch_prefix);
+        let watch = WatchRequest::new(start, end);
         watch_client.request(watch).await?
     };
 
