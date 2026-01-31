@@ -14,15 +14,14 @@
 
 use std::fmt;
 
+use databend_meta_sled_store::IVec;
 use databend_meta_sled_store::SledBytesError;
 use databend_meta_sled_store::SledOrderedSerde;
 use databend_meta_sled_store::SledSerde;
-use databend_meta_sled_store::sled;
 use databend_meta_types::anyerror::AnyError;
 use databend_meta_types::raft_types::LogId;
 use serde::Deserialize;
 use serde::Serialize;
-use sled::IVec;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum LogMetaKey {

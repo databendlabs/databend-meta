@@ -23,7 +23,7 @@ pub use db::get_sled_db;
 pub use db::init_get_sled_db;
 pub use db::init_sled_db;
 pub use openraft;
-pub use sled;
+pub use sled::IVec;
 pub use sled_key_space::SledKeySpace;
 pub use sled_serde::SledOrderedSerde;
 pub use sled_serde::SledSerde;

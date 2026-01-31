@@ -12,18 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use databend_meta_sled_store::IVec;
 use databend_meta_sled_store::SledOrderedSerde;
-use databend_meta_sled_store::sled;
 use databend_meta_types::raft_types::NodeId;
 
 #[test]
 fn test_node_id_serde_ser() -> anyhow::Result<()> {
     let ids: Vec<NodeId> = vec![9, 10, 11];
 
-    let want: Vec<sled::IVec> = vec![
-        sled::IVec::from(vec![0, 0, 0, 0, 0, 0, 0, 9]),
-        sled::IVec::from(vec![0, 0, 0, 0, 0, 0, 0, 10]),
-        sled::IVec::from(vec![0, 0, 0, 0, 0, 0, 0, 11]),
+    let want: Vec<IVec> = vec![
+        IVec::from(vec![0, 0, 0, 0, 0, 0, 0, 9]),
+        IVec::from(vec![0, 0, 0, 0, 0, 0, 0, 10]),
+        IVec::from(vec![0, 0, 0, 0, 0, 0, 0, 11]),
     ];
     let got = ids.iter().map(|id| id.ser().unwrap()).collect::<Vec<_>>();
     assert_eq!(want, got);

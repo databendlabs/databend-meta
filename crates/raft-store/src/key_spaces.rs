@@ -28,10 +28,10 @@
 
 use std::io;
 
+use databend_meta_sled_store::IVec;
 use databend_meta_sled_store::SledKeySpace;
 use databend_meta_sled_store::SledOrderedSerde;
 use databend_meta_sled_store::SledSerde;
-use databend_meta_sled_store::sled;
 use databend_meta_types::SeqNum;
 use databend_meta_types::SeqV;
 use databend_meta_types::node::Node;
@@ -233,7 +233,7 @@ pub enum SMEntry {
 impl SMEntry {
     /// Serialize a key-value entry into a two elt vec of `Vec<u8>`: `[key, value]`.
     #[rustfmt::skip]
-    pub fn serialize(kv: &SMEntry) -> Result<(sled::IVec, sled::IVec), io::Error> {
+    pub fn serialize(kv: &SMEntry) -> Result<(IVec, IVec), io::Error> {
 
         match kv {
             Self::DataHeader       { key, value } => serialize_for_sled!(DataHeader,       key, value),
@@ -338,7 +338,7 @@ impl RaftStoreEntry {
 
     /// Serialize a key-value entry into a two elt vec of `Vec<u8>`: `[key, value]`.
     #[rustfmt::skip]
-    pub fn serialize(kv: &RaftStoreEntry) -> Result<(sled::IVec, sled::IVec), io::Error> {
+    pub fn serialize(kv: &RaftStoreEntry) -> Result<(IVec, IVec), io::Error> {
 
         match kv {
             Self::DataHeader       { key, value } => serialize_for_sled!(DataHeader,       key, value),

@@ -14,9 +14,9 @@
 
 use std::fmt;
 
+use databend_meta_sled_store::IVec;
 use databend_meta_sled_store::SledBytesError;
 use databend_meta_sled_store::SledSerde;
-use databend_meta_sled_store::sled;
 
 use crate::ondisk::DATA_VERSION;
 use crate::ondisk::DataVersion;
@@ -59,7 +59,7 @@ impl fmt::Display for Header {
 }
 
 impl SledSerde for Header {
-    fn ser(&self) -> Result<sled::IVec, SledBytesError> {
+    fn ser(&self) -> Result<IVec, SledBytesError> {
         let x = serde_json::to_vec(self)?;
         Ok(x.into())
     }
