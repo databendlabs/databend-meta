@@ -10,6 +10,7 @@ setup:
 	cargo install taplo-cli --locked
 	cargo install typos-cli --locked
 	cargo install cargo-machete --locked
+	cargo install cargo-nextest --locked
 
 # Formatting
 fmt:
@@ -39,7 +40,7 @@ test: unit-test
 unit-test:
 	ulimit -n 10000 2>/dev/null || true; \
 	ulimit -s 16384 2>/dev/null || true; \
-	RUST_LOG="ERROR" cargo test --workspace
+	RUST_LOG="ERROR" cargo nextest run --workspace
 
 miri:
 	cargo miri setup

@@ -268,7 +268,7 @@ impl OnDisk {
                 }
                 DataVersion::V003 => {
                     unreachable!(
-                        "Upgrading V002 to V003 is not supported since 2025-07-01, TODO version"
+                        "Upgrading V002 to V003 is not supported since 2025-07-01, 1.2.769"
                     );
                 }
                 DataVersion::V004 => {
