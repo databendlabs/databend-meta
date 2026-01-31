@@ -193,7 +193,7 @@ impl Default for RaftConfig {
             raft_dir: "./.databend/meta".to_string(),
 
             log_cache_max_items: 1_000_000,
-            log_cache_capacity: 1 * GB,
+            log_cache_capacity: GB,
             log_wal_chunk_max_records: 100_000,
             log_wal_chunk_max_size: 256 * MB,
 
@@ -206,7 +206,7 @@ impl Default for RaftConfig {
             snapshot_db_debug_check: true,
             snapshot_db_block_keys: 8000,
             snapshot_db_block_cache_item: 1024,
-            snapshot_db_block_cache_size: 1 * GB,
+            snapshot_db_block_cache_size: GB,
 
             compact_immutables_ms: None,
             single: false,
