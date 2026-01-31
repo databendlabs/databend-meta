@@ -203,7 +203,7 @@ impl<SP: SpawnApi> MetaServiceImpl<SP> {
             .ok_or_else(|| Status::unauthenticated("Error auth-token-bin is empty"))?;
 
         let claim = self.token.try_verify_token(&token).map_err(|e| {
-            Status::unauthenticated(format!("token verify failed: {}, {}", token, e))
+            Status::unauthenticated(format!("token verify failed: {}", e))
         })?;
         Ok(claim)
     }
