@@ -17,4 +17,5 @@ pendings = "pendings"
 [files]
 extend-exclude = [
     "**/Cargo.toml",
+    "tests/certs/**",
 ]
