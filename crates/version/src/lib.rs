@@ -14,6 +14,22 @@
 
 //! Version information for databend-meta.
 
+mod digit_version;
+
+pub mod changes {
+    #![doc = include_str!("changes.md")]
+}
+
+pub use digit_version::from_digit_ver;
+pub use digit_version::to_digit_ver;
+
+/// Oldest compatible nightly meta-client version
+///
+/// It should be 1.2.287 but 1.2.287 does not contain complete binaries
+pub static MIN_CLIENT_VERSION: Version = Version::new(1, 2, 288);
+
+pub static MIN_SERVER_VERSION: Version = Version::new(1, 2, 770);
+
 use std::sync::LazyLock;
 
 use semver::Version;

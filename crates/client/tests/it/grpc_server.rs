@@ -16,7 +16,7 @@ use std::pin::Pin;
 use std::thread::sleep;
 use std::time::Duration;
 
-use databend_meta_client::MIN_METASRV_SEMVER;
+use databend_meta_client::MIN_SERVER_VERSION;
 use databend_meta_client::to_digit_ver;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TokioRuntime;
@@ -66,7 +66,7 @@ impl MetaService for GrpcServiceForTestImpl {
         tokio::time::sleep(Duration::from_secs(2)).await;
         let output = futures::stream::once(async {
             Ok(HandshakeResponse {
-                protocol_version: to_digit_ver(&MIN_METASRV_SEMVER),
+                protocol_version: to_digit_ver(&MIN_SERVER_VERSION),
                 payload: vec![],
             })
         });

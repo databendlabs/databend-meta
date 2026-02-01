@@ -17,8 +17,8 @@
 
 use std::time::Duration;
 
-use databend_meta::version::MIN_METACLI_SEMVER;
-use databend_meta_client::MIN_METASRV_SEMVER;
+use databend_meta::version::MIN_CLIENT_VERSION;
+use databend_meta_client::MIN_SERVER_VERSION;
 use databend_meta_client::MetaChannelManager;
 use databend_meta_client::from_digit_ver;
 use databend_meta_client::handshake;
@@ -59,7 +59,7 @@ async fn test_metasrv_handshake() -> anyhow::Result<()> {
 
     info!("--- client has smaller ver than S.min_cli_ver");
     {
-        let min_client_ver = &MIN_METACLI_SEMVER;
+        let min_client_ver = &MIN_CLIENT_VERSION;
         let cli_ver = smaller_ver(min_client_ver);
 
         let res = handshake(&mut client, &cli_ver, &[], "root", "xxx").await;
@@ -69,14 +69,14 @@ async fn test_metasrv_handshake() -> anyhow::Result<()> {
 
         let want = format!(
             "meta-client protocol_version({}) < metasrv min-compatible({})",
-            cli_ver, MIN_METACLI_SEMVER
+            cli_ver, MIN_CLIENT_VERSION
         );
         assert!(e.to_string().contains(&want), "handshake err: {:?}", e);
     }
 
     info!("--- server has smaller ver than C.min_srv_ver");
     {
-        let min_srv_ver = &MIN_METASRV_SEMVER;
+        let min_srv_ver = &MIN_SERVER_VERSION;
         let mut min_srv_ver = min_srv_ver.clone();
         min_srv_ver.major += 1;
 

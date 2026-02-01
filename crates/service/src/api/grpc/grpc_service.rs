@@ -80,7 +80,7 @@ use crate::meta_service::watcher::WatchTypes;
 use crate::metrics::InFlightRead;
 use crate::metrics::InFlightWrite;
 use crate::metrics::network_metrics;
-use crate::version::MIN_METACLI_SEMVER;
+use crate::version::MIN_CLIENT_VERSION;
 use crate::version::from_digit_ver;
 use crate::version::to_digit_ver;
 
@@ -355,14 +355,14 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
 
         debug!("handle handshake request, client ver: {}", protocol_version);
 
-        let min_compatible = to_digit_ver(&MIN_METACLI_SEMVER);
+        let min_compatible = to_digit_ver(&MIN_CLIENT_VERSION);
 
         // backward compatibility: no version in handshake.
         if protocol_version > 0 && protocol_version < min_compatible {
             return Err(Status::invalid_argument(format!(
                 "meta-client protocol_version({}) < metasrv min-compatible({})",
                 from_digit_ver(protocol_version),
-                MIN_METACLI_SEMVER,
+                MIN_CLIENT_VERSION,
             )));
         }
 

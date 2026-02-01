@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub use databend_meta_version::MIN_CLIENT_VERSION;
+pub use databend_meta_version::MIN_CLIENT_VERSION as MIN_METACLI_SEMVER;
+pub use databend_meta_version::from_digit_ver;
+pub use databend_meta_version::to_digit_ver;
 use feature_set::FeatureSet;
 use semver::Version;
-
-/// Oldest compatible nightly meta-client version
-///
-/// It should be 1.2.287 but 1.2.287 does not contain complete binaries
-pub static MIN_METACLI_SEMVER: Version = Version::new(1, 2, 288);
 
 /// The min meta-server version that can be deployed together in a cluster,
 /// i.e., the network APIs are compatible.
@@ -138,12 +137,4 @@ pub fn raft_server_provides() -> FeatureSet {
 
 pub fn raft_client_requires() -> FeatureSet {
     FeatureSet::from_required(raft::client::REQUIRES, false)
-}
-
-pub fn to_digit_ver(v: &Version) -> u64 {
-    v.major * 1_000_000 + v.minor * 1_000 + v.patch
-}
-
-pub fn from_digit_ver(u: u64) -> Version {
-    Version::new(u / 1_000_000, u / 1_000 % 1_000, u % 1_000)
 }
