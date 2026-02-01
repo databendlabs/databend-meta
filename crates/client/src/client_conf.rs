@@ -14,8 +14,6 @@
 
 use std::time::Duration;
 
-use semver::Version;
-
 #[derive(Clone, Debug, Default)]
 pub struct RpcClientTlsConfig {
     pub rpc_tls_server_root_ca_cert: String,
@@ -32,7 +30,6 @@ impl RpcClientTlsConfig {
 pub struct RpcClientConf {
     pub embedded_dir: Option<String>,
     pub endpoints: Vec<String>,
-    pub version: Version,
     pub username: String,
     pub password: String,
     pub tls_conf: Option<RpcClientTlsConfig>,
@@ -61,11 +58,10 @@ impl RpcClientConf {
         self.endpoints.clone()
     }
 
-    pub fn empty(version: Version) -> Self {
+    pub fn empty() -> Self {
         Self {
             embedded_dir: None,
             endpoints: vec![],
-            version,
             username: "".to_string(),
             password: "".to_string(),
             tls_conf: None,

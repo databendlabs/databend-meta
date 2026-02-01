@@ -43,7 +43,6 @@ use databend_meta_types::protobuf::WatchRequest;
 use databend_meta_types::protobuf::watch_request::FilterType;
 use databend_meta_types::txn_condition;
 use databend_meta_types::txn_op;
-use databend_meta_version::semver;
 use log::info;
 use test_harness::test;
 use tokio::time::sleep;
@@ -662,7 +661,6 @@ fn add_event(key: &str, res_seq: u64, res_val: &str, meta: Option<KvMeta>) -> Ev
 fn make_client(addr: impl ToString) -> anyhow::Result<Arc<ClientHandle<TokioRuntime>>> {
     let client = MetaGrpcClient::<TokioRuntime>::try_create(
         vec![addr.to_string()],
-        semver().clone(),
         "root",
         "xxx",
         None,

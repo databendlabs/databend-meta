@@ -41,6 +41,7 @@ use fastrace::Span;
 use log::debug;
 use log::error;
 use log::info;
+use semver::Version;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 use tonic::codegen::BoxStream;
@@ -96,7 +97,12 @@ pub struct ClientHandle<RT: SpawnApi> {
 
 impl<RT: SpawnApi> Display for ClientHandle<RT> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "ClientHandle({})", self.endpoints.join(","))
+        write!(
+            f,
+            "ClientHandle(v{};{})",
+            databend_meta_version::semver(),
+            self.endpoints.join(",")
+        )
     }
 }
 
@@ -107,6 +113,11 @@ impl<RT: SpawnApi> Drop for ClientHandle<RT> {
 }
 
 impl<RT: SpawnApi> ClientHandle<RT> {
+    /// Returns the version of this client.
+    pub fn version(&self) -> &'static Version {
+        databend_meta_version::semver()
+    }
+
     pub async fn list(&self, prefix: &str) -> Result<BoxStream<StreamItem>, MetaError> {
         let strm = self
             .request(Streamed(ListKVReq {

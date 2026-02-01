@@ -20,7 +20,6 @@ use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_types::MetaClientError;
 use databend_meta_types::MetaError;
 use databend_meta_types::MetaNetworkError;
-use databend_meta_version::semver;
 use test_harness::test;
 
 use crate::testing::meta_service_test_harness;
@@ -51,7 +50,6 @@ async fn test_tls_server() -> anyhow::Result<()> {
 
     let client = MetaGrpcClient::<TokioRuntime>::try_create(
         vec![addr],
-        semver().clone(),
         "root",
         "xxx",
         None,
@@ -89,7 +87,6 @@ async fn test_tls_client_config_failure() -> anyhow::Result<()> {
 
     let r = MetaGrpcClient::<TokioRuntime>::try_create(
         vec!["addr".to_string()],
-        semver().clone(),
         "root",
         "xxx",
         None,

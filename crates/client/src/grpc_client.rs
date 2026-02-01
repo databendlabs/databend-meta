@@ -57,7 +57,6 @@ use log::warn;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use prost::Message;
-use semver::Version;
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -139,6 +138,11 @@ impl<RT: RuntimeApi> Display for MetaGrpcClient<RT> {
 }
 
 impl<RT: RuntimeApi> MetaGrpcClient<RT> {
+    /// Returns the version of this client.
+    pub fn version(&self) -> &'static semver::Version {
+        databend_meta_version::semver()
+    }
+
     /// Create a new client of metasrv.
     ///
     /// It creates a new `Runtime` and spawn a background worker task in it that do all the RPC job.
@@ -152,7 +156,6 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
     pub fn try_new(conf: &RpcClientConf) -> Result<Arc<ClientHandle<RT>>, CreationError> {
         Self::try_create(
             conf.get_endpoints(),
-            conf.version.clone(),
             &conf.username,
             &conf.password,
             conf.timeout,
@@ -165,7 +168,6 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
     #[fastrace::trace]
     pub fn try_create(
         endpoints_str: Vec<String>,
-        version: Version,
         username: &str,
         password: &str,
         timeout: Option<Duration>,
@@ -174,7 +176,6 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
     ) -> Result<Arc<ClientHandle<RT>>, CreationError> {
         Self::try_create_with_features(
             endpoints_str,
-            version,
             username,
             password,
             timeout,
@@ -200,7 +201,6 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
     #[fastrace::trace]
     pub fn try_create_with_features(
         endpoints_str: Vec<String>,
-        version: Version,
         username: &str,
         password: &str,
         timeout: Option<Duration>,
@@ -218,7 +218,6 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
         });
 
         let mgr = MetaChannelManager::new(
-            version,
             username,
             password,
             timeout,
@@ -833,7 +832,7 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
 #[async_backtrace::framed]
 pub async fn handshake(
     client: &mut RealClient,
-    client_ver: &Version,
+    client_ver: &semver::Version,
     required_server_features: &'static [FeatureSpec],
     username: &str,
     password: &str,

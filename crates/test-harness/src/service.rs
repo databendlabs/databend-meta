@@ -119,7 +119,6 @@ pub fn make_grpc_client<R: RuntimeApi>(
 ) -> Result<Arc<ClientHandle<R>>, CreationError> {
     let client = MetaGrpcClient::<R>::try_create(
         addresses,
-        semver().clone(),
         "root",
         "xxx",
         Some(Duration::from_secs(2)), // timeout
@@ -231,7 +230,6 @@ impl<R: RuntimeApi> MetaSrvTestContext<R> {
 
         let client = MetaGrpcClient::<R>::try_create(
             vec![addr],
-            semver().clone(),
             "root",
             "xxx",
             None,
