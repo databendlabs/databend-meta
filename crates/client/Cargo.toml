@@ -17,6 +17,7 @@ chrono = { workspace = true }
 databend-base = { workspace = true }
 databend-meta-runtime-api = { workspace = true }
 databend-meta-types = { workspace = true }
+databend-meta-version = { workspace = true }
 derive_more = { workspace = true }
 display-more = { workspace = true }
 fastrace = { workspace = true }

@@ -28,7 +28,6 @@ use databend_meta_types::protobuf::meta_service_client::MetaServiceClient;
 use log::info;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
-use semver::Version;
 use tonic::async_trait;
 use tonic::transport::Channel;
 
@@ -51,7 +50,6 @@ pub const DEFAULT_CONNECTION_TTL: Duration = Duration::from_secs(20);
 
 #[derive(Debug)]
 pub struct MetaChannelManager<R> {
-    version: Version,
     username: String,
     password: String,
     timeout: Option<Duration>,
@@ -76,7 +74,6 @@ pub struct MetaChannelManager<R> {
 
 impl<R: SpawnApi> MetaChannelManager<R> {
     pub fn new(
-        version: Version,
         username: impl ToString,
         password: impl ToString,
         timeout: Option<Duration>,
@@ -86,7 +83,6 @@ impl<R: SpawnApi> MetaChannelManager<R> {
         connection_ttl: Option<Duration>,
     ) -> Self {
         Self {
-            version,
             username: username.to_string(),
             password: password.to_string(),
             timeout,
@@ -114,7 +110,7 @@ impl<R: SpawnApi> MetaChannelManager<R> {
 
         let handshake_res = handshake(
             &mut real_client,
-            &self.version,
+            databend_meta_version::semver(),
             self.required_features,
             &self.username,
             &self.password,

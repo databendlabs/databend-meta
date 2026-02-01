@@ -151,10 +151,8 @@ fn new_client(
     addr: impl ToString,
     timeout: Option<Duration>,
 ) -> anyhow::Result<Arc<ClientHandle<TokioRuntime>>> {
-    let version = databend_meta_version::semver().clone();
     let client = MetaGrpcClient::<TokioRuntime>::try_create(
         vec![addr.to_string()],
-        version,
         "",
         "",
         timeout,
