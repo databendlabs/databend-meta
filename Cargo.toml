@@ -48,7 +48,7 @@ arrow-flight = { version = "56", features = ["flight-sql-experimental", "tls-rin
 async-backtrace = "0.2"
 async-trait = "0.1.89"
 backon = "1"
-bincode = { version = "2.0.0-rc.3", features = ["serde", "std", "alloc"] }
+bincode = { version = "3.0.0", features = ["serde", "std", "alloc"] }
 byteorder = "1.5.0"
 chrono = { version = "0.4.40", features = ["serde"] }
 deepsize = "0.2.0"
