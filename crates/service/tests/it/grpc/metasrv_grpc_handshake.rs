@@ -59,7 +59,7 @@ async fn test_metasrv_handshake() -> anyhow::Result<()> {
         let min_client_ver = &MIN_CLIENT_VERSION;
         let cli_ver = smaller_ver(min_client_ver);
 
-        let res = handshake(&mut client, &cli_ver, &Version::new(0, 0, 0), "root", "xxx").await;
+        let res = handshake(&mut client, &cli_ver, &Version::min(), "root", "xxx").await;
 
         debug!("handshake res: {:?}", res);
         let e = res.unwrap_err();
@@ -98,9 +98,9 @@ async fn test_metasrv_handshake() -> anyhow::Result<()> {
 
     info!("--- old client using ver==0 is allowed");
     {
-        let zero = Version::new(0, 0, 0);
+        let zero = Version::min();
 
-        let res = handshake(&mut client, &zero, &Version::new(0, 0, 0), "root", "xxx").await;
+        let res = handshake(&mut client, &zero, &Version::min(), "root", "xxx").await;
 
         debug!("handshake res: {:?}", res);
         assert!(res.is_ok());

@@ -12,140 +12,120 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Feature negotiation between meta-client and meta-server.
+//! Feature history and version compatibility for meta-client and meta-server.
 //!
-//! This module defines the features that the meta-server supports and the
-//! versions in which they were added. Clients use this information to
-//! negotiate capabilities with the server during handshake.
+//! This module tracks the lifecycle of every protocol feature — when it was
+//! added and when (if ever) it was removed — on both the server and client
+//! sides. The compatibility algorithm uses this history to compute the
+//! minimum peer version required for a successful handshake.
 //!
 //! # Feature Lifecycle
 //!
-//! Each feature has a lifecycle defined by:
-//! - `since`: The version when the feature was added (inclusive)
-//! - `until`: The version when the feature was removed (exclusive), or
-//!   `Version::max()` if still supported
+//! Each feature has a half-open lifetime `[since, until)`:
+//! - `since`: the version when the feature was introduced (inclusive).
+//! - `until`: the version when the feature was removed (exclusive),
+//!   or `Version::max()` if the feature is still active.
 //!
-//! A server supports a feature if: `since <= server_version < until`
+//! A feature is active at version V when `since <= V < until`.
 //!
 //! # Example
 //!
 //! ```
-//! use databend_meta_version::features::Changes;
+//! use databend_meta_version::features::Spec;
 //!
-//! let changes = Changes::load();
-//! let min_server = changes.min_compatible_server_version();
-//! let min_client = changes.min_compatible_client_version();
+//! let spec = Spec::load();
+//! let min_server = spec.min_compatible_server_version();
+//! let min_client = spec.min_compatible_client_version();
 //! ```
 
 use std::collections::BTreeMap;
 use std::fmt;
 
-/// Identifies a specific capability that can be negotiated between client and server.
+/// A named capability in the meta-service protocol.
 ///
-/// Each variant represents a distinct feature in the meta-service protocol.
-/// Features are used during handshake to determine what operations are
-/// supported by the server.
+/// Each variant represents a feature whose lifetime is tracked in [`Spec`]
+/// for version compatibility calculation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Feature {
-    /// Basic KV API for key-value operations.
+    /// Unary `kv_api()` RPC for key-value operations.
     KvApi,
 
-    /// KvApi variant GetKv
+    /// `kv_api()` sub-operation: get a single key.
     KvApiGetKv,
 
-    /// KvApi variant MGetKv
+    /// `kv_api()` sub-operation: get multiple keys.
     KvApiMGetKv,
 
-    /// KvApi variant ListKv
+    /// `kv_api()` sub-operation: list keys by prefix.
     KvApiListKv,
 
-    /// Stream API for reading key-value pairs: `kv_read_v1()`.
+    /// Stream-based `kv_read_v1()` RPC for reading key-value pairs.
     KvReadV1,
 
-    /// Transaction support for multi-key atomic operations.
+    /// `transaction()` RPC for multi-key atomic operations.
     Transaction,
 
-    /// TxnReply use `error` field to return error
+    /// `TxnReply::error` field for returning transaction errors.
     TransactionReplyError,
 
-    /// Allow to set the TTL for a key-value to put in a transaction
+    /// TTL support in `TxnPutRequest`.
     TransactionPutWithTtl,
 
-    /// Count by a prefix as a transaction condition
+    /// Prefix-count condition in `TxnCondition`.
     TransactionConditionKeysPrefix,
 
-    /// To specify a complex bool expression and corresponding operations
-    /// `TxnRequest::operations`
+    /// Bool-expression operations via `TxnRequest::operations`.
     TransactionOperations,
 
-    /// `Operation::AsIs`: keep value untouched, maybe update the value meta.
+    /// `Operation::AsIs`: keep value untouched, update only the metadata.
     OperationAsIs,
 
-    /// Basic export API for dumping server data.
+    /// `export()` RPC for dumping server data.
     Export,
 
-    /// Enhanced export API allowing client to specify export chunk size: `export_v1()`.
+    /// `export_v1()` RPC with configurable chunk size.
     ExportV1,
 
-    /// Watch API for subscribing to key change events.
+    /// `watch()` RPC for subscribing to key change events.
     Watch,
 
-    /// Watch stream flushes all keys in a range at the beginning.
-    ///
-    /// Adds `WatchRequest::initial_flush`.
+    /// `WatchRequest::initial_flush`: flush existing keys at stream start.
     WatchInitialFlush,
 
-    /// Watch response includes initialization flag.
-    ///
-    /// Adds `WatchResponse::is_initialization` to indicate whether the event
-    /// is an initialization event or a change event.
+    /// `WatchResponse::is_initialization` flag distinguishing init vs change events.
     WatchResponseIsInit,
 
-    /// Get cluster member list.
+    /// `member_list()` RPC for cluster membership.
     MemberList,
 
-    /// Get cluster status information.
+    /// `get_cluster_status()` RPC for cluster status.
     GetClusterStatus,
 
-    /// Get client connection info including server time.
+    /// `get_client_info()` RPC for connection info and server time.
     GetClientInfo,
 
-    /// Transaction put response includes current state.
-    ///
-    /// Adds `TxnPutResponse::current` - the state of the key after the put operation.
+    /// `TxnPutResponse::current`: key state after a put operation.
     PutResponseCurrent,
 
-    /// Fetch and add u64 operation in transactions (deprecated, use `FetchIncreaseU64`).
-    ///
-    /// Adds `FetchAddU64` operation to `TxnOp`.
+    /// `FetchAddU64` operation in `TxnOp` (deprecated by `FetchIncreaseU64`).
     FetchAddU64,
 
-    /// Adaptive expiration time supporting both seconds and milliseconds.
-    ///
-    /// `expire_at` accepts both seconds and milliseconds timestamps. Before this, it is just in seconds.
+    /// `expire_at` accepts both seconds and milliseconds timestamps.
     ExpireInMillis,
 
-    /// Sequential put operation for generating monotonic sequence key.
+    /// Sequential put for generating monotonic sequence keys.
     PutSequential,
 
-    /// Store raft-log proposing time in KV metadata.
-    ///
-    /// Adds `proposed_at_ms` field to `KVMeta`.
+    /// `KVMeta::proposed_at_ms`: raft-log proposing time in metadata.
     ProposedAtMs,
 
-    /// Enhanced fetch-and-increase operation with max value support.
-    ///
-    /// Renamed from `FetchAddU64`, adds `max_value` parameter.
+    /// `FetchIncreaseU64` operation in `TxnOp` with `max_value` support.
     FetchIncreaseU64,
 
-    /// List keys with pagination support via streaming.
-    ///
-    /// `kv_list` gRPC API in protobuf with `limit` parameter, returns stream.
+    /// `kv_list()` RPC with pagination via streaming.
     KvList,
 
-    /// Get multiple keys with streaming request and response.
-    ///
-    /// `kv_get_many` gRPC API in protobuf, receives stream, returns stream.
+    /// `kv_get_many()` RPC with streaming request and response.
     KvGetMany,
 }
 
@@ -183,10 +163,7 @@ impl Feature {
         ]
     }
 
-    /// Returns the wire-format string representation of this feature.
-    ///
-    /// This string is used in the protocol handshake to identify features.
-    /// It matches the gRPC method or capability name.
+    /// Returns the string identifier for this feature.
     pub const fn as_str(&self) -> &'static str {
         match self {
             Feature::KvApi => "kv_api",
@@ -220,8 +197,8 @@ impl Feature {
     }
 }
 
-impl std::fmt::Display for Feature {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Feature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
@@ -232,11 +209,7 @@ impl From<Feature> for &'static str {
     }
 }
 
-/// A three-component version number (major, minor, patch).
-///
-/// Used to track when features were added or removed.
-/// Unlike `semver::Version`, this is a simple const-compatible struct
-/// for use in static feature definitions.
+/// A `const`-compatible three-component version number (major, minor, patch).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Version {
     major: u64,
@@ -330,34 +303,24 @@ impl From<semver::Version> for Version {
     }
 }
 
-/// Defines the lifecycle of a feature within the meta-service protocol.
-///
-/// Tracks when a feature was added and when (or if) it was removed.
-/// This allows clients to determine server capabilities during handshake.
-pub struct FeatureLifetime {
+/// The lifetime `[since, until)` of a feature.
+pub struct FeatureSpan {
     /// The feature being described.
     pub feature: Feature,
+
     /// The version when this feature was added (inclusive).
     pub since: Version,
+
     /// The version when this feature was removed (exclusive).
     ///
     /// If the feature is still supported, this is `Version::max()`.
     pub until: Version,
 }
 
-impl FeatureLifetime {
-    /// Creates a new feature lifetime with the given feature and version.
-    ///
-    /// The `until` field is initialized to `Version::max()`, indicating
-    /// the feature is still supported. Use this constructor for features
-    /// that have not been removed.
-    ///
-    /// # Arguments
-    ///
-    /// * `feature` - The feature being defined
-    /// * `since` - The version when this feature became available
+impl FeatureSpan {
+    /// Creates a lifetime starting at `since` with no end (`until = Version::max()`).
     pub const fn new(feature: Feature, since: Version) -> Self {
-        FeatureLifetime {
+        FeatureSpan {
             feature,
             since,
             until: Version::max(),
@@ -383,16 +346,17 @@ impl FeatureLifetime {
 
 type F = Feature;
 
-/// Helper function to create a version with less boilerplate.
 const fn ver(major: u64, minor: u64, patch: u64) -> Version {
     Version::new(major, minor, patch)
 }
 
-/// Returns the current crate version as a `Version`.
-///
-/// This uses the version from `CARGO_PKG_VERSION` at compile time.
-pub fn current_version() -> Version {
-    *crate::version()
+/// Parses `CARGO_PKG_VERSION` into a [`Version`].
+fn parse_pkg_version() -> Version {
+    let s = env!("CARGO_PKG_VERSION");
+    let s = s.strip_prefix('v').unwrap_or(s);
+    let sv = semver::Version::parse(s)
+        .unwrap_or_else(|e| panic!("Invalid CARGO_PKG_VERSION: {:?}: {}", s, e));
+    Version::from(sv)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -407,24 +371,45 @@ pub enum Op {
     Until,
 }
 
-/// Tracks feature changes across versions for compatibility calculation.
+/// Version and feature information for compatibility calculation.
 ///
-/// This struct maintains the history of when features were added or removed
-/// on both server and client sides, enabling calculation of minimum compatible
-/// versions.
-pub struct Changes {
-    server_features: BTreeMap<F, FeatureLifetime>,
-    client_features: BTreeMap<F, FeatureLifetime>,
+/// Contains the current build version and the full history of when features
+/// were added or removed on both server and client sides. Used to calculate
+/// minimum compatible versions.
+pub struct Spec {
+    /// The build version this instance was created for.
+    version: Version,
+
+    /// When each feature was added/removed on the server side.
+    server_features: BTreeMap<F, FeatureSpan>,
+
+    /// When each feature was added/removed on the client side.
+    client_features: BTreeMap<F, FeatureSpan>,
 }
 
-impl Changes {
-    /// Creates a new Changes instance with all feature history.
+impl Spec {
+    /// Creates a new instance with all feature history for the current build version.
     pub fn load() -> Self {
-        Self::new()
+        Self::new(parse_pkg_version())
+    }
+
+    /// Returns the build version this instance was created for.
+    pub fn version(&self) -> &Version {
+        &self.version
+    }
+
+    /// Returns the server-side feature spans.
+    pub fn server_features(&self) -> &BTreeMap<F, FeatureSpan> {
+        &self.server_features
+    }
+
+    /// Returns the client-side feature spans.
+    pub fn client_features(&self) -> &BTreeMap<F, FeatureSpan> {
+        &self.client_features
     }
 }
 
-impl Changes {
+impl Spec {
     fn apply(&mut self, role: Role, feature: F, op: Op, version: Version) {
         let feas = if role == Role::Server {
             &mut self.server_features
@@ -433,48 +418,46 @@ impl Changes {
         };
 
         if !feas.contains_key(&feature) {
-            feas.insert(
-                feature,
-                FeatureLifetime::new(feature, Version::new(0, 0, 0)),
-            );
+            feas.insert(feature, FeatureSpan::new(feature, Version::min()));
         }
 
         let fea = feas.get_mut(&feature).unwrap();
         if op == Op::Since {
-            debug_assert!(fea.since == Version::new(0, 0, 0));
+            debug_assert!(fea.since == Version::min());
             debug_assert!(fea.until == Version::max());
 
             fea.since = version;
         } else {
-            debug_assert!(fea.since != Version::new(0, 0, 0));
+            debug_assert!(fea.since != Version::min());
             debug_assert!(fea.until == Version::max());
 
             fea.until = version;
         }
     }
 
-    /// Server adds a provided feature, the feature can be used since this version, inclusive.
+    /// Server provides a feature since `version`; usable at `version` and later.
     fn server_adds(&mut self, feature: F, version: Version) {
         self.apply(Role::Server, feature, Op::Since, version);
     }
 
-    /// Server removed a provided feature. the feature can not be used since this version, inclusive.
+    /// Server removes a feature at `version`; still usable at `version - 1`, not at `version`.
     fn server_removes(&mut self, feature: F, version: Version) {
         self.apply(Role::Server, feature, Op::Until, version);
     }
 
-    /// Client adds a required feature, since this version, inclusive,
+    /// Client requires a feature since `version`; required at `version` and later.
     fn client_adds(&mut self, feature: F, version: Version) {
         self.apply(Role::Client, feature, Op::Since, version);
     }
 
-    /// Client removed a required feature, since this version, inclusive, the feature is no longer used.
+    /// Client drops a feature at `version`; still required at `version - 1`, not at `version`.
     fn client_removes(&mut self, feature: F, version: Version) {
         self.apply(Role::Client, feature, Op::Until, version);
     }
 
-    fn new() -> Self {
-        let mut chs = Changes {
+    fn new(version: Version) -> Self {
+        let mut spec = Spec {
+            version,
             server_features: BTreeMap::new(),
             client_features: BTreeMap::new(),
         };
@@ -483,161 +466,161 @@ impl Changes {
             // 2023-10-17: since 1.2.163:
             // 🖥 server: add stream api kv_read_v1().
             // (fake version for features already provided for a while)
-            chs.server_adds(F::OperationAsIs, ver(1, 2, 163));
-            chs.server_adds(F::KvApi, ver(1, 2, 163));
-            chs.server_adds(F::KvApiGetKv, ver(1, 2, 163));
-            chs.server_adds(F::KvApiMGetKv, ver(1, 2, 163));
-            chs.server_adds(F::KvApiListKv, ver(1, 2, 163));
-            chs.server_adds(F::KvReadV1, ver(1, 2, 163));
+            spec.server_adds(F::OperationAsIs, ver(1, 2, 163));
+            spec.server_adds(F::KvApi, ver(1, 2, 163));
+            spec.server_adds(F::KvApiGetKv, ver(1, 2, 163));
+            spec.server_adds(F::KvApiMGetKv, ver(1, 2, 163));
+            spec.server_adds(F::KvApiListKv, ver(1, 2, 163));
+            spec.server_adds(F::KvReadV1, ver(1, 2, 163));
 
-            chs.client_adds(F::OperationAsIs, ver(1, 2, 163));
-            chs.client_adds(F::KvApi, ver(1, 2, 163));
-            chs.client_adds(F::KvApiGetKv, ver(1, 2, 163));
-            chs.client_adds(F::KvApiMGetKv, ver(1, 2, 163));
-            chs.client_adds(F::KvApiListKv, ver(1, 2, 163));
+            spec.client_adds(F::OperationAsIs, ver(1, 2, 163));
+            spec.client_adds(F::KvApi, ver(1, 2, 163));
+            spec.client_adds(F::KvApiGetKv, ver(1, 2, 163));
+            spec.client_adds(F::KvApiMGetKv, ver(1, 2, 163));
+            spec.client_adds(F::KvApiListKv, ver(1, 2, 163));
 
             // 2023-10-20: since 1.2.176:
             // 👥 client: call stream api kv_read_v1(), revert to 1.1.32 if server < 1.2.163
-            chs.client_adds(F::KvReadV1, ver(1, 2, 176));
+            spec.client_adds(F::KvReadV1, ver(1, 2, 176));
 
             // 2023-12-16: since 1.2.258:
             // 🖥 server: add ttl to TxnPutRequest and Upsert
-            chs.server_adds(F::Transaction, ver(1, 2, 258));
-            chs.server_adds(F::TransactionReplyError, ver(1, 2, 258));
-            chs.server_adds(F::TransactionPutWithTtl, ver(1, 2, 258));
+            spec.server_adds(F::Transaction, ver(1, 2, 258));
+            spec.server_adds(F::TransactionReplyError, ver(1, 2, 258));
+            spec.server_adds(F::TransactionPutWithTtl, ver(1, 2, 258));
 
-            chs.client_adds(F::TransactionReplyError, ver(1, 2, 258));
+            spec.client_adds(F::TransactionReplyError, ver(1, 2, 258));
 
             // 1.2.259: (fake version, 1.2.258 binary outputs 1.2.257)
             // 🖥 server: add Export, Watch, MemberList, GetClusterStatus, GetClientInfo
-            chs.server_adds(F::Export, ver(1, 2, 259));
-            chs.server_adds(F::Watch, ver(1, 2, 259));
-            chs.server_adds(F::MemberList, ver(1, 2, 259));
-            chs.server_adds(F::GetClusterStatus, ver(1, 2, 259));
-            chs.server_adds(F::GetClientInfo, ver(1, 2, 259));
+            spec.server_adds(F::Export, ver(1, 2, 259));
+            spec.server_adds(F::Watch, ver(1, 2, 259));
+            spec.server_adds(F::MemberList, ver(1, 2, 259));
+            spec.server_adds(F::GetClusterStatus, ver(1, 2, 259));
+            spec.server_adds(F::GetClientInfo, ver(1, 2, 259));
 
-            chs.client_adds(F::Transaction, ver(1, 2, 259));
-            chs.client_adds(F::Export, ver(1, 2, 259));
-            chs.client_adds(F::Watch, ver(1, 2, 259));
-            chs.client_adds(F::MemberList, ver(1, 2, 259));
-            chs.client_adds(F::GetClusterStatus, ver(1, 2, 259));
-            chs.client_adds(F::GetClientInfo, ver(1, 2, 259));
+            spec.client_adds(F::Transaction, ver(1, 2, 259));
+            spec.client_adds(F::Export, ver(1, 2, 259));
+            spec.client_adds(F::Watch, ver(1, 2, 259));
+            spec.client_adds(F::MemberList, ver(1, 2, 259));
+            spec.client_adds(F::GetClusterStatus, ver(1, 2, 259));
+            spec.client_adds(F::GetClientInfo, ver(1, 2, 259));
 
             // 2024-01-07: since 1.2.287:
             // 👥 client: remove calling RPC kv_api() with MetaGrpcReq::GetKV/MGetKV/ListKV
-            chs.client_removes(F::KvApiGetKv, ver(1, 2, 287));
-            chs.client_removes(F::KvApiMGetKv, ver(1, 2, 287));
-            chs.client_removes(F::KvApiListKv, ver(1, 2, 287));
+            spec.client_removes(F::KvApiGetKv, ver(1, 2, 287));
+            spec.client_removes(F::KvApiMGetKv, ver(1, 2, 287));
+            spec.client_removes(F::KvApiListKv, ver(1, 2, 287));
 
             // 2024-01-25: since 1.2.315:
             // 🖥 server: add export_v1() to let client specify export chunk size
-            chs.server_adds(F::ExportV1, ver(1, 2, 315));
+            spec.server_adds(F::ExportV1, ver(1, 2, 315));
 
             // 2024-03-04: since 1.2.361:
             // 👥 client: `MetaSpec` use `ttl`, remove `expire_at`, require 1.2.258
-            chs.client_adds(F::TransactionPutWithTtl, ver(1, 2, 361));
+            spec.client_adds(F::TransactionPutWithTtl, ver(1, 2, 361));
 
             // 2024-11-22: since 1.2.663:
             // 🖥 server: remove MetaGrpcReq::GetKV/MGetKV/ListKV
-            chs.server_removes(F::KvApiGetKv, ver(1, 2, 663));
-            chs.server_removes(F::KvApiMGetKv, ver(1, 2, 663));
-            chs.server_removes(F::KvApiListKv, ver(1, 2, 663));
+            spec.server_removes(F::KvApiGetKv, ver(1, 2, 663));
+            spec.server_removes(F::KvApiMGetKv, ver(1, 2, 663));
+            spec.server_removes(F::KvApiListKv, ver(1, 2, 663));
 
             // 2024-11-23: since 1.2.663:
             // 👥 client: remove use of Operation::AsIs
-            chs.client_removes(F::OperationAsIs, ver(1, 2, 663));
+            spec.client_removes(F::OperationAsIs, ver(1, 2, 663));
 
             // 2024-12-16: since 1.2.674:
             // 🖥 server: add txn_condition::Target::KeysWithPrefix
-            chs.server_adds(F::TransactionConditionKeysPrefix, ver(1, 2, 674));
+            spec.server_adds(F::TransactionConditionKeysPrefix, ver(1, 2, 674));
 
             // 2024-12-20: since 1.2.676:
             // 🖥 server: add TxnRequest::operations
             // 🖥 server: no longer use TxnReply::error
-            chs.server_adds(F::TransactionOperations, ver(1, 2, 676));
+            spec.server_adds(F::TransactionOperations, ver(1, 2, 676));
 
             // 👥 client: no longer use TxnReply::error
-            chs.client_removes(F::TransactionReplyError, ver(1, 2, 676));
+            spec.client_removes(F::TransactionReplyError, ver(1, 2, 676));
 
             // 2024-12-26: since 1.2.677:
             // 🖥 server: add WatchRequest::initial_flush
-            chs.server_adds(F::WatchInitialFlush, ver(1, 2, 677));
+            spec.server_adds(F::WatchInitialFlush, ver(1, 2, 677));
 
             // 2025-04-15: since 1.2.726:
             // 👥 client: requires 1.2.677
-            chs.client_adds(F::WatchInitialFlush, ver(1, 2, 726));
-            chs.client_adds(F::WatchResponseIsInit, ver(1, 2, 726));
-            chs.client_adds(F::TransactionConditionKeysPrefix, ver(1, 2, 726));
-            chs.client_adds(F::TransactionOperations, ver(1, 2, 726));
+            spec.client_adds(F::WatchInitialFlush, ver(1, 2, 726));
+            spec.client_adds(F::WatchResponseIsInit, ver(1, 2, 726));
+            spec.client_adds(F::TransactionConditionKeysPrefix, ver(1, 2, 726));
+            spec.client_adds(F::TransactionOperations, ver(1, 2, 726));
 
             // 2025-05-08: since 1.2.736:
             // 🖥 server: add WatchResponse::is_initialization
-            chs.server_adds(F::WatchResponseIsInit, ver(1, 2, 736));
+            spec.server_adds(F::WatchResponseIsInit, ver(1, 2, 736));
 
             // 2025-06-09: since 1.2.755:
             // 🖥 server: remove TxnReply::error
-            chs.server_removes(F::TransactionReplyError, ver(1, 2, 755));
+            spec.server_removes(F::TransactionReplyError, ver(1, 2, 755));
 
             // 2025-06-11: since 1.2.756:
             // 🖥 server: add TxnPutResponse::current
-            chs.server_adds(F::PutResponseCurrent, ver(1, 2, 756));
+            spec.server_adds(F::PutResponseCurrent, ver(1, 2, 756));
 
-            chs.client_adds(F::PutResponseCurrent, ver(1, 2, 756));
+            spec.client_adds(F::PutResponseCurrent, ver(1, 2, 756));
 
             // 2025-06-24: since 1.2.764:
             // 🖥 server: add FetchAddU64 operation to the TxnOp
-            chs.server_adds(F::FetchAddU64, ver(1, 2, 764));
+            spec.server_adds(F::FetchAddU64, ver(1, 2, 764));
 
             // 2025-07-03: since 1.2.770:
             // 🖥 server: adaptive expire_at support both seconds and milliseconds
-            chs.server_adds(F::ExpireInMillis, ver(1, 2, 770));
+            spec.server_adds(F::ExpireInMillis, ver(1, 2, 770));
             // 2025-07-04: since 1.2.770:
             // 🖥 server: add PutSequential
-            chs.server_adds(F::PutSequential, ver(1, 2, 770));
+            spec.server_adds(F::PutSequential, ver(1, 2, 770));
 
             // 2025-09-27: since 1.2.821:
             // 👥 client: require 1.2.764(yanked), use 1.2.768, for FetchAddU64
-            chs.client_adds(F::FetchAddU64, ver(1, 2, 821));
+            spec.client_adds(F::FetchAddU64, ver(1, 2, 821));
 
             // 2025-09-30: since 1.2.823:
             // 🖥 server: store raft-log proposing time proposed_at_ms in KVMeta
-            chs.server_adds(F::ProposedAtMs, ver(1, 2, 823));
+            spec.server_adds(F::ProposedAtMs, ver(1, 2, 823));
 
             // 2025-09-27: since 1.2.823:
             // 👥 client: require 1.2.770, remove calling RPC kv_api
-            chs.client_removes(F::KvApi, ver(1, 2, 823));
+            spec.client_removes(F::KvApi, ver(1, 2, 823));
 
             // 2025-10-16: since 1.2.828:
             // 🖥 server: rename FetchAddU64 to FetchIncreaseU64, add max_value
-            chs.server_adds(F::FetchIncreaseU64, ver(1, 2, 828));
+            spec.server_adds(F::FetchIncreaseU64, ver(1, 2, 828));
 
             // 2026-01-12: since 1.2.869:
             // 🖥 server: add kv_list gRPC API
-            chs.server_adds(F::KvList, ver(1, 2, 869));
+            spec.server_adds(F::KvList, ver(1, 2, 869));
             // 2026-01-13: since 1.2.869:
             // 🖥 server: add kv_get_many gRPC API
-            chs.server_adds(F::KvGetMany, ver(1, 2, 869));
+            spec.server_adds(F::KvGetMany, ver(1, 2, 869));
 
             // 2026-02-05:
             // 👥 client: allows the application to use expire in millis
-            chs.client_adds(F::ExpireInMillis, ver(260205, 0, 0));
-            chs.client_adds(F::PutSequential, ver(260205, 0, 0));
+            spec.client_adds(F::ExpireInMillis, ver(260205, 0, 0));
+            spec.client_adds(F::PutSequential, ver(260205, 0, 0));
 
             // client not yet using these features
-            chs.client_adds(F::ExportV1, Version::max());
-            chs.client_adds(F::ProposedAtMs, Version::max());
-            chs.client_adds(F::FetchIncreaseU64, Version::max());
-            chs.client_adds(F::KvList, Version::max());
-            chs.client_adds(F::KvGetMany, Version::max());
+            spec.client_adds(F::ExportV1, Version::max());
+            spec.client_adds(F::ProposedAtMs, Version::max());
+            spec.client_adds(F::FetchIncreaseU64, Version::max());
+            spec.client_adds(F::KvList, Version::max());
+            spec.client_adds(F::KvGetMany, Version::max());
         }
 
-        Self::assert_all_features(&chs.server_features);
-        Self::assert_all_features(&chs.client_features);
+        Self::assert_all_features(&spec.server_features);
+        Self::assert_all_features(&spec.client_features);
 
-        chs
+        spec
     }
 
-    fn assert_all_features(features: &BTreeMap<F, FeatureLifetime>) {
+    fn assert_all_features(features: &BTreeMap<F, FeatureSpan>) {
         for feature in F::all() {
             assert!(
                 features.contains_key(feature),
@@ -647,15 +630,11 @@ impl Changes {
         }
     }
 
-    /// Calculate minimum compatible server version for current client.
+    /// Minimum server version that can serve this client.
     ///
-    /// For each feature the client **requires** at the current version,
-    /// the server must provide it. Returns the maximum `server.since`
-    /// across all required features.
-    ///
-    /// See [Compatibility Algorithm](./compatibility_algorithm.md)
+    /// Returns `max(server.since)` across all features the client requires
+    /// at `self.version`.
     pub fn min_compatible_server_version(&self) -> Version {
-        let current = current_version();
         let mut min_server = Version::min();
 
         for feature in F::all() {
@@ -663,7 +642,7 @@ impl Changes {
             let server_lt = self.server_features.get(feature).unwrap();
 
             // If client requires this feature at current version
-            if client_lt.is_active_at(current) {
+            if client_lt.is_active_at(self.version) {
                 min_server = min_server.max(server_lt.since);
             }
         }
@@ -671,15 +650,11 @@ impl Changes {
         min_server
     }
 
-    /// Calculate minimum compatible client version for current server.
+    /// Minimum client version that can connect to this server.
     ///
-    /// For each feature the server **removed** at the current version,
-    /// the client must have stopped requiring it. Returns the maximum
-    /// `client.until` across all removed features.
-    ///
-    /// See [Compatibility Algorithm](./compatibility_algorithm.md)
+    /// Returns `max(client.until)` across all features the server has
+    /// removed at `self.version`.
     pub fn min_compatible_client_version(&self) -> Version {
-        let current = current_version();
         let mut min_client = Version::min();
 
         for feature in F::all() {
@@ -687,7 +662,7 @@ impl Changes {
             let server_lt = self.server_features.get(feature).unwrap();
 
             // If server removed this feature at current version
-            if !server_lt.is_active_at(current) {
+            if !server_lt.is_active_at(self.version) {
                 min_client = min_client.max(client_lt.until);
             }
         }
@@ -702,12 +677,10 @@ mod tests {
 
     #[test]
     fn test_changes_includes_all_features() {
-        // Changes::new() calls assert_all_features() internally,
-        // which verifies all Feature::all() variants are present
-        let changes = Changes::new();
+        let spec = Spec::load();
 
-        Changes::assert_all_features(&changes.server_features);
-        Changes::assert_all_features(&changes.client_features);
+        Spec::assert_all_features(&spec.server_features);
+        Spec::assert_all_features(&spec.client_features);
     }
 
     #[test]
@@ -726,8 +699,8 @@ mod tests {
     }
 
     #[test]
-    fn test_feature_lifetime_is_active_at() {
-        let lt = FeatureLifetime::new(Feature::KvApi, Version::new(1, 2, 163));
+    fn test_feature_span_is_active_at() {
+        let lt = FeatureSpan::new(Feature::KvApi, Version::new(1, 2, 163));
 
         // Before since: not active
         assert!(!lt.is_active_at(Version::new(1, 2, 162)));
@@ -741,8 +714,8 @@ mod tests {
     }
 
     #[test]
-    fn test_feature_lifetime_is_active_at_with_until() {
-        let lt = FeatureLifetime::new(Feature::KvApi, Version::new(1, 2, 163))
+    fn test_feature_span_is_active_at_with_until() {
+        let lt = FeatureSpan::new(Feature::KvApi, Version::new(1, 2, 163))
             .until(Version::new(1, 2, 287));
 
         // Before since: not active
@@ -764,29 +737,17 @@ mod tests {
 
     #[test]
     fn test_min_compatible_server_version() {
-        let changes = Changes::new();
-        let min_server = changes.min_compatible_server_version();
+        let spec = Spec::load();
+        let min_server = spec.min_compatible_server_version();
 
         assert_eq!(min_server, Version::new(1, 2, 770));
     }
 
     #[test]
     fn test_min_compatible_client_version() {
-        let changes = Changes::new();
-        let min_client = changes.min_compatible_client_version();
+        let spec = Spec::load();
+        let min_client = spec.min_compatible_client_version();
 
-        // Server (at 1.2.873) has removed:
-        // - KvApiGetKv/MGetKv/ListKv at 1.2.663 → client stopped at 1.2.287
-        // - TransactionReplyError at 1.2.755 → client stopped at 1.2.676
-        // max(1.2.287, 1.2.676) = 1.2.676
         assert_eq!(min_client, Version::new(1, 2, 676));
-    }
-
-    #[test]
-    fn test_current_version() {
-        let current = current_version();
-        // Should match the crate version
-        let sv = crate::version();
-        assert_eq!(current, *sv);
     }
 }

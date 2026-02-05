@@ -20,7 +20,7 @@
 //! source of truth for version compatibility checks during handshake.
 //!
 //! These values are hardcoded because Rust cannot compute them at const
-//! initialization time. The corresponding functions in [`features::Changes`]
+//! initialization time. The corresponding functions in [`features::Spec`]
 //! (`min_compatible_client_version()` and `min_compatible_server_version()`)
 //! exist to verify these values are correct - unit tests assert they match.
 //!
@@ -33,7 +33,7 @@
 
 mod digit_version;
 
-pub mod changes {
+pub mod changelog {
     #![doc = include_str!("changes.md")]
 }
 
@@ -54,28 +54,28 @@ pub static MIN_SERVER_VERSION: Version = Version::new(1, 2, 770);
 
 use std::sync::LazyLock;
 
+use crate::features::Spec;
 use crate::features::Version;
 
 /// The version string of this build.
 const VERSION_STR: &str = env!("CARGO_PKG_VERSION");
 
-/// Parsed semver version.
-static SEMVER: LazyLock<Version> = LazyLock::new(|| {
-    let s = VERSION_STR.strip_prefix('v').unwrap_or(VERSION_STR);
-    let semver =
-        semver::Version::parse(s).unwrap_or_else(|e| panic!("Invalid semver: {:?}: {}", s, e));
+/// Current version and feature compatibility spec.
+static SPEC: LazyLock<Spec> = LazyLock::new(Spec::load);
 
-    Version::from(semver)
-});
-
-/// Returns the version string (e.g., "1.2.873")
+/// Returns the version string (e.g., "260205.0.0").
 pub fn version_str() -> &'static str {
     VERSION_STR
 }
 
-/// Returns the parsed semantic version
+/// Returns the parsed version.
 pub fn version() -> &'static Version {
-    &SEMVER
+    SPEC.version()
+}
+
+/// Returns the full version and feature compatibility spec.
+pub fn spec() -> &'static Spec {
+    &SPEC
 }
 
 #[cfg(test)]
@@ -115,21 +115,21 @@ mod tests {
 
     #[test]
     fn test_min_client_version_matches_computed() {
-        let changes = features::Changes::load();
+        let spec = spec();
         assert_version_eq(
             "MIN_CLIENT_VERSION",
             &MIN_CLIENT_VERSION,
-            changes.min_compatible_client_version(),
+            spec.min_compatible_client_version(),
         );
     }
 
     #[test]
     fn test_min_server_version_matches_computed() {
-        let changes = features::Changes::load();
+        let spec = spec();
         assert_version_eq(
             "MIN_SERVER_VERSION",
             &MIN_SERVER_VERSION,
-            changes.min_compatible_server_version(),
+            spec.min_compatible_server_version(),
         );
     }
 }

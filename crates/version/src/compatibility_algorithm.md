@@ -214,16 +214,16 @@ matching this example since these are the only features removed by that version.
 ### Calculating Compatible Versions
 
 ```rust
-use databend_meta_version::features::{Changes, current_version};
+use databend_meta_version::features::Spec;
 
 // Load feature history
-let changes = Changes::load();
+let spec = Spec::load();
 
 // For the current build version, find minimum compatible versions
-let min_server = changes.min_compatible_server_version();
-let min_client = changes.min_compatible_client_version();
+let min_server = spec.min_compatible_server_version();
+let min_client = spec.min_compatible_client_version();
 
-println!("Current version: {:?}", current_version());
+println!("Current version: {:?}", spec.version());
 println!("Minimum compatible server: {:?}", min_server);
 println!("Minimum compatible client: {:?}", min_client);
 ```
@@ -234,7 +234,7 @@ To add a new feature to the system:
 
 1. Add a variant to the `Feature` enum in [`features.rs`](./features.rs)
 2. Add the feature to `Feature::all()` and implement `as_str()`
-3. Add server and client lifetimes in `Changes::new()` using `server_adds()` / `client_adds()`
+3. Add server and client lifetimes in `Spec::new()` using `server_adds()` / `client_adds()`
 
 Example: Adding a hypothetical `BatchDelete` feature:
 
@@ -254,7 +254,7 @@ pub enum Feature {
 // In Feature::as_str():
 Feature::BatchDelete => "batch_delete",
 
-// In Changes::new():
+// In Spec::new():
 // Server provides it from 1.2.900
 chs.server_adds(F::BatchDelete, ver(1, 2, 900));
 // Client requires it from 1.2.910 (after testing)
@@ -272,7 +272,7 @@ To deprecate and eventually remove a feature:
 Example: Deprecating the `OldApi` feature:
 
 ```rust
-// In Changes::new():
+// In Spec::new():
 
 // Phase 1: Client stops using OldApi (release 1.2.800)
 chs.client_removes(F::OldApi, ver(1, 2, 800));
@@ -309,8 +309,8 @@ computed values:
 ```rust
 #[test]
 fn test_min_client_version_matches_computed() {
-    let changes = Changes::load();
-    let computed = changes.min_compatible_client_version();
+    let spec = Spec::load();
+    let computed = spec.min_compatible_client_version();
     assert_eq!(MIN_CLIENT_VERSION, computed);
 }
 ```
@@ -360,7 +360,7 @@ If MIN_CLIENT_VERSION is outdated, old clients may:
 | Term | Definition |
 |------|------------|
 | **Feature** | A named capability in the meta-service protocol |
-| **Feature lifetime** | The version range `[since, until)` when a feature is active |
+| **Feature span** | The version range `[since, until)` when a feature is active |
 | **Active feature** | A feature where `since <= current_version < until` |
 | **Required feature** | A feature the client needs from the server |
 | **Provided feature** | A feature the server offers to clients |
