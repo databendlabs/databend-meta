@@ -88,7 +88,7 @@ seq-marked = { version = "0.3.5", features = ["seq-marked-serde", "seq-marked-bi
 serde = { version = "1.0.164", features = ["derive", "rc"] }
 serde_json = { version = "1.0.85", default-features = false, features = ["preserve_order", "unbounded_depth"] }
 stream-more = "0.1.3"
-strum = "0.24.1"
+strum = "0.27.2"
 strum_macros = "0.24"
 tempfile = "3.4.0"
 test-harness = "0.3.0"
