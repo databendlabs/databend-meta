@@ -78,7 +78,7 @@ A feature represents a specific capability in the protocol. Examples:
 | `WatchInitialFlush` | Watch stream flushes existing keys at start |
 | `ExportV1` | Enhanced export API with configurable chunk size |
 
-See [`features.rs`](./features.rs) for the complete feature list and their definitions.
+See [`features.rs`](spec.rs) for the complete feature list and their definitions.
 
 ### Feature Lifecycle
 
@@ -232,7 +232,7 @@ println!("Minimum compatible client: {:?}", min_client);
 
 To add a new feature to the system:
 
-1. Add a variant to the `Feature` enum in [`features.rs`](./features.rs)
+1. Add a variant to the `Feature` enum in [`features.rs`](spec.rs)
 2. Add the feature to `Feature::all()` and implement `as_str()`
 3. Add server and client lifetimes in `Spec::new()` using `server_adds()` / `client_adds()`
 
@@ -349,7 +349,7 @@ If MIN_CLIENT_VERSION is outdated, old clients may:
 
 ## Related Files
 
-- [`features.rs`](./features.rs) - Feature definitions and compatibility methods
+- [`features.rs`](spec.rs) - Feature definitions and compatibility methods
 - [`changes.md`](./changes.md) - Changelog of feature additions and removals
 - [`lib.rs`](./lib.rs) - Version constants `MIN_CLIENT_VERSION` and `MIN_SERVER_VERSION`
 - [`grpc_client.rs`](../../client/src/grpc_client.rs) - Handshake implementation

@@ -20,7 +20,7 @@
 //! source of truth for version compatibility checks during handshake.
 //!
 //! These values are hardcoded because Rust cannot compute them at const
-//! initialization time. The corresponding functions in [`features::Spec`]
+//! initialization time. The corresponding functions in [`spec::Spec`]
 //! (`min_compatible_client_version()` and `min_compatible_server_version()`)
 //! exist to verify these values are correct - unit tests assert they match.
 //!
@@ -31,12 +31,15 @@
 //!
 //! See [Compatibility Algorithm](./compatibility_algorithm.md) for details.
 
-mod features;
+mod feat;
+mod feature_span;
+mod spec;
+mod version;
 
-pub use self::features::Feature;
-pub use self::features::FeatureSpan;
-pub use self::features::Spec;
-pub use self::features::Version;
+pub use self::feat::Feature;
+pub use self::feature_span::FeatureSpan;
+pub use self::spec::Spec;
+pub use self::version::Version;
 
 pub mod changelog {
     #![doc = include_str!("changes.md")]
@@ -85,7 +88,7 @@ mod tests {
     }
 
     /// Assert that a static version constant matches the computed value.
-    fn assert_version_eq(name: &str, static_ver: &Version, computed: features::Version) {
+    fn assert_version_eq(name: &str, static_ver: &Version, computed: Version) {
         assert_eq!(
             semver_tuple(static_ver),
             computed.as_tuple(),
