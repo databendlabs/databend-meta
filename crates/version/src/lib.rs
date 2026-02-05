@@ -31,11 +31,8 @@
 //!
 //! See [Compatibility Algorithm](./compatibility_algorithm.md) for details.
 
-mod digit_version;
 mod features;
 
-pub use self::digit_version::from_digit_ver;
-pub use self::digit_version::to_digit_ver;
 pub use self::features::Feature;
 pub use self::features::FeatureSpan;
 pub use self::features::Spec;

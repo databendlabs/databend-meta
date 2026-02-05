@@ -46,7 +46,6 @@ use databend_meta_types::protobuf::WatchRequest;
 use databend_meta_types::protobuf::WatchResponse;
 use databend_meta_types::protobuf::meta_service_client::MetaServiceClient;
 use databend_meta_version::Version;
-use databend_meta_version::from_digit_ver;
 use fastrace::Span;
 use fastrace::func_name;
 use fastrace::func_path;
@@ -847,17 +846,12 @@ pub async fn handshake(
         "talking to a very old databend-meta: upgrade databend-meta to at least 0.8"
     );
 
-    let server_version = from_digit_ver(resp.protocol_version);
-    let server_tuple = (
-        server_version.major,
-        server_version.minor,
-        server_version.patch,
-    );
+    let server_version = Version::from_digit(resp.protocol_version);
 
-    if server_tuple < required_server_version.as_tuple() {
+    if server_version < *required_server_version {
         return Err(MetaHandshakeError::new(format!(
             "Invalid: server protocol_version({:?}) < client required({:?})",
-            server_tuple,
+            server_version.as_tuple(),
             required_server_version.as_tuple()
         )));
     }
