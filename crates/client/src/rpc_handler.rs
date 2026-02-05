@@ -30,7 +30,6 @@ use tonic::Code;
 use tonic::Response;
 use tonic::Status;
 
-use crate::FeatureSpec;
 use crate::MetaGrpcClient;
 use crate::established_client::EstablishedClient;
 
@@ -67,10 +66,6 @@ pub(crate) struct RpcHandler<'a, RT: RuntimeApi> {
     /// Used for error reporting and debugging connection issues.
     pub(crate) rpc_failures: Vec<(String, Status)>,
 
-    /// Feature requirements that must be supported by the meta-service.
-    /// Used to validate compatibility before executing RPCs.
-    pub(crate) required_feature: FeatureSpec,
-
     /// Currently established connection and its start time.
     /// The client and start time are paired together to ensure consistent timing tracking.
     pub(crate) established_client: Option<(EstablishedClient, Instant)>,
@@ -78,11 +73,10 @@ pub(crate) struct RpcHandler<'a, RT: RuntimeApi> {
 
 impl<'a, RT: RuntimeApi> RpcHandler<'a, RT> {
     /// Creates a new RPC handler for the given client and feature requirements.
-    pub(crate) fn new(client: &'a MetaGrpcClient<RT>, required_feature: FeatureSpec) -> Self {
+    pub(crate) fn new(client: &'a MetaGrpcClient<RT>) -> Self {
         Self {
             client,
             rpc_failures: Vec::new(),
-            required_feature,
             established_client: None,
         }
     }
@@ -113,8 +107,6 @@ impl<'a, RT: RuntimeApi> RpcHandler<'a, RT> {
                 create_timing_logger("MetaGrpcClient::get_established_client"),
             )
             .await?;
-
-        client.ensure_feature_spec(&self.required_feature)?;
 
         self.established_client = Some((client, Instant::now()));
 
@@ -157,8 +149,7 @@ impl<'a, RT: RuntimeApi> RpcHandler<'a, RT> {
         let elapsed = start_time.elapsed();
 
         debug!(
-            "MetaGrpcClient::{} {}-th try: elapsed: {:?}; with {}; result: {:?}",
-            self.required_feature.0,
+            "MetaGrpcClient {}-th try: elapsed: {:?}; with {}; result: {:?}",
             self.rpc_failures.len(),
             elapsed,
             established_client,
@@ -171,8 +162,8 @@ impl<'a, RT: RuntimeApi> RpcHandler<'a, RT> {
                 // Log slow requests even on success
                 if elapsed > default_timing_threshold() {
                     warn!(
-                        "MetaGrpcClient::{}: done slowly: elapsed: {:?}; with {}; request: {:?}",
-                        self.required_feature.0, elapsed, established_client, request
+                        "MetaGrpcClient: done slowly: elapsed: {:?}; with {}; request: {:?}",
+                        elapsed, established_client, request
                     );
                 }
                 return Ok(ResponseAction::Success(x));
@@ -183,8 +174,8 @@ impl<'a, RT: RuntimeApi> RpcHandler<'a, RT> {
             let client_display = established_client.to_string();
 
             warn!(
-                "MetaGrpcClient::{} retryable error: elapsed: {:?}; error: {:?}; with {}; request: {:?}",
-                self.required_feature.0, elapsed, status, client_display, request
+                "MetaGrpcClient retryable error: elapsed: {:?}; error: {:?}; with {}; request: {:?}",
+                elapsed, status, client_display, request
             );
 
             self.rpc_failures.push((client_display, status));
@@ -194,8 +185,8 @@ impl<'a, RT: RuntimeApi> RpcHandler<'a, RT> {
             Ok(ResponseAction::ShouldRetry)
         } else {
             warn!(
-                "MetaGrpcClient::{} non-retryable error: elapsed: {:?}; error: {:?}; with {}; request: {:?}",
-                self.required_feature.0, elapsed, status, established_client, request
+                "MetaGrpcClient non-retryable error: elapsed: {:?}; error: {:?}; with {}; request: {:?}",
+                elapsed, status, established_client, request
             );
 
             Err(status)
@@ -216,10 +207,7 @@ impl<'a, RT: RuntimeApi> RpcHandler<'a, RT> {
                 self.rpc_failures.len(),
                 self.rpc_failures
             )),
-            format!(
-                "failed to send RPC '{}' to meta-service",
-                self.required_feature.0
-            ),
+            "failed to send RPC to meta-service",
         );
 
         MetaNetworkError::ConnectionError(conn_err)

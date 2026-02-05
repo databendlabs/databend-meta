@@ -31,7 +31,6 @@ use parking_lot::Mutex;
 use tonic::async_trait;
 use tonic::transport::Channel;
 
-use crate::FeatureSpec;
 use crate::endpoints::Endpoints;
 use crate::established_client::EstablishedClient;
 use crate::grpc_client::AuthInterceptor;
@@ -55,8 +54,6 @@ pub struct MetaChannelManager<R> {
     timeout: Option<Duration>,
     tls_config: Option<TlsConfig>,
 
-    required_features: &'static [FeatureSpec],
-
     /// The endpoints of the meta-service cluster.
     ///
     /// The endpoints will be added to a built client item
@@ -78,7 +75,6 @@ impl<R: SpawnApi> MetaChannelManager<R> {
         password: impl ToString,
         timeout: Option<Duration>,
         tls_config: Option<TlsConfig>,
-        required_features: &'static [FeatureSpec],
         endpoints: Arc<Mutex<Endpoints>>,
         connection_ttl: Option<Duration>,
     ) -> Self {
@@ -87,7 +83,6 @@ impl<R: SpawnApi> MetaChannelManager<R> {
             password: password.to_string(),
             timeout,
             tls_config,
-            required_features,
             endpoints,
             connection_ttl: connection_ttl.unwrap_or(DEFAULT_CONNECTION_TTL),
             _phantom: PhantomData,
@@ -110,8 +105,8 @@ impl<R: SpawnApi> MetaChannelManager<R> {
 
         let handshake_res = handshake(
             &mut real_client,
-            databend_meta_version::semver(),
-            self.required_features,
+            databend_meta_version::version(),
+            &databend_meta_version::MIN_SERVER_VERSION,
             &self.username,
             &self.password,
         )
@@ -123,7 +118,7 @@ impl<R: SpawnApi> MetaChannelManager<R> {
             handshake_res.as_ref().err()
         );
 
-        let (token, server_version, features) = handshake_res?;
+        let (token, server_version) = handshake_res?;
 
         // Update the token for the client interceptor.
         // Safe unwrap(): it is the first time setting it.
@@ -132,7 +127,6 @@ impl<R: SpawnApi> MetaChannelManager<R> {
         Ok(EstablishedClient::new(
             real_client,
             server_version,
-            features,
             addr,
             self.endpoints.clone(),
         ))

@@ -45,6 +45,8 @@ use databend_meta_types::protobuf::RaftRequest;
 use databend_meta_types::protobuf::WatchRequest;
 use databend_meta_types::protobuf::WatchResponse;
 use databend_meta_types::protobuf::meta_service_client::MetaServiceClient;
+use databend_meta_version::Version;
+use databend_meta_version::from_digit_ver;
 use fastrace::Span;
 use fastrace::func_name;
 use fastrace::func_path;
@@ -75,7 +77,6 @@ use tonic::transport::Channel;
 
 use crate::ClientHandle;
 use crate::ClientWorkerRequest;
-use crate::FeatureSpec;
 use crate::MetaChannelManager;
 use crate::MetaGrpcReadReq;
 use crate::client_conf::RpcClientConf;
@@ -84,17 +85,11 @@ use crate::endpoints::Endpoints;
 use crate::endpoints::rotate_failing_endpoint;
 use crate::errors::CreationError;
 use crate::established_client::EstablishedClient;
-use crate::from_digit_ver;
 use crate::message;
 use crate::message::Response;
 use crate::pool::Pool;
-use crate::required::Features;
-use crate::required::features;
-use crate::required::std;
-use crate::required::supported_features;
 use crate::rpc_handler::ResponseAction;
 use crate::rpc_handler::RpcHandler;
-use crate::to_digit_ver;
 
 const RPC_RETRIES: usize = 4;
 const AUTH_TOKEN_KEY: &str = "auth-token-bin";
@@ -116,9 +111,6 @@ pub struct MetaGrpcClient<RT: RuntimeApi> {
     endpoints_str: Vec<String>,
     auto_sync_interval: Option<Duration>,
 
-    #[allow(dead_code)]
-    required_features: &'static [FeatureSpec],
-
     _phantom: PhantomData<RT>,
 }
 
@@ -139,8 +131,8 @@ impl<RT: RuntimeApi> Display for MetaGrpcClient<RT> {
 
 impl<RT: RuntimeApi> MetaGrpcClient<RT> {
     /// Returns the version of this client.
-    pub fn version(&self) -> &'static semver::Version {
-        databend_meta_version::semver()
+    pub fn version(&self) -> &'static Version {
+        databend_meta_version::version()
     }
 
     /// Create a new client of metasrv.
@@ -181,7 +173,6 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
             timeout,
             auto_sync_interval,
             tls_config,
-            std(),
         )
     }
 
@@ -206,7 +197,6 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
         timeout: Option<Duration>,
         auto_sync_interval: Option<Duration>,
         tls_config: Option<RpcClientTlsConfig>,
-        required_features: &'static [FeatureSpec],
     ) -> Result<Arc<ClientHandle<RT>>, CreationError> {
         Self::endpoints_non_empty(&endpoints_str)?;
 
@@ -222,7 +212,6 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
             password,
             timeout,
             tls,
-            required_features,
             endpoints.clone(),
             None, // Use default connection TTL
         );
@@ -251,7 +240,6 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
             endpoints,
             endpoints_str,
             auto_sync_interval,
-            required_features,
             _phantom: PhantomData,
         });
 
@@ -613,11 +601,7 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
         debug!("{}: handle watch request: {:?}", self, watch_request);
 
         let mut client = self.get_established_client().await?;
-        client.ensure_feature("watch")?;
 
-        if watch_request.initial_flush {
-            client.ensure_feature("watch/initial_flush")?;
-        }
         let res = client.watch(watch_request).await?;
         Ok(res.into_inner())
     }
@@ -635,9 +619,6 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
         debug!("{}: handle watch request: {:?}", self, watch_request);
 
         let mut client = self.get_established_client().await?;
-        client.ensure_feature_spec(&features::WATCH)?;
-        client.ensure_feature_spec(&features::WATCH_INITIAL_FLUSH)?;
-        client.ensure_feature_spec(&features::WATCH_INIT_FLAG)?;
 
         let res = client.watch(watch_request).await?;
         Ok(res.into_inner())
@@ -656,16 +637,11 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
         );
 
         let mut client = self.get_established_client().await?;
-        let res = if client.has_feature("export_v1") {
-            client
-                .export_v1(pb::ExportRequest {
-                    chunk_size: export_request.chunk_size,
-                })
-                .await?
-        } else {
-            client.ensure_feature("export")?;
-            client.export(Empty {}).await?
-        };
+        let res = client
+            .export_v1(pb::ExportRequest {
+                chunk_size: export_request.chunk_size,
+            })
+            .await?;
         Ok(res.into_inner())
     }
 
@@ -676,7 +652,6 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
         debug!("{}::get_cluster_status", self);
 
         let mut client = self.get_established_client().await?;
-        client.ensure_feature("get_cluster_status")?;
         let res = client.get_cluster_status(Empty {}).await?;
         Ok(res.into_inner())
     }
@@ -701,7 +676,6 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
         debug!("{}::get_client_info", self);
 
         let mut client = self.get_established_client().await?;
-        client.ensure_feature("get_client_info")?;
         let res = client.get_client_info(Empty {}).await?;
         Ok(res.into_inner())
     }
@@ -712,12 +686,10 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
         &self,
         grpc_req: MetaGrpcReadReq,
     ) -> Result<BoxStream<pb::StreamItem>, MetaError> {
-        let service_spec = features::KV_READ_V1;
-
         debug!("{}::kv_read_v1 request: {:?}", self, grpc_req);
 
         let raft_req: RaftRequest = grpc_req.clone().into();
-        let mut rpc_handler = RpcHandler::new(self, service_spec);
+        let mut rpc_handler = RpcHandler::new(self);
 
         for _i in 0..RPC_RETRIES {
             let req = RT::prepare_request(Request::new(raft_req.clone()));
@@ -728,7 +700,7 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
 
             let result = established
                 .kv_read_v1(req)
-                .inspect_elapsed_over(threshold(), info_spent(service_spec.0))
+                .inspect_elapsed_over(threshold(), info_spent("kv_read_v1"))
                 .await;
 
             debug!("{self}::kv_read_v1 result: {:?}", result);
@@ -753,11 +725,9 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
     #[fastrace::trace]
     #[async_backtrace::framed]
     pub(crate) async fn transaction(&self, txn: TxnRequest) -> Result<TxnReply, MetaClientError> {
-        let service_spec = features::TRANSACTION;
-
         debug!("{self}::transaction request: {txn}");
 
-        let mut rpc_handler = RpcHandler::new(self, service_spec);
+        let mut rpc_handler = RpcHandler::new(self);
 
         for _i in 0..RPC_RETRIES {
             let req = RT::prepare_request(Request::new(txn.clone()));
@@ -766,7 +736,7 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
 
             let result = established
                 .transaction(req)
-                .inspect_elapsed_over(threshold(), info_spent(service_spec.0))
+                .inspect_elapsed_over(threshold(), info_spent("transaction"))
                 .await;
 
             let retryable = rpc_handler.process_response_result(&txn, result)?;
@@ -832,12 +802,12 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
 #[async_backtrace::framed]
 pub async fn handshake(
     client: &mut RealClient,
-    client_ver: &semver::Version,
-    required_server_features: &'static [FeatureSpec],
+    client_version: &Version,
+    required_server_version: &Version,
     username: &str,
     password: &str,
-) -> Result<(Vec<u8>, u64, Features), MetaHandshakeError> {
-    debug!("client version: {client_ver}, required server versions: {required_server_features:?}");
+) -> Result<(Vec<u8>, u64), MetaHandshakeError> {
+    debug!("client version: {client_version}");
 
     let auth = BasicAuth {
         username: username.to_string(),
@@ -849,7 +819,7 @@ pub async fn handshake(
     auth.encode(&mut payload)
         .map_err(|e| MetaHandshakeError::new("Fail to encode request payload").with_source(&e))?;
 
-    let my_ver = to_digit_ver(client_ver);
+    let my_ver = client_version.to_digit();
     let req = Request::new(futures::stream::once(async move {
         HandshakeRequest {
             protocol_version: my_ver,
@@ -884,21 +854,18 @@ pub async fn handshake(
         server_version.patch,
     );
 
-    let server_provided = supported_features(server_tuple);
-
-    for (feat, least_server_version) in required_server_features {
-        if server_tuple < *least_server_version {
-            return Err(MetaHandshakeError::new(format!(
-                "Invalid: server protocol_version({:?}) < client required({:?}) for feature {}",
-                server_tuple, least_server_version, feat
-            )));
-        }
+    if server_tuple < required_server_version.as_tuple() {
+        return Err(MetaHandshakeError::new(format!(
+            "Invalid: server protocol_version({:?}) < client required({:?})",
+            server_tuple,
+            required_server_version.as_tuple()
+        )));
     }
 
     let token = resp.payload;
     let server_version = resp.protocol_version;
 
-    Ok((token, server_version, server_provided))
+    Ok((token, server_version))
 }
 
 fn is_status_retryable(status: &Status) -> bool {

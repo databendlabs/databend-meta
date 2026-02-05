@@ -21,6 +21,7 @@ databend-meta-raft-store = { workspace = true }
 databend-meta-runtime-api = { workspace = true }
 databend-meta-sled-store = { workspace = true }
 databend-meta-types = { workspace = true }
+databend-meta-version = { workspace = true }
 deepsize = { workspace = true }
 derive_more = { workspace = true }
 display-more = { workspace = true }

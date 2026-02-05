@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use databend_meta_client::ClientHandle;
 use databend_meta_client::MGetKVReq;
-use databend_meta_client::MIN_METASRV_SEMVER;
+use databend_meta_client::MIN_SERVER_VERSION;
 use databend_meta_client::MetaChannelManager;
 use databend_meta_client::MetaGrpcClient;
 use databend_meta_client::Streamed;
@@ -49,9 +49,13 @@ async fn test_grpc_client_timeout() -> anyhow::Result<()> {
 
     if let Err(err) = res {
         let got = err.to_string();
-        assert!(got.starts_with(
-            "ConnectionError: failed to send RPC 'transaction' to meta-service source: after 4 retries:"
-        ), "actually got: {}", got);
+        assert!(
+            got.starts_with(
+                "ConnectionError: failed to send RPC to meta-service source: after 4 retries:"
+            ),
+            "actually got: {}",
+            got
+        );
     } else {
         panic!("expect error, but got ok");
     }
@@ -74,7 +78,14 @@ async fn test_grpc_client_handshake_timeout() {
 
         let (mut client, _once) = MetaChannelManager::<TokioRuntime>::new_real_client(c);
 
-        let res = handshake(&mut client, &MIN_METASRV_SEMVER, &[], "root", "xxx").await;
+        let res = handshake(
+            &mut client,
+            &MIN_SERVER_VERSION,
+            &MIN_SERVER_VERSION,
+            "root",
+            "xxx",
+        )
+        .await;
 
         let got = res.unwrap_err();
         let expect = "HandshakeError with databend-meta: Connection Failure; cause: tonic::status::Status: status: Cancelled, message: \"Timeout expired\", details: [], metadata: MetadataMap { headers: {} }; source: transport error; source: Timeout expired";
@@ -91,7 +102,14 @@ async fn test_grpc_client_handshake_timeout() {
 
         let (mut client, _once) = MetaChannelManager::<TokioRuntime>::new_real_client(c);
 
-        let res = handshake(&mut client, &MIN_METASRV_SEMVER, &[], "root", "xxx").await;
+        let res = handshake(
+            &mut client,
+            &MIN_SERVER_VERSION,
+            &MIN_SERVER_VERSION,
+            "root",
+            "xxx",
+        )
+        .await;
 
         assert!(res.is_ok());
     }
