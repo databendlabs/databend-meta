@@ -14,17 +14,32 @@
 
 //! Convert between semver::Version and a compact u64 representation.
 //!
-//! The digit version format encodes major.minor.patch into a u64 as:
-//! `major * 1_000_000 + minor * 1_000 + patch`
+//! # Version Semantics
 //!
-//! This allows each component to be up to 3 digits (0-999).
-//! For example, version 1.2.873 becomes 1_002_873.
+//! The version uses a [CalVer](https://calver.org/) scheme: `YYMMDD.MINOR.MICRO`.
+//!
+//! - `YYMMDD` is the release date as a single integer (e.g., `260205` = 2026-02-05)
+//! - `MINOR` is a non-breaking feature edition
+//! - `MICRO` (also called "patch" in semver) is a bug fix
+//!
+//! # Digit Encoding
+//!
+//! The digit version format encodes `major.minor.patch` into a single `u64`:
+//!
+//! ```text
+//! major * 1_000_000 + minor * 1_000 + patch
+//! ```
+//!
+//! Minor and patch are each limited to 3 digits (0-999).
+//! For example, version `260205.1.0` becomes `260_205_001_000`.
 
 use semver::Version;
 
 /// Converts a semantic version to a compact u64 representation.
 ///
 /// The encoding formula is: `major * 1_000_000 + minor * 1_000 + patch`
+///
+/// Minor and patch must each be in the range 0-999.
 ///
 /// # Examples
 ///
@@ -35,11 +50,6 @@ use semver::Version;
 /// let ver = Version::new(1, 2, 873);
 /// assert_eq!(to_digit_ver(&ver), 1_002_873);
 /// ```
-///
-/// # Panics
-///
-/// This function does not panic, but will overflow if version components
-/// exceed 999. In debug mode, this will trigger a panic.
 pub fn to_digit_ver(v: &Version) -> u64 {
     v.major * 1_000_000 + v.minor * 1_000 + v.patch
 }
@@ -124,5 +134,97 @@ mod tests {
         let max_ver = Version::new(999, 999, 999);
         assert_eq!(to_digit_ver(&max_ver), 999_999_999);
         assert_eq!(from_digit_ver(999_999_999), max_ver);
+    }
+
+    #[test]
+    fn test_calver_encoding() {
+        // YYMMDD major: 260205.1.0 → 260_205 * 1_000_000 + 1 * 1_000
+        assert_eq!(to_digit_ver(&Version::new(260205, 1, 0)), 260_205_001_000);
+        assert_eq!(to_digit_ver(&Version::new(260205, 0, 0)), 260_205_000_000);
+        assert_eq!(
+            to_digit_ver(&Version::new(260205, 999, 999)),
+            260_205_999_999
+        );
+    }
+
+    #[test]
+    fn test_calver_roundtrip() {
+        let versions = vec![
+            Version::new(260101, 0, 0),     // first day of year
+            Version::new(260205, 1, 0),     // typical release
+            Version::new(260205, 0, 1),     // bugfix
+            Version::new(261231, 999, 999), // last day of year, max minor/patch
+            Version::new(300101, 0, 0),     // far future
+            Version::new(990101, 0, 0),     // 2099
+        ];
+
+        for ver in versions {
+            let digit = to_digit_ver(&ver);
+            let recovered = from_digit_ver(digit);
+            assert_eq!(ver, recovered, "CalVer roundtrip failed for {:?}", ver);
+        }
+    }
+
+    #[test]
+    fn test_calver_ordering() {
+        // Chronological date ordering is preserved
+        let jan = to_digit_ver(&Version::new(260101, 0, 0));
+        let feb = to_digit_ver(&Version::new(260205, 0, 0));
+        let dec = to_digit_ver(&Version::new(261231, 0, 0));
+        assert!(jan < feb);
+        assert!(feb < dec);
+
+        // Same date: feature then bugfix ordering
+        let v0 = to_digit_ver(&Version::new(260205, 0, 0));
+        let v1 = to_digit_ver(&Version::new(260205, 1, 0));
+        let v1_fix = to_digit_ver(&Version::new(260205, 1, 1));
+        let v2 = to_digit_ver(&Version::new(260205, 2, 0));
+        assert!(v0 < v1);
+        assert!(v1 < v1_fix);
+        assert!(v1_fix < v2);
+    }
+
+    #[test]
+    fn test_old_versions_sort_before_calver() {
+        let old = to_digit_ver(&Version::new(1, 3, 0));
+        let calver = to_digit_ver(&Version::new(260205, 0, 0));
+        assert!(old < calver);
+    }
+
+    #[test]
+    fn test_calver_minor_patch_boundary() {
+        // minor and patch at 0
+        let v = Version::new(260205, 0, 0);
+        assert_eq!(from_digit_ver(to_digit_ver(&v)), v);
+
+        // minor and patch at max valid (999)
+        let v = Version::new(260205, 999, 999);
+        assert_eq!(from_digit_ver(to_digit_ver(&v)), v);
+
+        // minor at max, patch at 0
+        let v = Version::new(260205, 999, 0);
+        assert_eq!(from_digit_ver(to_digit_ver(&v)), v);
+
+        // minor at 0, patch at max
+        let v = Version::new(260205, 0, 999);
+        assert_eq!(from_digit_ver(to_digit_ver(&v)), v);
+    }
+
+    #[test]
+    fn test_minor_overflow_corrupts_roundtrip() {
+        // minor >= 1000 bleeds into the major field
+        let v = Version::new(260205, 1000, 0);
+        let recovered = from_digit_ver(to_digit_ver(&v));
+        assert_ne!(v, recovered);
+        assert_eq!(recovered, Version::new(260206, 0, 0));
+    }
+
+    #[test]
+    fn test_patch_overflow_corrupts_roundtrip() {
+        // patch >= 1000 bleeds into the minor field
+        let v = Version::new(260205, 0, 1000);
+        let recovered = from_digit_ver(to_digit_ver(&v));
+        assert_ne!(v, recovered);
+        assert_eq!(recovered, Version::new(260205, 1, 0));
     }
 }

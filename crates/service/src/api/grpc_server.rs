@@ -24,12 +24,12 @@ use databend_meta_types::GrpcConfig as GrpcLimits;
 use databend_meta_types::MetaNetworkError;
 use databend_meta_types::protobuf::FILE_DESCRIPTOR_SET;
 use databend_meta_types::protobuf::meta_service_server::MetaServiceServer;
+use databend_meta_version::features::Version;
 use fastrace::prelude::*;
 use futures::future::BoxFuture;
 use futures::future::Either;
 use futures::future::select;
 use log::info;
-use semver::Version;
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::Sender;
 use tonic::transport::Identity;
@@ -158,7 +158,7 @@ impl<SP: SpawnApi> GrpcServer<SP> {
 
         info!("start gRPC listening: {}", addr);
 
-        let grpc_impl = MetaServiceImpl::create(self.version.clone(), Arc::downgrade(&meta_handle));
+        let grpc_impl = MetaServiceImpl::create(self.version, Arc::downgrade(&meta_handle));
         let grpc_srv = MetaServiceServer::new(grpc_impl)
             .max_decoding_message_size(GrpcLimits::MAX_DECODING_SIZE)
             .max_encoding_message_size(GrpcLimits::MAX_ENCODING_SIZE);

@@ -52,6 +52,7 @@ use databend_meta_types::protobuf::StreamItem;
 use databend_meta_types::protobuf::WatchRequest;
 use databend_meta_types::protobuf::WatchResponse;
 use databend_meta_types::protobuf::meta_service_server::MetaService;
+use databend_meta_version::features::Version;
 use display_more::DisplayOptionExt;
 use fastrace::func_name;
 use fastrace::func_path;
@@ -62,7 +63,6 @@ use log::debug;
 use log::error;
 use log::info;
 use prost::Message;
-use semver::Version;
 use tokio_stream;
 use tokio_stream::Stream;
 use tonic::Request;
@@ -82,7 +82,6 @@ use crate::metrics::InFlightWrite;
 use crate::metrics::network_metrics;
 use crate::version::MIN_CLIENT_VERSION;
 use crate::version::from_digit_ver;
-use crate::version::to_digit_ver;
 
 /// Guard type for in-flight read requests.
 type InFlightReadGuard = Counted<InFlightRead, ()>;
@@ -355,7 +354,7 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
 
         debug!("handle handshake request, client ver: {}", protocol_version);
 
-        let min_compatible = to_digit_ver(&MIN_CLIENT_VERSION);
+        let min_compatible = MIN_CLIENT_VERSION.to_digit();
 
         // backward compatibility: no version in handshake.
         if protocol_version > 0 && protocol_version < min_compatible {
@@ -379,7 +378,7 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
                 .map_err(|e| Status::internal(e.to_string()))?;
 
             let resp = HandshakeResponse {
-                protocol_version: to_digit_ver(&self.version),
+                protocol_version: self.version.to_digit(),
                 payload: token.into_bytes(),
             };
             let output = futures::stream::once(async { Ok(resp) });

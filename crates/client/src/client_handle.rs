@@ -37,11 +37,11 @@ use databend_meta_types::protobuf::MemberListReply;
 use databend_meta_types::protobuf::StreamItem;
 use databend_meta_types::protobuf::WatchRequest;
 use databend_meta_types::protobuf::WatchResponse;
+use databend_meta_version::features::Version;
 use fastrace::Span;
 use log::debug;
 use log::error;
 use log::info;
-use semver::Version;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 use tonic::codegen::BoxStream;
@@ -100,7 +100,7 @@ impl<RT: SpawnApi> Display for ClientHandle<RT> {
         write!(
             f,
             "ClientHandle(v{};{})",
-            databend_meta_version::semver(),
+            databend_meta_version::version(),
             self.endpoints.join(",")
         )
     }
@@ -115,7 +115,7 @@ impl<RT: SpawnApi> Drop for ClientHandle<RT> {
 impl<RT: SpawnApi> ClientHandle<RT> {
     /// Returns the version of this client.
     pub fn version(&self) -> &'static Version {
-        databend_meta_version::semver()
+        databend_meta_version::version()
     }
 
     pub async fn list(&self, prefix: &str) -> Result<BoxStream<StreamItem>, MetaError> {

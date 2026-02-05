@@ -18,17 +18,14 @@
 use std::time::Duration;
 
 use databend_meta::version::MIN_CLIENT_VERSION;
-use databend_meta_client::MIN_SERVER_VERSION;
 use databend_meta_client::MetaChannelManager;
-use databend_meta_client::from_digit_ver;
 use databend_meta_client::handshake;
-use databend_meta_client::to_digit_ver;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TokioRuntime;
-use databend_meta_version::semver;
+use databend_meta_version::features::Version;
+use databend_meta_version::version;
 use log::debug;
 use log::info;
-use semver::Version;
 use test_harness::test;
 
 use crate::testing::meta_service_test_harness;
@@ -40,12 +37,12 @@ use crate::tests::start_metasrv;
 #[fastrace::trace]
 async fn test_metasrv_handshake() -> anyhow::Result<()> {
     fn smaller_ver(v: &Version) -> Version {
-        if v.major > 0 {
-            Version::new(v.major - 1, v.minor, v.patch)
-        } else if v.minor > 0 {
-            Version::new(0, v.minor - 1, v.patch)
-        } else if v.patch > 0 {
-            Version::new(0, 0, v.patch - 1)
+        if v.major() > 0 {
+            Version::new(v.major() - 1, v.minor(), v.patch())
+        } else if v.minor() > 0 {
+            Version::new(0, v.minor() - 1, v.patch())
+        } else if v.patch() > 0 {
+            Version::new(0, 0, v.patch() - 1)
         } else {
             unreachable!("can not build a semver smaller than {:?}", v)
         }
@@ -62,7 +59,7 @@ async fn test_metasrv_handshake() -> anyhow::Result<()> {
         let min_client_ver = &MIN_CLIENT_VERSION;
         let cli_ver = smaller_ver(min_client_ver);
 
-        let res = handshake(&mut client, &cli_ver, &[], "root", "xxx").await;
+        let res = handshake(&mut client, &cli_ver, &Version::new(0, 0, 0), "root", "xxx").await;
 
         debug!("handshake res: {:?}", res);
         let e = res.unwrap_err();
@@ -76,30 +73,20 @@ async fn test_metasrv_handshake() -> anyhow::Result<()> {
 
     info!("--- server has smaller ver than C.min_srv_ver");
     {
-        let min_srv_ver = &MIN_SERVER_VERSION;
-        let mut min_srv_ver = min_srv_ver.clone();
-        min_srv_ver.major += 1;
+        let current = version();
+        let required = Version::new(current.major() + 1, current.minor(), current.patch());
 
-        let res = handshake(
-            &mut client,
-            semver(),
-            &[("foo", (500, 500, 500))],
-            "root",
-            "xxx",
-        )
-        .await;
+        let res = handshake(&mut client, version(), &required, "root", "xxx").await;
 
         debug!("handshake res: {:?}", res);
         let e = res.unwrap_err();
 
-        let server_ver = from_digit_ver(to_digit_ver(semver()));
-        let server_ver = (server_ver.major, server_ver.minor, server_ver.patch);
+        let server_ver = version().as_tuple();
 
         let want = format!(
             "Invalid: server protocol_version({:?}) < client required({:?})",
-            // strip `nightly` from 0.7.57-nightly
             server_ver,
-            (500, 500, 500),
+            required.as_tuple(),
         );
         assert!(
             e.to_string().contains(&want),
@@ -113,7 +100,7 @@ async fn test_metasrv_handshake() -> anyhow::Result<()> {
     {
         let zero = Version::new(0, 0, 0);
 
-        let res = handshake(&mut client, &zero, &[], "root", "xxx").await;
+        let res = handshake(&mut client, &zero, &Version::new(0, 0, 0), "root", "xxx").await;
 
         debug!("handshake res: {:?}", res);
         assert!(res.is_ok());

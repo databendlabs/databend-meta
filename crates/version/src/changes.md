@@ -28,7 +28,7 @@ Oldest compatible nightly metasrv version
   🖥 server: add: stream api: kv_read_v1().
 
 - 2023-10-20: since 1.2.176:
-  👥 client: call stream api: kv_read_v1(), revert to 1.1.32 if server < 1.2.163
+  👥 client: call stream api: kv_read_v1(), revert to 1.1.32 if server `<` 1.2.163
 
 - 2023-12-16: since 1.2.258:
   🖥 server: add: ttl to TxnPutRequest and Upsert
