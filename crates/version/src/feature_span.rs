@@ -39,11 +39,13 @@ impl FeatureSpan {
         }
     }
 
+    /// Sets the exclusive end version, returning the modified span.
     pub const fn until(mut self, until: Version) -> Self {
         self.until = until;
         self
     }
 
+    /// Sets the exclusive end version from individual components.
     pub const fn until3(self, until_major: u64, until_minor: u64, until_patch: u64) -> Self {
         self.until(Version::new(until_major, until_minor, until_patch))
     }

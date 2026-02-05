@@ -167,7 +167,7 @@ For a hypothetical client version 1.2.800 with only these features:
 
 Result: `max(1.2.163, 1.2.258, 1.2.677)` = **1.2.677**
 
-*Note: The actual computed value includes all features. At version 1.2.873,
+*Note: The actual computed value includes all features. At version 260205.0.0,
 `min_compatible_server_version()` returns 1.2.770 due to features like
 `ExpireInMillis` and `PutSequential` which the client requires and server
 provides starting from that version.*
@@ -199,14 +199,14 @@ return min_client
 | KvApiGetKv   | [1.2.163, 1.2.663)   | [1.2.163, 1.2.287)   |
 | TxnReplyErr  | [1.2.258, 1.2.755)   | [1.2.258, 1.2.676)   |
 
-For server version 1.2.873:
+For server version 260205.0.0:
 - Server removed KvApiGetKv (at 1.2.663) → client must have stopped requiring it
 - Client stopped at 1.2.287, so clients ≥ 1.2.287 are compatible
 - Server removed TxnReplyErr (at 1.2.755) → client must have stopped at 1.2.676
 
 Result: `max(1.2.287, 1.2.676)` = **1.2.676**
 
-*At version 1.2.873, `min_compatible_client_version()` returns exactly 1.2.676,
+*At version 260205.0.0, `min_compatible_client_version()` returns exactly 1.2.676,
 matching this example since these are the only features removed by that version.*
 
 ## Usage
