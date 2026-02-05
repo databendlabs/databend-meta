@@ -13,8 +13,6 @@
 // limitations under the License.
 
 pub use databend_meta_version::MIN_CLIENT_VERSION;
-pub use databend_meta_version::from_digit_ver;
-pub use databend_meta_version::to_digit_ver;
 use feature_set::FeatureSet;
 use semver::Version;
 

@@ -237,6 +237,14 @@ impl Version {
         self.major * 1_000_000 + self.minor * 1_000 + self.patch
     }
 
+    pub const fn from_digit(u: u64) -> Self {
+        Version {
+            major: u / 1_000_000,
+            minor: u / 1_000 % 1_000,
+            patch: u % 1_000,
+        }
+    }
+
     pub const fn to_semver(&self) -> semver::Version {
         semver::Version::new(self.major, self.minor, self.patch)
     }
@@ -749,5 +757,100 @@ mod tests {
         let min_client = spec.min_compatible_client_version();
 
         assert_eq!(min_client, Version::new(1, 2, 676));
+    }
+
+    #[test]
+    fn test_to_digit_basic() {
+        assert_eq!(Version::new(1, 2, 873).to_digit(), 1_002_873);
+        assert_eq!(Version::new(0, 0, 0).to_digit(), 0);
+        assert_eq!(Version::new(999, 999, 999).to_digit(), 999_999_999);
+    }
+
+    #[test]
+    fn test_from_digit_basic() {
+        assert_eq!(Version::from_digit(1_002_873), Version::new(1, 2, 873));
+        assert_eq!(Version::from_digit(0), Version::new(0, 0, 0));
+        assert_eq!(
+            Version::from_digit(999_999_999),
+            Version::new(999, 999, 999)
+        );
+    }
+
+    #[test]
+    fn test_digit_roundtrip() {
+        let versions = vec![
+            Version::new(0, 0, 0),
+            Version::new(1, 0, 0),
+            Version::new(0, 1, 0),
+            Version::new(0, 0, 1),
+            Version::new(1, 2, 873),
+            Version::new(10, 20, 30),
+            Version::new(999, 999, 999),
+            Version::new(260205, 0, 0),
+            Version::new(260205, 1, 0),
+            Version::new(260205, 0, 1),
+            Version::new(261231, 999, 999),
+        ];
+
+        for ver in versions {
+            assert_eq!(
+                Version::from_digit(ver.to_digit()),
+                ver,
+                "Roundtrip failed for {:?}",
+                ver
+            );
+        }
+    }
+
+    #[test]
+    fn test_digit_single_component() {
+        assert_eq!(Version::new(1, 0, 0).to_digit(), 1_000_000);
+        assert_eq!(Version::new(0, 1, 0).to_digit(), 1_000);
+        assert_eq!(Version::new(0, 0, 1).to_digit(), 1);
+    }
+
+    #[test]
+    fn test_digit_calver_encoding() {
+        assert_eq!(Version::new(260205, 1, 0).to_digit(), 260_205_001_000);
+        assert_eq!(Version::new(260205, 0, 0).to_digit(), 260_205_000_000);
+        assert_eq!(Version::new(260205, 999, 999).to_digit(), 260_205_999_999);
+    }
+
+    #[test]
+    fn test_digit_calver_ordering() {
+        let jan = Version::new(260101, 0, 0).to_digit();
+        let feb = Version::new(260205, 0, 0).to_digit();
+        let dec = Version::new(261231, 0, 0).to_digit();
+        assert!(jan < feb);
+        assert!(feb < dec);
+
+        let v0 = Version::new(260205, 0, 0).to_digit();
+        let v1 = Version::new(260205, 1, 0).to_digit();
+        let v1_fix = Version::new(260205, 1, 1).to_digit();
+        let v2 = Version::new(260205, 2, 0).to_digit();
+        assert!(v0 < v1 && v1 < v1_fix && v1_fix < v2);
+    }
+
+    #[test]
+    fn test_digit_old_versions_sort_before_calver() {
+        let old = Version::new(1, 3, 0).to_digit();
+        let calver = Version::new(260205, 0, 0).to_digit();
+        assert!(old < calver);
+    }
+
+    #[test]
+    fn test_digit_minor_overflow_corrupts_roundtrip() {
+        let v = Version::new(260205, 1000, 0);
+        let recovered = Version::from_digit(v.to_digit());
+        assert_ne!(v, recovered);
+        assert_eq!(recovered, Version::new(260206, 0, 0));
+    }
+
+    #[test]
+    fn test_digit_patch_overflow_corrupts_roundtrip() {
+        let v = Version::new(260205, 0, 1000);
+        let recovered = Version::from_digit(v.to_digit());
+        assert_ne!(v, recovered);
+        assert_eq!(recovered, Version::new(260205, 1, 0));
     }
 }

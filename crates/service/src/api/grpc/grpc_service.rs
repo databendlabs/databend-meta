@@ -81,7 +81,6 @@ use crate::metrics::InFlightRead;
 use crate::metrics::InFlightWrite;
 use crate::metrics::network_metrics;
 use crate::version::MIN_CLIENT_VERSION;
-use crate::version::from_digit_ver;
 
 /// Guard type for in-flight read requests.
 type InFlightReadGuard = Counted<InFlightRead, ()>;
@@ -360,7 +359,7 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
         if protocol_version > 0 && protocol_version < min_compatible {
             return Err(Status::invalid_argument(format!(
                 "meta-client protocol_version({}) < metasrv min-compatible({})",
-                from_digit_ver(protocol_version),
+                Version::from_digit(protocol_version),
                 MIN_CLIENT_VERSION,
             )));
         }
