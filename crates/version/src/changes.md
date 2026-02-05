@@ -137,7 +137,7 @@ server_features:
 
 ------------------------------
 
-The binary in the https://github.com/datafuselabs/databend/releases/tag/v1.2.258-nightly
+The binary in the <https://github.com/datafuselabs/databend/releases/tag/v1.2.258-nightly>
 outputs version 1.2.257;
 ```text
 ./databend-meta  --single

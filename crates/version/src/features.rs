@@ -31,7 +31,7 @@
 //! # Example
 //!
 //! ```
-//! use databend_meta_version::features::Spec;
+//! use databend_meta_version::Spec;
 //!
 //! let spec = Spec::load();
 //! let min_server = spec.min_compatible_server_version();
@@ -381,10 +381,10 @@ pub struct Spec {
     version: Version,
 
     /// When each feature was added/removed on the server side.
-    server_features: BTreeMap<F, FeatureSpan>,
+    server_features: BTreeMap<Feature, FeatureSpan>,
 
     /// When each feature was added/removed on the client side.
-    client_features: BTreeMap<F, FeatureSpan>,
+    client_features: BTreeMap<Feature, FeatureSpan>,
 }
 
 impl Spec {

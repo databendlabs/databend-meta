@@ -52,7 +52,7 @@ use databend_meta_types::protobuf::StreamItem;
 use databend_meta_types::protobuf::WatchRequest;
 use databend_meta_types::protobuf::WatchResponse;
 use databend_meta_types::protobuf::meta_service_server::MetaService;
-use databend_meta_version::features::Version;
+use databend_meta_version::Version;
 use display_more::DisplayOptionExt;
 use fastrace::func_name;
 use fastrace::func_path;

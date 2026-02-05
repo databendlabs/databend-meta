@@ -32,15 +32,18 @@
 //! See [Compatibility Algorithm](./compatibility_algorithm.md) for details.
 
 mod digit_version;
+mod features;
+
+pub use self::digit_version::from_digit_ver;
+pub use self::digit_version::to_digit_ver;
+pub use self::features::Feature;
+pub use self::features::FeatureSpan;
+pub use self::features::Spec;
+pub use self::features::Version;
 
 pub mod changelog {
     #![doc = include_str!("changes.md")]
 }
-
-pub mod features;
-
-pub use digit_version::from_digit_ver;
-pub use digit_version::to_digit_ver;
 
 /// Minimum compatible meta-client version.
 ///
@@ -53,9 +56,6 @@ pub static MIN_CLIENT_VERSION: Version = Version::new(1, 2, 676);
 pub static MIN_SERVER_VERSION: Version = Version::new(1, 2, 770);
 
 use std::sync::LazyLock;
-
-use crate::features::Spec;
-use crate::features::Version;
 
 /// The version string of this build.
 const VERSION_STR: &str = env!("CARGO_PKG_VERSION");

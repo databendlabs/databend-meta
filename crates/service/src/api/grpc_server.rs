@@ -24,7 +24,7 @@ use databend_meta_types::GrpcConfig as GrpcLimits;
 use databend_meta_types::MetaNetworkError;
 use databend_meta_types::protobuf::FILE_DESCRIPTOR_SET;
 use databend_meta_types::protobuf::meta_service_server::MetaServiceServer;
-use databend_meta_version::features::Version;
+use databend_meta_version::Version;
 use fastrace::prelude::*;
 use futures::future::BoxFuture;
 use futures::future::Either;

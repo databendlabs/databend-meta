@@ -22,7 +22,7 @@ use databend_meta_client::MetaChannelManager;
 use databend_meta_client::handshake;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TokioRuntime;
-use databend_meta_version::features::Version;
+use databend_meta_version::Version;
 use databend_meta_version::version;
 use log::debug;
 use log::info;

@@ -37,7 +37,7 @@ use databend_meta_types::protobuf::MemberListReply;
 use databend_meta_types::protobuf::StreamItem;
 use databend_meta_types::protobuf::WatchRequest;
 use databend_meta_types::protobuf::WatchResponse;
-use databend_meta_version::features::Version;
+use databend_meta_version::Version;
 use fastrace::Span;
 use log::debug;
 use log::error;

@@ -214,7 +214,7 @@ matching this example since these are the only features removed by that version.
 ### Calculating Compatible Versions
 
 ```rust
-use databend_meta_version::features::Spec;
+use databend_meta_version::Spec;
 
 // Load feature history
 let spec = Spec::load();

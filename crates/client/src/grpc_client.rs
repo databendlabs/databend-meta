@@ -45,7 +45,7 @@ use databend_meta_types::protobuf::RaftRequest;
 use databend_meta_types::protobuf::WatchRequest;
 use databend_meta_types::protobuf::WatchResponse;
 use databend_meta_types::protobuf::meta_service_client::MetaServiceClient;
-use databend_meta_version::features::Version;
+use databend_meta_version::Version;
 use databend_meta_version::from_digit_ver;
 use fastrace::Span;
 use fastrace::func_name;
