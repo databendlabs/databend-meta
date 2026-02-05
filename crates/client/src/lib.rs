@@ -35,7 +35,6 @@ pub use client_conf::RpcClientConf;
 pub use client_conf::RpcClientTlsConfig;
 pub use client_handle::ClientHandle;
 pub use databend_meta_version::MIN_SERVER_VERSION;
-pub use databend_meta_version::MIN_SERVER_VERSION as MIN_METASRV_SEMVER;
 pub use databend_meta_version::from_digit_ver;
 pub use databend_meta_version::to_digit_ver;
 pub use grpc_action::GetKVReply;
