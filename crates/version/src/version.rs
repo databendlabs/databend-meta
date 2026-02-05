@@ -38,10 +38,12 @@ impl Version {
         }
     }
 
+    /// Encodes the version as a single integer: `major * 1_000_000 + minor * 1_000 + patch`.
     pub const fn to_digit(&self) -> u64 {
         self.major * 1_000_000 + self.minor * 1_000 + self.patch
     }
 
+    /// Decodes a version from a single integer produced by [`to_digit()`](Self::to_digit).
     pub const fn from_digit(u: u64) -> Self {
         Version {
             major: u / 1_000_000,
@@ -50,6 +52,7 @@ impl Version {
         }
     }
 
+    /// Converts to a `semver::Version`.
     pub const fn to_semver(&self) -> semver::Version {
         semver::Version::new(self.major, self.minor, self.patch)
     }
