@@ -21,6 +21,7 @@ fmt:
 lint: fmt
 	cargo clippy --workspace --all-targets -- -D warnings
 	cargo machete
+	cargo doc --workspace --no-deps
 	typos
 
 # Type checking

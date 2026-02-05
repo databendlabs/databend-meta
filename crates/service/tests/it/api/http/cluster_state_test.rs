@@ -25,7 +25,7 @@ use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::raft_types::new_log_id;
-use databend_meta_version::semver;
+use databend_meta_version::version;
 use log::info;
 use test_harness::test;
 
@@ -150,7 +150,7 @@ async fn test_cluster_state() -> anyhow::Result<()> {
             .await??;
     }
 
-    let version = semver().to_string();
+    let version = version().to_string();
     let status = meta_handle_0.handle_get_status(&version).await?;
 
     println!(
