@@ -62,6 +62,12 @@ pub struct GrpcConfig {
 
     /// TLS configuration for the gRPC server.
     pub tls: TlsConfig,
+
+    /// Maximum gRPC message size in bytes.
+    ///
+    /// Used for both encoding and decoding limits on the gRPC API server.
+    /// Default: 32MB (33,554,432 bytes).
+    pub max_message_size: Option<usize>,
 }
 
 impl Default for GrpcConfig {
@@ -71,11 +77,19 @@ impl Default for GrpcConfig {
             listen_port: Some(9191),
             advertise_host: None,
             tls: TlsConfig::default(),
+            max_message_size: None,
         }
     }
 }
 
+pub const DEFAULT_GRPC_MESSAGE_SIZE: usize = 32 * 1024 * 1024;
+
 impl GrpcConfig {
+    /// Returns the maximum gRPC message size.
+    pub fn max_message_size(&self) -> usize {
+        self.max_message_size.unwrap_or(DEFAULT_GRPC_MESSAGE_SIZE)
+    }
+
     /// Creates a config for local/embedded usage with OS-assigned port.
     ///
     /// The `listen_port` is set to `None`, meaning the OS will assign an ephemeral port
@@ -89,6 +103,7 @@ impl GrpcConfig {
             listen_port: None,
             advertise_host: Some(host),
             tls: TlsConfig::default(),
+            max_message_size: None,
         }
     }
 

@@ -28,6 +28,7 @@ use databend_meta::message::ForwardRequestBody;
 use databend_meta::meta_node::meta_worker::MetaWorker;
 use databend_meta::meta_service::MetaNode;
 use databend_meta_client::ClientHandle;
+use databend_meta_client::DEFAULT_GRPC_MESSAGE_SIZE;
 use databend_meta_client::MetaGrpcClient;
 use databend_meta_client::errors::CreationError;
 use databend_meta_runtime_api::RuntimeApi;
@@ -124,6 +125,7 @@ pub fn make_grpc_client<R: RuntimeApi>(
         Some(Duration::from_secs(2)), // timeout
         Some(Duration::from_secs(10)),
         None,
+        DEFAULT_GRPC_MESSAGE_SIZE,
     )?;
 
     Ok(client)
@@ -235,6 +237,7 @@ impl<R: RuntimeApi> MetaSrvTestContext<R> {
             None,
             Some(Duration::from_secs(10)),
             None,
+            DEFAULT_GRPC_MESSAGE_SIZE,
         )?;
         Ok(client)
     }

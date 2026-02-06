@@ -171,6 +171,12 @@ pub struct RaftConfig {
 
     /// Max timeout(in milli seconds) when waiting a cluster leader.
     pub wait_leader_timeout: u64,
+
+    /// Maximum gRPC message size for raft communication in bytes.
+    ///
+    /// Used for both encoding and decoding limits on raft gRPC channels.
+    /// Default: 32MB (33,554,432 bytes).
+    pub raft_grpc_max_message_size: Option<usize>,
 }
 
 pub fn get_default_raft_advertise_host() -> String {
@@ -217,11 +223,27 @@ impl Default for RaftConfig {
             id: 0,
             cluster_name: "foo_cluster".to_string(),
             wait_leader_timeout: 70000,
+            raft_grpc_max_message_size: None,
         }
     }
 }
 
+const DEFAULT_RAFT_GRPC_MESSAGE_SIZE: usize = 32 * 1024 * 1024;
+
 impl RaftConfig {
+    /// Returns the maximum gRPC message size for raft communication.
+    pub fn raft_grpc_max_message_size(&self) -> usize {
+        self.raft_grpc_max_message_size
+            .unwrap_or(DEFAULT_RAFT_GRPC_MESSAGE_SIZE)
+    }
+
+    /// Returns the advisory maximum message size (90% of max) for raft communication.
+    ///
+    /// Used to check payload size before sending to avoid hitting the hard limit.
+    pub fn raft_grpc_advisory_message_size(&self) -> usize {
+        self.raft_grpc_max_message_size() * 9 / 10
+    }
+
     pub fn to_rotbl_config(&self) -> rotbl::v001::Config {
         rotbl::v001::Config::default()
             .with_debug_check(self.snapshot_db_debug_check)
