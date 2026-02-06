@@ -24,6 +24,7 @@ use databend_meta_types::MetaNetworkError;
 use databend_meta_types::protobuf::FILE_DESCRIPTOR_SET;
 use databend_meta_types::protobuf::meta_service_server::MetaServiceServer;
 use databend_meta_version::Version;
+use databend_meta_version::version;
 use fastrace::prelude::*;
 use futures::future::BoxFuture;
 use futures::future::Either;
@@ -44,7 +45,7 @@ use crate::util::DropDebug;
 
 pub struct GrpcServer<SP: SpawnApi> {
     config: MetaServiceConfig,
-    version: Version,
+    pub version: Version,
     /// GrpcServer is the main container of the gRPC service.
     /// [`MetaNode`] should never be dropped while [`GrpcServer`] is alive.
     /// Therefore, it is held by a strong reference (Arc) to ensure proper lifetime management.
@@ -60,14 +61,10 @@ impl<SP: SpawnApi> Drop for GrpcServer<SP> {
 }
 
 impl<SP: SpawnApi> GrpcServer<SP> {
-    pub fn create(
-        config: &MetaServiceConfig,
-        version: Version,
-        meta_handle: Arc<MetaHandle<SP>>,
-    ) -> Self {
+    pub fn create(config: &MetaServiceConfig, meta_handle: Arc<MetaHandle<SP>>) -> Self {
         Self {
             config: config.clone(),
-            version,
+            version: *version(),
             meta_handle: Some(meta_handle),
             join_handle: None,
             stop_grpc_tx: None,

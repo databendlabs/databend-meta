@@ -18,7 +18,6 @@ databend-meta = { workspace = true }
 databend-meta-client = { workspace = true }
 databend-meta-runtime-api = { workspace = true }
 databend-meta-types = { workspace = true }
-databend-meta-version = { workspace = true }
 fastrace = { workspace = true }
 log = { workspace = true }
 tempfile = { workspace = true }

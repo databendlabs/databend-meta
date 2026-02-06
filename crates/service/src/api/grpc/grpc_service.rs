@@ -181,8 +181,8 @@ impl<SP: SpawnApi> Drop for MetaServiceImpl<SP> {
 impl<SP: SpawnApi> MetaServiceImpl<SP> {
     pub fn create(version: Version, meta_handle: Weak<MetaHandle<SP>>) -> Self {
         Self {
-            version,
             token: GrpcToken::create(),
+            version,
             meta_handle,
         }
     }

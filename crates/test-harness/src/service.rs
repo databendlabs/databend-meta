@@ -34,7 +34,6 @@ use databend_meta_client::errors::CreationError;
 use databend_meta_runtime_api::RuntimeApi;
 use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
 use databend_meta_types::raft_types::NodeId;
-use databend_meta_version::version;
 use log::info;
 use log::warn;
 use tonic::transport::server::TcpIncoming;
@@ -80,7 +79,7 @@ pub async fn start_metasrv_with_context<R: RuntimeApi>(
         })
         .await??;
 
-    let mut srv = GrpcServer::create(&tc.config, *version(), mh.clone());
+    let mut srv = GrpcServer::create(&tc.config, mh.clone());
     srv.do_start_with_incoming(incoming).await?;
     tc.grpc_srv = Some(Box::new(srv));
 
