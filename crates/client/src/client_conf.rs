@@ -14,6 +14,8 @@
 
 use std::time::Duration;
 
+use crate::channel_manager::DEFAULT_GRPC_MESSAGE_SIZE;
+
 #[derive(Clone, Debug, Default)]
 pub struct RpcClientTlsConfig {
     pub rpc_tls_server_root_ca_cert: String,
@@ -40,6 +42,9 @@ pub struct RpcClientConf {
     /// None disables auto-sync.
     pub auto_sync_interval: Option<Duration>,
     pub unhealthy_endpoint_evict_time: Duration,
+
+    /// Maximum gRPC message size in bytes for client connections.
+    pub grpc_max_message_size: usize,
 }
 
 impl RpcClientConf {
@@ -68,6 +73,7 @@ impl RpcClientConf {
             timeout: None,
             auto_sync_interval: None,
             unhealthy_endpoint_evict_time: Default::default(),
+            grpc_max_message_size: DEFAULT_GRPC_MESSAGE_SIZE,
         }
     }
 }

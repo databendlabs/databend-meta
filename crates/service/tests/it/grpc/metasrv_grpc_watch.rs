@@ -24,6 +24,7 @@ use std::time::UNIX_EPOCH;
 use databend_base::string_util::prefix_to_range;
 use databend_meta::meta_service::MetaNode;
 use databend_meta_client::ClientHandle;
+use databend_meta_client::DEFAULT_GRPC_MESSAGE_SIZE;
 use databend_meta_client::MetaGrpcClient;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TokioRuntime;
@@ -666,6 +667,7 @@ fn make_client(addr: impl ToString) -> anyhow::Result<Arc<ClientHandle<TokioRunt
         None,
         Some(Duration::from_secs(10)),
         None,
+        DEFAULT_GRPC_MESSAGE_SIZE,
     )?;
 
     Ok(client)
