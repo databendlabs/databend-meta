@@ -1,5 +1,5 @@
 [workspace.package]
-version = "260205.0.0"
+version = "260205.1.0"
 authors = ["Databend Authors <opensource@datafuselabs.com>"]
 license = "Apache-2.0"
 publish = false
