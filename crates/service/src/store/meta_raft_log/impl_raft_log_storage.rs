@@ -186,10 +186,11 @@ impl RaftLogStorage<TypeConfig> for MetaRaftLog {
         {
             let mut log = self.write().await;
             log.commit(Cw(committed))?;
+            log.flush(None)?;
         }
 
-        info!(
-            "{}; No need to flush committed, reversion is acceptable",
+        debug!(
+            "{}; flush without waiting: best-effort persist committed log id",
             io.ok_submit()
         );
         Ok(())
