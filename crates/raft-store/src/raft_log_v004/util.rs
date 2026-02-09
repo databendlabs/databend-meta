@@ -25,7 +25,7 @@ pub async fn blocking_flush(rl: &mut RaftLogV004) -> Result<(), io::Error> {
     let (tx, rx) = oneshot::channel();
     let callback = Callback::new_oneshot(tx, IODesc::unknown("blocking_flush(RaftLogV004)"));
 
-    rl.flush(callback)?;
+    rl.flush(Some(callback))?;
     rx.await
         .map_err(|_e| io::Error::other("Failed to receive flush completion"))??;
     Ok(())
