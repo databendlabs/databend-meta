@@ -59,4 +59,5 @@ pub mod utils;
 
 mod state_machine_features;
 
+pub use raft_log;
 pub use state_machine_features::StateMachineFeature;
