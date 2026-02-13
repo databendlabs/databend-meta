@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Display;
-use std::fmt::Formatter;
+use std::fmt;
 
 use crate::SeqV;
 use crate::protobuf as pb;
@@ -44,8 +43,8 @@ impl pb::FetchIncreaseU64Response {
     }
 }
 
-impl Display for pb::FetchIncreaseU64Response {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for pb::FetchIncreaseU64Response {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "FetchIncreaseU64Response{{ key={} before=(seq={} {}), after=(seq={} {}), delta={} }}",

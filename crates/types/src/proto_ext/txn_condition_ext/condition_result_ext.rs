@@ -14,9 +14,7 @@
 
 use std::fmt;
 
-use pb::txn_condition::ConditionResult;
-
-use crate::protobuf as pb;
+use crate::protobuf::txn_condition::ConditionResult;
 
 impl fmt::Display for ConditionResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

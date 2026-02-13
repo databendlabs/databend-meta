@@ -12,17 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Display;
-use std::fmt::Formatter;
+use std::fmt;
 
 use display_more::DisplayOptionExt;
 
 use crate::SeqV;
-use crate::TxnPutResponse;
 use crate::protobuf as pb;
 
-impl Display for TxnPutResponse {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+impl fmt::Display for pb::TxnPutResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "Put-resp: key={}, prev_seq={}, current_seq={}",
@@ -51,7 +49,7 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let resp = TxnPutResponse {
+        let resp = pb::TxnPutResponse {
             key: "k1".to_string(),
             prev_value: Some(pb::SeqV::new(1, b"old".to_vec())),
             current: Some(pb::SeqV::new(2, b"new".to_vec())),
@@ -64,7 +62,7 @@ mod tests {
 
     #[test]
     fn test_display_none() {
-        let resp = TxnPutResponse {
+        let resp = pb::TxnPutResponse {
             key: "k1".to_string(),
             prev_value: None,
             current: None,

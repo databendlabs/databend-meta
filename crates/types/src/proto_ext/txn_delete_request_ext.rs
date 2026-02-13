@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Display;
-use std::fmt::Formatter;
+use std::fmt;
 
-use crate::TxnDeleteRequest;
+use crate::protobuf as pb;
 
-impl TxnDeleteRequest {
+impl pb::TxnDeleteRequest {
     pub fn new(key: impl ToString, prev_value: bool, match_seq: Option<u64>) -> Self {
         Self {
             key: key.to_string(),
@@ -27,8 +26,8 @@ impl TxnDeleteRequest {
     }
 }
 
-impl Display for TxnDeleteRequest {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+impl fmt::Display for pb::TxnDeleteRequest {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Delete key={}", self.key)
     }
 }
@@ -39,7 +38,7 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let req = TxnDeleteRequest::new("k1", true, Some(42));
+        let req = pb::TxnDeleteRequest::new("k1", true, Some(42));
         assert_eq!(req.key, "k1");
         assert!(req.prev_value);
         assert_eq!(req.match_seq, Some(42));
@@ -47,7 +46,7 @@ mod tests {
 
     #[test]
     fn test_new_no_match_seq() {
-        let req = TxnDeleteRequest::new("k2", false, None);
+        let req = pb::TxnDeleteRequest::new("k2", false, None);
         assert_eq!(req.key, "k2");
         assert!(!req.prev_value);
         assert!(req.match_seq.is_none());
@@ -55,7 +54,7 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let req = TxnDeleteRequest::new("k1", true, None);
+        let req = pb::TxnDeleteRequest::new("k1", true, None);
         assert_eq!(req.to_string(), "Delete key=k1");
     }
 }

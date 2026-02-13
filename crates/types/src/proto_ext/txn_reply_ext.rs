@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Display;
-use std::fmt::Formatter;
+use std::fmt;
 
 use anyerror::AnyError;
 use display_more::DisplaySliceExt;
@@ -100,8 +99,8 @@ impl pb::TxnReply {
     }
 }
 
-impl Display for pb::TxnReply {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+impl fmt::Display for pb::TxnReply {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "TxnReply{{ success: {}, responses: {} }}",
