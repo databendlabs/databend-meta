@@ -59,3 +59,45 @@ mod log_id_impls {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::protobuf as pb;
+    use crate::raft_types;
+
+    #[test]
+    fn test_vote_round_trip() {
+        let vote = raft_types::Vote::new(5, 3);
+        let pb_vote: pb::Vote = vote.into();
+        assert_eq!(pb_vote.term, 5);
+        assert_eq!(pb_vote.node_id, 3);
+        assert!(!pb_vote.committed);
+
+        let back: raft_types::Vote = pb_vote.into();
+        assert_eq!(back, vote);
+    }
+
+    #[test]
+    fn test_vote_committed_round_trip() {
+        let vote = raft_types::Vote::new_committed(7, 2);
+        let pb_vote: pb::Vote = vote.into();
+        assert_eq!(pb_vote.term, 7);
+        assert_eq!(pb_vote.node_id, 2);
+        assert!(pb_vote.committed);
+
+        let back: raft_types::Vote = pb_vote.into();
+        assert_eq!(back, vote);
+    }
+
+    #[test]
+    fn test_log_id_round_trip() {
+        let log_id = raft_types::new_log_id(3, 1, 100);
+        let pb_log_id: pb::LogId = log_id.into();
+        assert_eq!(pb_log_id.term, 3);
+        assert_eq!(pb_log_id.node_id, 1);
+        assert_eq!(pb_log_id.index, 100);
+
+        let back: raft_types::LogId = pb_log_id.into();
+        assert_eq!(back, log_id);
+    }
+}

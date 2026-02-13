@@ -54,3 +54,37 @@ impl Display for TxnPutRequest {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        let req = TxnPutRequest::new("k1", b"v1".to_vec(), true, None, None);
+        assert_eq!(req.key, "k1");
+        assert_eq!(req.value, b"v1");
+        assert!(req.prev_value);
+        assert!(req.expire_at.is_none());
+        assert!(req.ttl_ms.is_none());
+    }
+
+    #[test]
+    fn test_display_basic() {
+        let req = TxnPutRequest::new("k1", b"v1".to_vec(), true, None, None);
+        assert_eq!(req.to_string(), "Put key=k1");
+    }
+
+    #[test]
+    fn test_display_with_expire_at() {
+        let req = TxnPutRequest::new("k1", b"v1".to_vec(), true, Some(1000), None);
+        let s = req.to_string();
+        assert!(s.starts_with("Put key=k1 expire_at: "), "got: {}", s);
+    }
+
+    #[test]
+    fn test_display_with_ttl() {
+        let req = TxnPutRequest::new("k1", b"v1".to_vec(), true, None, Some(5000));
+        assert_eq!(req.to_string(), "Put key=k1  ttl: 5s");
+    }
+}

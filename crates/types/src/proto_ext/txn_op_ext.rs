@@ -128,6 +128,17 @@ impl pb::TxnOp {
         Self::fetch_increase_u64(key, max_value, 0)
     }
 
+    /// Create a txn operation that deletes records by key prefix.
+    pub fn delete_by_prefix(prefix: impl ToString) -> Self {
+        pb::TxnOp {
+            request: Some(pb::txn_op::Request::DeleteByPrefix(
+                pb::TxnDeleteByPrefixRequest {
+                    prefix: prefix.to_string(),
+                },
+            )),
+        }
+    }
+
     pub fn put_sequential(
         prefix: impl ToString,
         sequence_key: impl ToString,
@@ -384,6 +395,17 @@ mod tests {
         assert_eq!(fetch_req.delta, 5);
         assert_eq!(fetch_req.max_value, 0);
         assert_eq!(fetch_req.match_seq, Some(100));
+    }
+
+    #[test]
+    fn test_delete_by_prefix() {
+        let op = pb::TxnOp::delete_by_prefix("my_prefix/");
+
+        let Some(pb::txn_op::Request::DeleteByPrefix(req)) = &op.request else {
+            panic!("Expected DeleteByPrefix request");
+        };
+
+        assert_eq!(req.prefix, "my_prefix/");
     }
 
     #[test]

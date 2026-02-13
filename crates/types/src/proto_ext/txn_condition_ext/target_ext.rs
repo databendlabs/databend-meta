@@ -33,3 +33,26 @@ impl fmt::Display for Target {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_display_value() {
+        let t = Target::Value(b"hello".to_vec());
+        assert_eq!(t.to_string(), "value(...)");
+    }
+
+    #[test]
+    fn test_display_seq() {
+        let t = Target::Seq(42);
+        assert_eq!(t.to_string(), "seq(42)");
+    }
+
+    #[test]
+    fn test_display_keys_with_prefix() {
+        let t = Target::KeysWithPrefix(10);
+        assert_eq!(t.to_string(), "keys_with_prefix(10)");
+    }
+}

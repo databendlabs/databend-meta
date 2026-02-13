@@ -30,3 +30,21 @@ impl fmt::Display for pb::KeysCount {
         write!(f, "{} {}", self.prefix, self.count)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        let kc = pb::KeysCount::new("pfx/", 10);
+        assert_eq!(kc.prefix, "pfx/");
+        assert_eq!(kc.count, 10);
+    }
+
+    #[test]
+    fn test_display() {
+        let kc = pb::KeysCount::new("pfx/", 10);
+        assert_eq!(kc.to_string(), "pfx/ 10");
+    }
+}

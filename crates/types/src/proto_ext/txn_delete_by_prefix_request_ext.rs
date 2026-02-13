@@ -17,8 +17,33 @@ use std::fmt::Formatter;
 
 use crate::TxnDeleteByPrefixRequest;
 
+impl TxnDeleteByPrefixRequest {
+    pub fn new(prefix: impl ToString) -> Self {
+        Self {
+            prefix: prefix.to_string(),
+        }
+    }
+}
+
 impl Display for TxnDeleteByPrefixRequest {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "TxnDeleteByPrefixRequest prefix={}", self.prefix)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        let req = TxnDeleteByPrefixRequest::new("my_prefix");
+        assert_eq!(req.prefix, "my_prefix");
+    }
+
+    #[test]
+    fn test_display() {
+        let req = TxnDeleteByPrefixRequest::new("pfx/");
+        assert_eq!(req.to_string(), "TxnDeleteByPrefixRequest prefix=pfx/");
     }
 }

@@ -44,3 +44,60 @@ impl pb::TxnPutResponse {
         (key, prev_value.map(SeqV::from), current.map(SeqV::from))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_display() {
+        let resp = TxnPutResponse {
+            key: "k1".to_string(),
+            prev_value: Some(pb::SeqV::new(1, b"old".to_vec())),
+            current: Some(pb::SeqV::new(2, b"new".to_vec())),
+        };
+        assert_eq!(
+            resp.to_string(),
+            "Put-resp: key=k1, prev_seq=1, current_seq=2"
+        );
+    }
+
+    #[test]
+    fn test_display_none() {
+        let resp = TxnPutResponse {
+            key: "k1".to_string(),
+            prev_value: None,
+            current: None,
+        };
+        assert_eq!(
+            resp.to_string(),
+            "Put-resp: key=k1, prev_seq=None, current_seq=None"
+        );
+    }
+
+    #[test]
+    fn test_unpack() {
+        let resp = pb::TxnPutResponse {
+            key: "k1".to_string(),
+            prev_value: Some(pb::SeqV::new(1, b"old".to_vec())),
+            current: Some(pb::SeqV::new(2, b"new".to_vec())),
+        };
+        let (key, prev, cur) = resp.unpack();
+        assert_eq!(key, "k1");
+        assert_eq!(prev.unwrap().seq, 1);
+        assert_eq!(cur.unwrap().seq, 2);
+    }
+
+    #[test]
+    fn test_unpack_none() {
+        let resp = pb::TxnPutResponse {
+            key: "k1".to_string(),
+            prev_value: None,
+            current: None,
+        };
+        let (key, prev, cur) = resp.unpack();
+        assert_eq!(key, "k1");
+        assert!(prev.is_none());
+        assert!(cur.is_none());
+    }
+}
