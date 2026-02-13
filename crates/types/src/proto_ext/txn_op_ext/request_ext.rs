@@ -14,41 +14,29 @@
 
 use std::fmt;
 
-use pb::txn_op::Request;
-
 use crate::protobuf as pb;
 
-impl fmt::Display for Request {
+impl fmt::Display for pb::txn_op::Request {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Request::Get(r) => {
-                write!(f, "Get({})", r)
-            }
-            Request::Put(r) => {
-                write!(f, "Put({})", r)
-            }
-            Request::Delete(r) => {
-                write!(f, "Delete({})", r)
-            }
-            Request::DeleteByPrefix(r) => {
-                write!(f, "DeleteByPrefix({})", r)
-            }
-            Request::FetchIncreaseU64(r) => {
-                write!(f, "FetchIncreaseU64({})", r)
-            }
-            Request::PutSequential(r) => {
-                write!(f, "PutSequential({})", r)
-            }
+            Self::Get(r) => write!(f, "Get({})", r),
+            Self::Put(r) => write!(f, "Put({})", r),
+            Self::Delete(r) => write!(f, "Delete({})", r),
+            Self::DeleteByPrefix(r) => write!(f, "DeleteByPrefix({})", r),
+            Self::FetchIncreaseU64(r) => write!(f, "FetchIncreaseU64({})", r),
+            Self::PutSequential(r) => write!(f, "PutSequential({})", r),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::protobuf as pb;
 
     #[test]
     fn test_display_request() {
+        use pb::txn_op::Request;
+
         assert_eq!(
             format!("{}", Request::Get(pb::TxnGetRequest::default())),
             "Get(Get key=)"

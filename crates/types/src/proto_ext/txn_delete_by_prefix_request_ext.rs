@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Display;
-use std::fmt::Formatter;
+use std::fmt;
 
-use crate::TxnDeleteByPrefixRequest;
+use crate::protobuf as pb;
 
-impl TxnDeleteByPrefixRequest {
+impl pb::TxnDeleteByPrefixRequest {
     pub fn new(prefix: impl ToString) -> Self {
         Self {
             prefix: prefix.to_string(),
@@ -25,8 +24,8 @@ impl TxnDeleteByPrefixRequest {
     }
 }
 
-impl Display for TxnDeleteByPrefixRequest {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+impl fmt::Display for pb::TxnDeleteByPrefixRequest {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "TxnDeleteByPrefixRequest prefix={}", self.prefix)
     }
 }
@@ -37,13 +36,13 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let req = TxnDeleteByPrefixRequest::new("my_prefix");
+        let req = pb::TxnDeleteByPrefixRequest::new("my_prefix");
         assert_eq!(req.prefix, "my_prefix");
     }
 
     #[test]
     fn test_display() {
-        let req = TxnDeleteByPrefixRequest::new("pfx/");
+        let req = pb::TxnDeleteByPrefixRequest::new("pfx/");
         assert_eq!(req.to_string(), "TxnDeleteByPrefixRequest prefix=pfx/");
     }
 }

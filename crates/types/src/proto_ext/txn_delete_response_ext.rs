@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Display;
-use std::fmt::Formatter;
+use std::fmt;
 
-use crate::TxnDeleteResponse;
+use crate::protobuf as pb;
 
-impl TxnDeleteResponse {
-    pub fn new(key: impl ToString, success: bool, prev_value: Option<crate::protobuf::SeqV>) -> Self {
+impl pb::TxnDeleteResponse {
+    pub fn new(key: impl ToString, success: bool, prev_value: Option<pb::SeqV>) -> Self {
         Self {
             key: key.to_string(),
             success,
@@ -27,8 +26,8 @@ impl TxnDeleteResponse {
     }
 }
 
-impl Display for TxnDeleteResponse {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+impl fmt::Display for pb::TxnDeleteResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "Delete-resp: success: {}, key={}, prev_seq={:?}",
@@ -41,13 +40,11 @@ impl Display for TxnDeleteResponse {
 
 #[cfg(test)]
 mod tests {
-    use crate::protobuf as pb;
-
     use super::*;
 
     #[test]
     fn test_new_success() {
-        let resp = TxnDeleteResponse::new("k1", true, Some(pb::SeqV::new(5, b"old".to_vec())));
+        let resp = pb::TxnDeleteResponse::new("k1", true, Some(pb::SeqV::new(5, b"old".to_vec())));
         assert_eq!(resp.key, "k1");
         assert!(resp.success);
         assert_eq!(resp.prev_value.as_ref().unwrap().seq, 5);
@@ -55,7 +52,7 @@ mod tests {
 
     #[test]
     fn test_new_no_prev() {
-        let resp = TxnDeleteResponse::new("k2", false, None);
+        let resp = pb::TxnDeleteResponse::new("k2", false, None);
         assert_eq!(resp.key, "k2");
         assert!(!resp.success);
         assert!(resp.prev_value.is_none());
@@ -63,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let resp = TxnDeleteResponse::new("k1", true, Some(pb::SeqV::new(3, vec![])));
+        let resp = pb::TxnDeleteResponse::new("k1", true, Some(pb::SeqV::new(3, vec![])));
         assert_eq!(
             resp.to_string(),
             "Delete-resp: success: true, key=k1, prev_seq=Some(3)"
@@ -72,7 +69,7 @@ mod tests {
 
     #[test]
     fn test_display_no_prev() {
-        let resp = TxnDeleteResponse::new("k1", false, None);
+        let resp = pb::TxnDeleteResponse::new("k1", false, None);
         assert_eq!(
             resp.to_string(),
             "Delete-resp: success: false, key=k1, prev_seq=None"

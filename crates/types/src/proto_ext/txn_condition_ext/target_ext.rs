@@ -14,22 +14,14 @@
 
 use std::fmt;
 
-use pb::txn_condition::Target;
-
-use crate::protobuf as pb;
+use crate::protobuf::txn_condition::Target;
 
 impl fmt::Display for Target {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Target::Value(_) => {
-                write!(f, "value(...)",)
-            }
-            Target::Seq(seq) => {
-                write!(f, "seq({})", seq)
-            }
-            Target::KeysWithPrefix(n) => {
-                write!(f, "keys_with_prefix({})", n)
-            }
+            Target::Value(_) => write!(f, "value(...)"),
+            Target::Seq(seq) => write!(f, "seq({})", seq),
+            Target::KeysWithPrefix(n) => write!(f, "keys_with_prefix({})", n),
         }
     }
 }
@@ -39,19 +31,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_display_value() {
+    fn test_display_target_value() {
         let t = Target::Value(b"hello".to_vec());
         assert_eq!(t.to_string(), "value(...)");
     }
 
     #[test]
-    fn test_display_seq() {
+    fn test_display_target_seq() {
         let t = Target::Seq(42);
         assert_eq!(t.to_string(), "seq(42)");
     }
 
     #[test]
-    fn test_display_keys_with_prefix() {
+    fn test_display_target_keys_with_prefix() {
         let t = Target::KeysWithPrefix(10);
         assert_eq!(t.to_string(), "keys_with_prefix(10)");
     }

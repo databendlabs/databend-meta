@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Display;
-use std::fmt::Formatter;
+use std::fmt;
 
 use pb::boolean_expression::CombiningOperator;
 
@@ -111,8 +110,8 @@ impl pb::BooleanExpression {
     }
 }
 
-impl Display for BooleanExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for BooleanExpression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let op = self.operator();
         let op = match op {
             CombiningOperator::And => "AND",

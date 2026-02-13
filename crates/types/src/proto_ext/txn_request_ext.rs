@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Display;
-use std::fmt::Formatter;
+use std::fmt;
 
 use display_more::DisplaySliceExt;
 use map_api::match_seq::MatchSeq;
@@ -131,8 +130,8 @@ impl pb::TxnRequest {
     }
 }
 
-impl Display for pb::TxnRequest {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+impl fmt::Display for pb::TxnRequest {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "TxnRequest{{",)?;
 
         for op in self.operations.iter() {

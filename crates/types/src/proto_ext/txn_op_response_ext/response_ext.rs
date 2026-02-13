@@ -12,55 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Display;
-use std::fmt::Formatter;
-
-use pb::txn_op_response::Response;
+use std::fmt;
 
 use crate::protobuf as pb;
 
-impl Display for Response {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+impl fmt::Display for pb::txn_op_response::Response {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Response::Get(r) => {
-                write!(f, "Get: {}", r)
-            }
-            Response::Put(r) => {
-                write!(f, "Put: {}", r)
-            }
-            Response::Delete(r) => {
-                write!(f, "Delete: {}", r)
-            }
-            Response::DeleteByPrefix(r) => {
-                write!(f, "DeleteByPrefix: {}", r)
-            }
-            Response::FetchIncreaseU64(r) => {
-                write!(f, "FetchIncreaseU64: {}", r)
-            }
+            Self::Get(r) => write!(f, "Get: {}", r),
+            Self::Put(r) => write!(f, "Put: {}", r),
+            Self::Delete(r) => write!(f, "Delete: {}", r),
+            Self::DeleteByPrefix(r) => write!(f, "DeleteByPrefix: {}", r),
+            Self::FetchIncreaseU64(r) => write!(f, "FetchIncreaseU64: {}", r),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::SeqV;
-    #[test]
-    fn test_from() {
-        let resp = Response::from(pb::FetchIncreaseU64Response::new_unchanged(
-            "key",
-            SeqV::new(1, 2),
-        ));
-
-        assert_eq!(
-            resp,
-            Response::FetchIncreaseU64(pb::FetchIncreaseU64Response {
-                key: "key".to_string(),
-                before_seq: 1,
-                before: 2,
-                after_seq: 1,
-                after: 2,
-            })
-        );
     }
 }

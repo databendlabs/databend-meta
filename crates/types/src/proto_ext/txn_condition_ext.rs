@@ -15,8 +15,7 @@
 mod condition_result_ext;
 mod target_ext;
 
-use std::fmt::Display;
-use std::fmt::Formatter;
+use std::fmt;
 
 use display_more::DisplayOptionExt;
 use num_traits::FromPrimitive;
@@ -79,8 +78,8 @@ impl pb::TxnCondition {
     }
 }
 
-impl Display for pb::TxnCondition {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+impl fmt::Display for pb::TxnCondition {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let expect: ConditionResult = FromPrimitive::from_i32(self.expected).unwrap();
 
         write!(f, "{} {} {}", self.key, expect, self.target.display())

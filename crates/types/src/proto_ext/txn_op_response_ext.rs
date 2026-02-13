@@ -14,8 +14,7 @@
 
 mod response_ext;
 
-use std::fmt::Display;
-use std::fmt::Formatter;
+use std::fmt;
 
 use display_more::DisplayOptionExt;
 
@@ -134,8 +133,8 @@ impl pb::TxnOpResponse {
     }
 }
 
-impl Display for pb::TxnOpResponse {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+impl fmt::Display for pb::TxnOpResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "TxnOpResponse: {}", self.response.display())
     }
 }
@@ -388,6 +387,27 @@ mod tests {
         assert_eq!(resp2.try_as_put().unwrap().key, "owned_string");
         assert_eq!(resp3.try_as_get().unwrap().key, "string_ref");
         assert_eq!(resp4.try_as_fetch_increase_u64().unwrap().key, "string_ref");
+    }
+
+    #[test]
+    fn test_response_from() {
+        use pb::txn_op_response::Response;
+
+        let resp = Response::from(pb::FetchIncreaseU64Response::new_unchanged(
+            "key",
+            SeqV::new(1, 2),
+        ));
+
+        assert_eq!(
+            resp,
+            Response::FetchIncreaseU64(pb::FetchIncreaseU64Response {
+                key: "key".to_string(),
+                before_seq: 1,
+                before: 2,
+                after_seq: 1,
+                after: 2,
+            })
+        );
     }
 
     #[test]

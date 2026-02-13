@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Display;
-use std::fmt::Formatter;
+use std::fmt;
 use std::time::Duration;
 
 use display_more::DisplayUnixTimeStampExt;
 
-use crate::TxnPutRequest;
+use crate::protobuf as pb;
 
-impl TxnPutRequest {
+impl pb::TxnPutRequest {
     pub fn new(
         key: impl ToString,
         value: Vec<u8>,
@@ -38,8 +37,8 @@ impl TxnPutRequest {
     }
 }
 
-impl Display for TxnPutRequest {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+impl fmt::Display for pb::TxnPutRequest {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Put key={}", self.key)?;
         if let Some(expire_at) = self.expire_at {
             write!(
@@ -61,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let req = TxnPutRequest::new("k1", b"v1".to_vec(), true, None, None);
+        let req = pb::TxnPutRequest::new("k1", b"v1".to_vec(), true, None, None);
         assert_eq!(req.key, "k1");
         assert_eq!(req.value, b"v1");
         assert!(req.prev_value);
@@ -71,20 +70,20 @@ mod tests {
 
     #[test]
     fn test_display_basic() {
-        let req = TxnPutRequest::new("k1", b"v1".to_vec(), true, None, None);
+        let req = pb::TxnPutRequest::new("k1", b"v1".to_vec(), true, None, None);
         assert_eq!(req.to_string(), "Put key=k1");
     }
 
     #[test]
     fn test_display_with_expire_at() {
-        let req = TxnPutRequest::new("k1", b"v1".to_vec(), true, Some(1000), None);
+        let req = pb::TxnPutRequest::new("k1", b"v1".to_vec(), true, Some(1000), None);
         let s = req.to_string();
         assert!(s.starts_with("Put key=k1 expire_at: "), "got: {}", s);
     }
 
     #[test]
     fn test_display_with_ttl() {
-        let req = TxnPutRequest::new("k1", b"v1".to_vec(), true, None, Some(5000));
+        let req = pb::TxnPutRequest::new("k1", b"v1".to_vec(), true, None, Some(5000));
         assert_eq!(req.to_string(), "Put key=k1  ttl: 5s");
     }
 }
