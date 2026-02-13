@@ -17,6 +17,7 @@ members = [
     "crates/client",
     "crates/service",
     "crates/test-harness",
+    "crates/kvapi-tests",
     "crates/version",
 ]
 
@@ -27,6 +28,7 @@ databend-meta = { path = "crates/service" }
 databend-meta-client = { path = "crates/client" }
 databend-meta-kvapi = { path = "crates/kvapi" }
 databend-meta-kvapi-test-suite = { path = "crates/kvapi-test-suite" }
+databend-meta-kvapi-tests = { path = "crates/kvapi-tests" }
 databend-meta-raft-store = { path = "crates/raft-store" }
 databend-meta-runtime-api = { path = "crates/runtime-api" }
 databend-meta-sled-store = { path = "crates/sled-store" }

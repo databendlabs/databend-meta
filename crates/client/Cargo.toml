@@ -13,8 +13,10 @@ edition = { workspace = true }
 anyerror = { workspace = true }
 arrow-flight = { workspace = true }
 async-backtrace = { workspace = true }
+async-trait = { workspace = true }
 chrono = { workspace = true }
 databend-base = { workspace = true }
+databend-meta-kvapi = { workspace = true }
 databend-meta-runtime-api = { workspace = true }
 databend-meta-types = { workspace = true }
 databend-meta-version = { workspace = true }
@@ -22,6 +24,7 @@ derive_more = { workspace = true }
 display-more = { workspace = true }
 fastrace = { workspace = true }
 futures = { workspace = true }
+futures-util = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
 logcall = { workspace = true }
