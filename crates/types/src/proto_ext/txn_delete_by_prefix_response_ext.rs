@@ -17,6 +17,15 @@ use std::fmt::Formatter;
 
 use crate::TxnDeleteByPrefixResponse;
 
+impl TxnDeleteByPrefixResponse {
+    pub fn new(prefix: impl ToString, count: u32) -> Self {
+        Self {
+            prefix: prefix.to_string(),
+            count,
+        }
+    }
+}
+
 impl Display for TxnDeleteByPrefixResponse {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(
@@ -24,5 +33,26 @@ impl Display for TxnDeleteByPrefixResponse {
             "TxnDeleteByPrefixResponse prefix={},count={}",
             self.prefix, self.count
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        let resp = TxnDeleteByPrefixResponse::new("pfx/", 42);
+        assert_eq!(resp.prefix, "pfx/");
+        assert_eq!(resp.count, 42);
+    }
+
+    #[test]
+    fn test_display() {
+        let resp = TxnDeleteByPrefixResponse::new("pfx/", 3);
+        assert_eq!(
+            resp.to_string(),
+            "TxnDeleteByPrefixResponse prefix=pfx/,count=3"
+        );
     }
 }

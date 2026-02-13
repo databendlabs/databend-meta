@@ -31,3 +31,33 @@ impl From<pb::VoteRequest> for raft_types::VoteRequest {
         raft_types::VoteRequest::new(vote, last_log_id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vote_request_round_trip() {
+        let vote = raft_types::Vote::new(5, 3);
+        let log_id = raft_types::new_log_id(4, 2, 99);
+        let req = raft_types::VoteRequest::new(vote, Some(log_id));
+
+        let pb_req: pb::VoteRequest = req.clone().into();
+        let back: raft_types::VoteRequest = pb_req.into();
+        assert_eq!(back.vote, req.vote);
+        assert_eq!(back.last_log_id, req.last_log_id);
+    }
+
+    #[test]
+    fn test_vote_request_no_log_id() {
+        let vote = raft_types::Vote::new(1, 0);
+        let req = raft_types::VoteRequest::new(vote, None);
+
+        let pb_req: pb::VoteRequest = req.clone().into();
+        assert!(pb_req.last_log_id.is_none());
+
+        let back: raft_types::VoteRequest = pb_req.into();
+        assert_eq!(back.vote, req.vote);
+        assert!(back.last_log_id.is_none());
+    }
+}

@@ -32,3 +32,38 @@ impl From<pb::VoteResponse> for raft_types::VoteResponse {
         raft_types::VoteResponse::new(vote, last_log_id, resp.vote_granted)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vote_response_round_trip_granted() {
+        let vote = raft_types::Vote::new_committed(5, 3);
+        let log_id = raft_types::new_log_id(4, 2, 99);
+        let resp = raft_types::VoteResponse::new(vote, Some(log_id), true);
+
+        let pb_resp: pb::VoteResponse = resp.clone().into();
+        assert!(pb_resp.vote_granted);
+
+        let back: raft_types::VoteResponse = pb_resp.into();
+        assert_eq!(back.vote, resp.vote);
+        assert_eq!(back.last_log_id, resp.last_log_id);
+        assert_eq!(back.vote_granted, resp.vote_granted);
+    }
+
+    #[test]
+    fn test_vote_response_round_trip_rejected() {
+        let vote = raft_types::Vote::new(2, 1);
+        let resp = raft_types::VoteResponse::new(vote, None, false);
+
+        let pb_resp: pb::VoteResponse = resp.clone().into();
+        assert!(!pb_resp.vote_granted);
+        assert!(pb_resp.last_log_id.is_none());
+
+        let back: raft_types::VoteResponse = pb_resp.into();
+        assert_eq!(back.vote, resp.vote);
+        assert!(back.last_log_id.is_none());
+        assert!(!back.vote_granted);
+    }
+}
