@@ -1100,7 +1100,6 @@ impl TestSuite {
                 TxnOp {
                     request: Some(txn_op::Request::Delete(TxnDeleteRequest::new(
                         txn_key1.clone(),
-                        true,
                         None,
                     ))),
                 },

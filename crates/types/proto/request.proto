@@ -137,9 +137,10 @@ message TxnPutRequest {
 
   bytes value = 2;
 
-  // Whether or not to return the prev value
-  // Not used anymore
-  bool prev_value = 3;
+  // // Whether or not to return the prev value
+  // // Not used anymore
+  // bool prev_value = 3;
+  reserved 3;
 
   // Absolute expire time in seconds or milliseconds since Unix epoch (1970-01-01).
   optional uint64 expire_at = 4;
@@ -165,9 +166,10 @@ message TxnPutResponse {
 message TxnDeleteRequest {
   string key = 1;
 
-  // if or not return the prev value
-  // Not used anymore
-  bool prev_value = 2;
+  // // if or not return the prev value
+  // // Not used anymore
+  // bool prev_value = 2;
+  reserved 2;
 
   // Delete only if the `seq` matches the specified value.
   // Such a condition skips changed record and does not result in a transaction failure.

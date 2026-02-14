@@ -23,14 +23,12 @@ impl pb::TxnPutRequest {
     pub fn new(
         key: impl ToString,
         value: Vec<u8>,
-        prev_value: bool,
         expire_at: Option<u64>,
         ttl_ms: Option<u64>,
     ) -> Self {
         Self {
             key: key.to_string(),
             value,
-            prev_value,
             expire_at,
             ttl_ms,
         }
@@ -60,30 +58,29 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let req = pb::TxnPutRequest::new("k1", b"v1".to_vec(), true, None, None);
+        let req = pb::TxnPutRequest::new("k1", b"v1".to_vec(), None, None);
         assert_eq!(req.key, "k1");
         assert_eq!(req.value, b"v1");
-        assert!(req.prev_value);
         assert!(req.expire_at.is_none());
         assert!(req.ttl_ms.is_none());
     }
 
     #[test]
     fn test_display_basic() {
-        let req = pb::TxnPutRequest::new("k1", b"v1".to_vec(), true, None, None);
+        let req = pb::TxnPutRequest::new("k1", b"v1".to_vec(), None, None);
         assert_eq!(req.to_string(), "Put key=k1");
     }
 
     #[test]
     fn test_display_with_expire_at() {
-        let req = pb::TxnPutRequest::new("k1", b"v1".to_vec(), true, Some(1000), None);
+        let req = pb::TxnPutRequest::new("k1", b"v1".to_vec(), Some(1000), None);
         let s = req.to_string();
         assert!(s.starts_with("Put key=k1 expire_at: "), "got: {}", s);
     }
 
     #[test]
     fn test_display_with_ttl() {
-        let req = pb::TxnPutRequest::new("k1", b"v1".to_vec(), true, None, Some(5000));
+        let req = pb::TxnPutRequest::new("k1", b"v1".to_vec(), None, Some(5000));
         assert_eq!(req.to_string(), "Put key=k1  ttl: 5s");
     }
 }

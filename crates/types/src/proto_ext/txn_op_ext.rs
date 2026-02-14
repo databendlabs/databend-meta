@@ -26,7 +26,7 @@ impl pb::TxnOp {
     pub fn put(key: impl ToString, value: Vec<u8>) -> pb::TxnOp {
         pb::TxnOp {
             request: Some(pb::txn_op::Request::Put(pb::TxnPutRequest::new(
-                key, value, true, None, None,
+                key, value, None, None,
             ))),
         }
     }
@@ -39,7 +39,6 @@ impl pb::TxnOp {
             request: Some(pb::txn_op::Request::Put(pb::TxnPutRequest::new(
                 key,
                 value,
-                true,
                 None,
                 ttl.map(|d| d.as_millis() as u64),
             ))),
@@ -83,7 +82,7 @@ impl pb::TxnOp {
     pub fn delete_exact(key: impl ToString, seq: Option<u64>) -> Self {
         pb::TxnOp {
             request: Some(pb::txn_op::Request::Delete(pb::TxnDeleteRequest::new(
-                key, true, seq,
+                key, seq,
             ))),
         }
     }
@@ -199,7 +198,6 @@ mod tests {
 
         assert_eq!(put_req.key, "test_key");
         assert_eq!(put_req.value, b"test_value");
-        assert!(put_req.prev_value);
         assert!(put_req.expire_at.is_none());
         assert!(put_req.ttl_ms.is_none());
     }
@@ -215,7 +213,6 @@ mod tests {
 
         assert_eq!(put_req.key, "ttl_key");
         assert_eq!(put_req.value, b"ttl_value");
-        assert!(put_req.prev_value);
         assert!(put_req.expire_at.is_none());
         assert_eq!(put_req.ttl_ms, Some(300_000)); // 300 seconds = 300,000 ms
     }
@@ -264,7 +261,6 @@ mod tests {
         };
 
         assert_eq!(delete_req.key, "delete_key");
-        assert!(delete_req.prev_value);
         assert!(delete_req.match_seq.is_none());
     }
 
@@ -277,7 +273,6 @@ mod tests {
         };
 
         assert_eq!(delete_req.key, "exact_key");
-        assert!(delete_req.prev_value);
         assert_eq!(delete_req.match_seq, Some(42));
     }
 
