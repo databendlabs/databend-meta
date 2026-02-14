@@ -17,6 +17,7 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -84,6 +85,7 @@ use crate::endpoints::Endpoints;
 use crate::endpoints::rotate_failing_endpoint;
 use crate::errors::CreationError;
 use crate::established_client::EstablishedClient;
+use crate::grpc_action::StreamedGetMany;
 use crate::message;
 use crate::message::Response;
 use crate::pool::Pool;
@@ -233,6 +235,7 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
 
         let handle = Arc::new(ClientHandle {
             endpoints: endpoints_str.clone(),
+            shared_endpoints: endpoints.clone(),
             req_tx: tx,
             cancel_auto_sync_tx: one_tx,
             _rt: Arc::new(rt.clone()) as Arc<dyn std::any::Any + Send + Sync>,
@@ -288,7 +291,7 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
                 continue;
             }
 
-            // Deal with non-RPC request
+            // Handle requests that don't go through the generic handle_rpc_request path.
             #[allow(clippy::single_match)]
             match worker_request.req {
                 message::Request::GetEndpoints(_) => {
@@ -331,6 +334,10 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
                     .kv_read_v1(MetaGrpcReadReq::MGetKV(r.into_inner()))
                     .await;
                 Response::StreamMGet(strm)
+            }
+            message::Request::StreamedGetMany(r) => {
+                let resp = self.handle_streamed_get_many(r).await;
+                Response::StreamedGetMany(resp)
             }
             message::Request::StreamList(r) => {
                 let strm = self
@@ -393,6 +400,98 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
                 self, request_id, err
             );
         }
+    }
+
+    /// Call `kv_get_many` with a channel-backed stream, retrying on
+    /// retryable errors (e.g. "not leader").
+    ///
+    /// A channel decouples the input key stream from the gRPC call:
+    /// keys are only fed into the channel after a successful connection,
+    /// so on failure the input stream is untouched and retry is trivial.
+    async fn handle_streamed_get_many(
+        &self,
+        req: StreamedGetMany,
+    ) -> Result<
+        futures_util::stream::BoxStream<'static, Result<pb::StreamItem, MetaError>>,
+        MetaClientError,
+    > {
+        use databend_meta_kvapi::kvapi::fail_fast;
+
+        let mut keys = req.keys;
+        let input_err: Arc<Mutex<Option<MetaError>>> = Arc::new(Mutex::new(None));
+
+        let n = {
+            let eps = self.endpoints.lock();
+            eps.len()
+        };
+
+        let mut last_status = None::<Status>;
+
+        for _attempt in 0..n {
+            let mut client = self.get_established_client().await?;
+
+            let (tx, rx) = futures::channel::mpsc::channel(64);
+
+            // Box::pin erases the future type that contains a `dyn Stream`
+            // trait object, which otherwise triggers a HRTB `Send` error.
+            let result = {
+                use std::future::Future;
+                use std::pin::Pin;
+
+                let fut: Pin<Box<dyn Future<Output = _> + Send>> = Box::pin(client.kv_get_many(rx));
+                fut.await
+            };
+
+            match result {
+                Ok(response) => {
+                    // Connection accepted. Map keys and feed them into the
+                    // channel concurrently with reading the response.
+                    let err_slot = input_err.clone();
+                    tokio::spawn(async move {
+                        use futures::SinkExt;
+                        let mut tx = tx;
+                        while let Some(result) = keys.next().await {
+                            match result {
+                                Ok(key) => {
+                                    if tx.send(pb::KvGetManyRequest { key }).await.is_err() {
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    *err_slot.lock() = Some(e);
+                                    break;
+                                }
+                            }
+                        }
+                    });
+
+                    let output = response.into_inner();
+                    let mapped =
+                        output.map(|item| item.map_err(|s| MetaNetworkError::from(s).into()));
+
+                    let with_input_err = mapped.chain(futures::stream::poll_fn(move |_cx| {
+                        match input_err.lock().take() {
+                            Some(e) => Poll::Ready(Some(Err(e))),
+                            None => Poll::Ready(None),
+                        }
+                    }));
+
+                    return Ok(fail_fast(with_input_err).boxed());
+                }
+                Err(status) => {
+                    if is_status_retryable(&status) {
+                        warn!("kv_get_many retryable error: {:?}; retrying", status);
+                        last_status = Some(status);
+                        continue;
+                    }
+                    return Err(MetaClientError::from(MetaNetworkError::from(status)));
+                }
+            }
+        }
+
+        Err(MetaClientError::from(MetaNetworkError::from(
+            last_status.unwrap_or_else(|| Status::internal("kv_get_many: no endpoints available")),
+        )))
     }
 
     fn update_rpc_metrics(
@@ -883,7 +982,7 @@ pub struct AuthInterceptor {
 }
 
 impl Interceptor for AuthInterceptor {
-    fn call(&mut self, mut req: tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status> {
+    fn call(&mut self, mut req: tonic::Request<()>) -> Result<tonic::Request<()>, Status> {
         let metadata = req.metadata_mut();
 
         // The handshake does not need token.

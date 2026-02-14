@@ -20,6 +20,7 @@ use databend_meta_client::ClientHandle;
 use databend_meta_kvapi::kvapi;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_test_harness::MetaSrvTestContext;
+use databend_meta_test_harness::make_grpc_client;
 use databend_meta_test_harness::start_metasrv;
 use databend_meta_test_harness::start_metasrv_cluster;
 
@@ -54,9 +55,21 @@ impl kvapi::ApiBuilder<Arc<ClientHandle<TokioRuntime>>> for MetaSrvBuilder {
             .await
             .unwrap();
 
+        let all_endpoints: Vec<String> = tcs
+            .iter()
+            .map(|tc| tc.config.grpc.api_address().unwrap())
+            .collect();
+
+        // Each client gets all endpoints but starts with its own
+        // server as the current endpoint. This ensures some clients
+        // initially connect to a follower, testing that RPCs can
+        // find the leader.
         let mut clients = Vec::with_capacity(tcs.len());
         for tc in &tcs {
-            clients.push(tc.grpc_client().await.unwrap());
+            let current = tc.config.grpc.api_address().unwrap();
+            let client = make_grpc_client(all_endpoints.clone()).unwrap();
+            client.set_current_endpoint(current);
+            clients.push(client);
         }
 
         self.contexts.lock().unwrap().extend(tcs);

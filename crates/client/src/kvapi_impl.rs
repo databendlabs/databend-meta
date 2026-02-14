@@ -25,13 +25,11 @@ use databend_meta_types::MetaNetworkError;
 use databend_meta_types::TxnReply;
 use databend_meta_types::TxnRequest;
 use databend_meta_types::UpsertKV;
-use futures_util::StreamExt;
 use futures_util::TryStreamExt;
 use futures_util::stream::BoxStream;
 
 use crate::ClientHandle;
-use crate::MGetKVReq;
-use crate::Streamed;
+use crate::grpc_action::StreamedGetMany;
 
 fn status_to_meta_error(status: tonic::Status) -> MetaError {
     MetaNetworkError::from(status).into()
@@ -49,38 +47,9 @@ impl<RT: SpawnApi> kvapi::KVApi for ClientHandle<RT> {
         &self,
         keys: BoxStream<'static, Result<String, Self::Error>>,
     ) -> Result<KVStream<Self::Error>, Self::Error> {
-        // Collect keys until the first error, preserving the error if any.
-        let mut key_vec = Vec::new();
-        let mut input_err = None;
-
-        tokio::pin!(keys);
-        while let Some(item) = keys.next().await {
-            match item {
-                Ok(k) => key_vec.push(k),
-                Err(e) => {
-                    input_err = Some(e);
-                    break;
-                }
-            }
-        }
-
-        if key_vec.is_empty() {
-            if let Some(err) = input_err {
-                return Ok(futures_util::stream::once(async { Err(err) }).boxed());
-            }
-            return Ok(futures_util::stream::empty().boxed());
-        }
-
-        let strm = self.request(Streamed(MGetKVReq { keys: key_vec })).await?;
-
-        let mapped = strm.map_err(status_to_meta_error);
-
-        if let Some(err) = input_err {
-            let err_strm = futures_util::stream::once(async { Err(err) });
-            Ok(fail_fast(mapped.chain(err_strm)).boxed())
-        } else {
-            Ok(fail_fast(mapped).boxed())
-        }
+        self.streamed_get_many(StreamedGetMany { keys })
+            .await
+            .map_err(MetaError::from)
     }
 
     async fn list_kv(
