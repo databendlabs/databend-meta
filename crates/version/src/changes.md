@@ -126,6 +126,9 @@ Oldest compatible nightly metasrv version
 
 - 2026-01-13: since 1.2.869
   🖥 server: add `kv_get_many` gRPC API: in protobuf, receive stream, return stream.
+- 
+- 2026-02-14: since 260214.0.0
+  👥 client: use `kv_get_many` gRPC API.
 
 Server feature set:
 ```yaml

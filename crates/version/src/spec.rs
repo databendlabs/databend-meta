@@ -270,12 +270,15 @@ impl Spec {
             add(&mut cli, F::ExpireInMillis, ver(260205, 0, 0));
             add(&mut cli, F::PutSequential, ver(260205, 0, 0));
 
+            // 2026-02-14: since 260214.0.0
+            // 👥 client: use `kv_get_many` gRPC API.
+            add(&mut cli, F::KvGetMany, ver(260214, 0, 0));
+
             // client not yet using these features
             add(&mut cli, F::ExportV1, Version::max());
             add(&mut cli, F::ProposedAtMs, Version::max());
             add(&mut cli, F::FetchIncreaseU64, Version::max());
             add(&mut cli, F::KvList, Version::max());
-            add(&mut cli, F::KvGetMany, Version::max());
         }
 
         Self::assert_all_features(&srv);
@@ -356,7 +359,7 @@ mod tests {
         let spec = Spec::load();
         let min_server = spec.min_compatible_server_version();
 
-        assert_eq!(min_server, Version::new(1, 2, 770));
+        assert_eq!(min_server, Version::new(1, 2, 869));
     }
 
     #[test]
