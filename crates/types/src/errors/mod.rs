@@ -151,3 +151,4 @@ pub mod rpc_errors;
 mod incomplete_stream;
 
 pub use incomplete_stream::IncompleteStream;
+pub use meta_network_errors::InvalidReply;

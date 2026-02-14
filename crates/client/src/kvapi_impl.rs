@@ -19,12 +19,10 @@ use databend_meta_kvapi::kvapi::ListOptions;
 use databend_meta_kvapi::kvapi::fail_fast;
 use databend_meta_kvapi::kvapi::limit_stream;
 use databend_meta_runtime_api::SpawnApi;
-use databend_meta_types::Change;
 use databend_meta_types::MetaError;
 use databend_meta_types::MetaNetworkError;
 use databend_meta_types::TxnReply;
 use databend_meta_types::TxnRequest;
-use databend_meta_types::UpsertKV;
 use futures_util::TryStreamExt;
 use futures_util::stream::BoxStream;
 
@@ -38,10 +36,6 @@ fn status_to_meta_error(status: tonic::Status) -> MetaError {
 #[async_trait]
 impl<RT: SpawnApi> kvapi::KVApi for ClientHandle<RT> {
     type Error = MetaError;
-
-    async fn upsert_kv(&self, req: UpsertKV) -> Result<Change<Vec<u8>>, Self::Error> {
-        self.upsert_via_txn(req).await.map_err(MetaError::from)
-    }
 
     async fn get_many_kv(
         &self,

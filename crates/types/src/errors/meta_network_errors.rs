@@ -151,6 +151,12 @@ impl Display for InvalidReply {
     }
 }
 
+impl From<InvalidReply> for io::Error {
+    fn from(e: InvalidReply) -> Self {
+        io::Error::new(io::ErrorKind::InvalidData, e)
+    }
+}
+
 impl From<errors::IncompleteStream> for InvalidReply {
     fn from(e: errors::IncompleteStream) -> Self {
         Self::new("Invalid reply", &e)

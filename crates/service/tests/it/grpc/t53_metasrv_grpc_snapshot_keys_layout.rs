@@ -14,6 +14,7 @@
 
 use std::time::Duration;
 
+use databend_meta_kvapi::kvapi::KvApiExt;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::protobuf as pb;

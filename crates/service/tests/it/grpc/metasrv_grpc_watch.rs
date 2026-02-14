@@ -26,6 +26,7 @@ use databend_meta::meta_service::MetaNode;
 use databend_meta_client::ClientHandle;
 use databend_meta_client::DEFAULT_GRPC_MESSAGE_SIZE;
 use databend_meta_client::MetaGrpcClient;
+use databend_meta_kvapi::kvapi::KvApiExt;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_types::ConditionResult;
