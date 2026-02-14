@@ -106,3 +106,179 @@ pub trait KvApiExt: KVApi {
 }
 
 impl<T: KVApi + ?Sized> KvApiExt for T {}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::io;
+
+    use async_trait::async_trait;
+    use databend_meta_types::Change;
+    use databend_meta_types::SeqV;
+    use databend_meta_types::TxnReply;
+    use databend_meta_types::TxnRequest;
+    use databend_meta_types::UpsertKV;
+    use databend_meta_types::protobuf;
+    use databend_meta_types::protobuf::StreamItem;
+    use futures_util::StreamExt;
+    use futures_util::TryStreamExt;
+    use futures_util::stream::BoxStream;
+
+    use crate::kvapi;
+    use crate::kvapi::KVStream;
+    use crate::kvapi::KvApiExt;
+    use crate::kvapi::ListOptions;
+    use crate::kvapi::fail_fast;
+    use crate::kvapi::limit_stream;
+
+    /// In-memory mock of KVApi backed by a BTreeMap of protobuf SeqV.
+    struct MockKVApi {
+        data: BTreeMap<String, protobuf::SeqV>,
+    }
+
+    impl MockKVApi {
+        fn new(entries: &[(&str, u64, &[u8])]) -> Self {
+            let data = entries
+                .iter()
+                .map(|&(k, seq, v)| (k.to_string(), protobuf::SeqV::new(seq, v.to_vec())))
+                .collect();
+            Self { data }
+        }
+    }
+
+    #[async_trait]
+    impl kvapi::KVApi for MockKVApi {
+        type Error = io::Error;
+
+        async fn upsert_kv(&self, _req: UpsertKV) -> Result<Change<Vec<u8>>, Self::Error> {
+            unimplemented!()
+        }
+
+        async fn get_many_kv(
+            &self,
+            keys: BoxStream<'static, Result<String, Self::Error>>,
+        ) -> Result<KVStream<Self::Error>, Self::Error> {
+            let data = self.data.clone();
+            let strm = fail_fast(keys).and_then(move |key| {
+                let val = data.get(&key).cloned();
+                let item = StreamItem::new(key, val);
+                async move { Ok(item) }
+            });
+            Ok(strm.boxed())
+        }
+
+        async fn list_kv(
+            &self,
+            opts: ListOptions<'_, str>,
+        ) -> Result<KVStream<Self::Error>, Self::Error> {
+            let prefix = opts.prefix.to_string();
+            let strm = futures_util::stream::iter(
+                self.data
+                    .range(prefix.clone()..)
+                    .take_while(|(k, _)| k.starts_with(&prefix))
+                    .map(|(k, v)| Ok(StreamItem::new(k.clone(), Some(v.clone()))))
+                    .collect::<Vec<_>>(),
+            );
+            Ok(limit_stream(strm, opts.limit))
+        }
+
+        async fn transaction(&self, _txn: TxnRequest) -> Result<TxnReply, Self::Error> {
+            unimplemented!()
+        }
+    }
+
+    fn seqv(seq: u64, data: &[u8]) -> SeqV {
+        SeqV::new(seq, data.to_vec())
+    }
+
+    #[tokio::test]
+    async fn test_get_kv_found() {
+        let api = MockKVApi::new(&[("k1", 1, b"v1")]);
+        assert_eq!(api.get_kv("k1").await.unwrap(), Some(seqv(1, b"v1")));
+    }
+
+    #[tokio::test]
+    async fn test_get_kv_not_found() {
+        let api = MockKVApi::new(&[("k1", 1, b"v1")]);
+        assert_eq!(api.get_kv("no_such").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn test_mget_kv() {
+        let api = MockKVApi::new(&[("a", 1, b"va"), ("b", 2, b"vb"), ("c", 3, b"vc")]);
+        let keys: Vec<String> = vec!["a".into(), "c".into(), "missing".into()];
+        assert_eq!(api.mget_kv(&keys).await.unwrap(), vec![
+            Some(seqv(1, b"va")),
+            Some(seqv(3, b"vc")),
+            None,
+        ]);
+    }
+
+    #[tokio::test]
+    async fn test_mget_kv_empty() {
+        let api = MockKVApi::new(&[]);
+        assert_eq!(api.mget_kv(&[]).await.unwrap(), Vec::<Option<SeqV>>::new());
+    }
+
+    #[tokio::test]
+    async fn test_get_kv_stream() {
+        let api = MockKVApi::new(&[("x", 5, b"vx"), ("y", 6, b"vy")]);
+        let keys = vec!["x".into(), "y".into(), "z".into()];
+        let strm = api.get_kv_stream(&keys).await.unwrap();
+        let items: Vec<StreamItem> = strm.try_collect().await.unwrap();
+
+        assert_eq!(items, vec![
+            StreamItem::new("x".into(), Some(protobuf::SeqV::new(5, b"vx".to_vec()))),
+            StreamItem::new("y".into(), Some(protobuf::SeqV::new(6, b"vy".to_vec()))),
+            StreamItem::new("z".into(), None),
+        ]);
+    }
+
+    #[tokio::test]
+    async fn test_list_kv_collect_unlimited() {
+        let api = MockKVApi::new(&[
+            ("pfx/a", 1, b"a"),
+            ("pfx/b", 2, b"b"),
+            ("pfx/c", 3, b"c"),
+            ("other", 4, b"o"),
+        ]);
+
+        assert_eq!(
+            api.list_kv_collect(ListOptions::unlimited("pfx/"))
+                .await
+                .unwrap(),
+            vec![
+                ("pfx/a".to_string(), seqv(1, b"a")),
+                ("pfx/b".to_string(), seqv(2, b"b")),
+                ("pfx/c".to_string(), seqv(3, b"c")),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_list_kv_collect_with_limit() {
+        let api = MockKVApi::new(&[("pfx/a", 1, b"a"), ("pfx/b", 2, b"b"), ("pfx/c", 3, b"c")]);
+
+        assert_eq!(
+            api.list_kv_collect(ListOptions::limited("pfx/", 2))
+                .await
+                .unwrap(),
+            vec![
+                ("pfx/a".to_string(), seqv(1, b"a")),
+                ("pfx/b".to_string(), seqv(2, b"b")),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_list_kv_collect_no_match() {
+        let api = MockKVApi::new(&[("other", 1, b"v")]);
+
+        assert_eq!(
+            api.list_kv_collect(ListOptions::unlimited("pfx/"))
+                .await
+                .unwrap(),
+            vec![]
+        );
+    }
+}
