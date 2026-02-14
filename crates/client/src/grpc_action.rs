@@ -18,6 +18,7 @@ use std::fmt::Debug;
 
 use databend_meta_types::Change;
 use databend_meta_types::GrpcHelper;
+use databend_meta_types::MetaError;
 use databend_meta_types::SeqV;
 
 /// Get a single key-value pair.
@@ -37,6 +38,20 @@ impl MGetKVReq {
         Self {
             keys: keys.into_iter().map(|x| x.to_string()).collect(),
         }
+    }
+}
+
+/// Stream-oriented get-many request.
+///
+/// Unlike `MGetKVReq` which requires all keys upfront,
+/// this accepts a fallible stream of keys.
+pub struct StreamedGetMany {
+    pub keys: futures_util::stream::BoxStream<'static, Result<String, MetaError>>,
+}
+
+impl fmt::Debug for StreamedGetMany {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("StreamedGetMany").finish()
     }
 }
 
@@ -84,7 +99,7 @@ use crate::message::MakeEstablishedClient;
 use crate::message::Streamed;
 
 /// Bind a request type to its corresponding response type.
-pub trait RequestFor: Clone + fmt::Debug {
+pub trait RequestFor: fmt::Debug {
     type Reply;
 }
 
@@ -199,6 +214,10 @@ impl RequestFor for MGetKVReq {
 
 impl RequestFor for ListKVReq {
     type Reply = ListKVReply;
+}
+
+impl RequestFor for StreamedGetMany {
+    type Reply = futures_util::stream::BoxStream<'static, Result<StreamItem, MetaError>>;
 }
 
 impl RequestFor for Streamed<MGetKVReq> {

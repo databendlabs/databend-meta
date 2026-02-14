@@ -42,6 +42,7 @@ use fastrace::Span;
 use log::debug;
 use log::error;
 use log::info;
+use parking_lot::Mutex;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 use tonic::codegen::BoxStream;
@@ -50,11 +51,13 @@ use crate::ClientWorkerRequest;
 use crate::InitFlag;
 use crate::RequestFor;
 use crate::Streamed;
+use crate::endpoints::Endpoints;
 use crate::established_client::EstablishedClient;
 use crate::grpc_action::GetKVReply;
 use crate::grpc_action::ListKVReq;
 use crate::grpc_action::MGetKVReply;
 use crate::grpc_action::MGetKVReq;
+use crate::grpc_action::StreamedGetMany;
 use crate::grpc_action::UpsertKVReply;
 use crate::message;
 use crate::message::Response;
@@ -64,6 +67,13 @@ use crate::message::Response;
 pub struct ClientHandle<RT: SpawnApi> {
     /// For debug purpose only.
     pub endpoints: Vec<String>,
+
+    /// Shared mutable endpoint list, also held by the worker.
+    ///
+    /// Callers can use [`set_current_endpoint`] to pin
+    /// which server the next RPC will connect to.
+    pub(crate) shared_endpoints: Arc<Mutex<Endpoints>>,
+
     /// For sending request to meta-client worker.
     pub(crate) req_tx: UnboundedSender<ClientWorkerRequest>,
     /// Notify auto sync to stop.
@@ -116,6 +126,12 @@ impl<RT: SpawnApi> ClientHandle<RT> {
     /// Returns the version of this client.
     pub fn version(&self) -> &'static Version {
         databend_meta_version::version()
+    }
+
+    /// Pin the current endpoint so the next RPC targets this address.
+    pub fn set_current_endpoint(&self, endpoint: String) {
+        let mut eps = self.shared_endpoints.lock();
+        let _ = eps.set_current(Some(endpoint));
     }
 
     pub async fn list(&self, prefix: &str) -> Result<BoxStream<StreamItem>, MetaError> {
@@ -181,6 +197,19 @@ impl<RT: SpawnApi> ClientHandle<RT> {
             .await?;
 
         Ok(res)
+    }
+
+    /// Stream-oriented get-many: sends the key stream to the worker,
+    /// which drains it, performs the gRPC call, and returns
+    /// a fully error-mapped result stream.
+    ///
+    /// Keys are collected into memory before the RPC so that
+    /// retries (e.g. on "not leader") can replay them.
+    pub async fn streamed_get_many(
+        &self,
+        req: StreamedGetMany,
+    ) -> Result<databend_meta_kvapi::kvapi::KVStream<MetaError>, MetaClientError> {
+        self.request(req).await
     }
 
     /// Send a request to the internal worker task, which will be running in another runtime.

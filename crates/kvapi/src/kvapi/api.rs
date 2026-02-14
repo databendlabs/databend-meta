@@ -85,6 +85,10 @@ pub trait KVApi: Send + Sync {
     /// The input stream may contain errors; when an error is encountered,
     /// it is propagated to the output stream.
     ///
+    /// Implementations are **not** required to retry internally.
+    /// Because the input is a stream that may not be cloneable or replayable,
+    /// the caller should handle errors by re-creating the request.
+    ///
     /// The input uses `BoxStream` instead of `impl Stream` to keep the trait dyn-compatible,
     /// allowing usage as `dyn KVApi`.
     async fn get_many_kv(

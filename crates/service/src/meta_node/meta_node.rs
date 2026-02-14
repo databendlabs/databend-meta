@@ -1266,7 +1266,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
         req: ForwardRequest<Req>,
     ) -> Result<(Option<Endpoint>, Req::Reply), MetaAPIError>
     where
-        Req: RequestFor,
+        Req: RequestFor + Clone,
         for<'a> MetaLeader<'a, SP>: Handler<Req>,
         for<'a> MetaForwarder<'a, SP>: Forwarder<Req>,
     {

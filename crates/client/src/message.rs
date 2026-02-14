@@ -33,6 +33,7 @@ use tonic::codegen::BoxStream;
 use crate::established_client::EstablishedClient;
 use crate::grpc_action::ListKVReq;
 use crate::grpc_action::MGetKVReq;
+use crate::grpc_action::StreamedGetMany;
 
 /// A request that is sent by a meta-client handle to its worker.
 pub struct ClientWorkerRequest {
@@ -74,11 +75,13 @@ impl<T> Streamed<T> {
 pub struct InitFlag;
 
 /// Meta-client handle-to-worker request body
-#[derive(Debug, Clone, derive_more::From)]
+#[derive(Debug, derive_more::From)]
 pub enum Request {
-    /// Get multiple KV, returning a stream.
-    // TODO: Add a new variant to support real stream input + stream output get-many
+    /// Get multiple KV from pre-collected keys, returning a stream.
     StreamMGet(Streamed<MGetKVReq>),
+
+    /// Get multiple KV from a stream of keys, returning a stream.
+    StreamedGetMany(StreamedGetMany),
 
     /// List KVs by key prefix, returning a stream.
     StreamList(Streamed<ListKVReq>),
@@ -123,6 +126,7 @@ impl Request {
     pub fn name(&self) -> &'static str {
         match self {
             Request::StreamMGet(_) => "StreamMGet",
+            Request::StreamedGetMany(_) => "StreamGetMany",
             Request::StreamList(_) => "StreamList",
             Request::Txn(_) => "Txn",
             Request::Watch(_) => "Watch",
@@ -141,6 +145,12 @@ impl Request {
 #[derive(derive_more::TryInto)]
 pub enum Response {
     StreamMGet(Result<BoxStream<StreamItem>, MetaError>),
+    StreamedGetMany(
+        Result<
+            futures_util::stream::BoxStream<'static, Result<StreamItem, MetaError>>,
+            MetaClientError,
+        >,
+    ),
     StreamList(Result<BoxStream<StreamItem>, MetaError>),
     Txn(Result<TxnReply, MetaClientError>),
     Watch(Result<tonic::codec::Streaming<WatchResponse>, MetaClientError>),
@@ -158,6 +168,9 @@ impl fmt::Debug for Response {
         match self {
             Response::StreamMGet(x) => {
                 write!(f, "StreamMGet({:?})", x.as_ref().map(|_s| "<stream>"))
+            }
+            Response::StreamedGetMany(x) => {
+                write!(f, "StreamGetMany({:?})", x.as_ref().map(|_s| "<stream>"))
             }
             Response::StreamList(x) => {
                 write!(f, "StreamList({:?})", x.as_ref().map(|_s| "<stream>"))
@@ -205,6 +218,7 @@ impl Response {
 
         match self {
             Response::StreamMGet(res) => to_err(res),
+            Response::StreamedGetMany(res) => to_err(res),
             Response::StreamList(res) => to_err(res),
             Response::Txn(res) => to_err(res),
             Response::Watch(res) => to_err(res),
