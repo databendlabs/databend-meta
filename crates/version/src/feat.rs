@@ -44,6 +44,9 @@ pub enum Feature {
     /// TTL support in `TxnPutRequest`.
     TransactionPutWithTtl,
 
+    /// `TxnPutRequest.prev_value` and `TxnDeleteRequest.prev_value`: always return previous value in put response, without considering the flag in TxnPutRequest or TxnDeleteRequest
+    TransactionPrevValue,
+
     /// Prefix-count condition in `TxnCondition`.
     TransactionConditionKeysPrefix,
 
@@ -114,6 +117,7 @@ impl Feature {
             Feature::Transaction,
             Feature::TransactionReplyError,
             Feature::TransactionPutWithTtl,
+            Feature::TransactionPrevValue,
             Feature::TransactionConditionKeysPrefix,
             Feature::TransactionOperations,
             Feature::OperationAsIs,
@@ -147,6 +151,7 @@ impl Feature {
             Feature::Transaction => "transaction",
             Feature::TransactionReplyError => "transaction/reply_error",
             Feature::TransactionPutWithTtl => "transaction/put_with_ttl",
+            Feature::TransactionPrevValue => "transaction/prev_value",
             Feature::TransactionConditionKeysPrefix => "transaction/condition_keys_prefix",
             Feature::TransactionOperations => "transaction/operations",
             Feature::OperationAsIs => "operation/as_is",

@@ -17,10 +17,9 @@ use std::fmt;
 use crate::protobuf as pb;
 
 impl pb::TxnDeleteRequest {
-    pub fn new(key: impl ToString, prev_value: bool, match_seq: Option<u64>) -> Self {
+    pub fn new(key: impl ToString, match_seq: Option<u64>) -> Self {
         Self {
             key: key.to_string(),
-            prev_value,
             match_seq,
         }
     }
@@ -38,23 +37,21 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let req = pb::TxnDeleteRequest::new("k1", true, Some(42));
+        let req = pb::TxnDeleteRequest::new("k1", Some(42));
         assert_eq!(req.key, "k1");
-        assert!(req.prev_value);
         assert_eq!(req.match_seq, Some(42));
     }
 
     #[test]
     fn test_new_no_match_seq() {
-        let req = pb::TxnDeleteRequest::new("k2", false, None);
+        let req = pb::TxnDeleteRequest::new("k2", None);
         assert_eq!(req.key, "k2");
-        assert!(!req.prev_value);
         assert!(req.match_seq.is_none());
     }
 
     #[test]
     fn test_display() {
-        let req = pb::TxnDeleteRequest::new("k1", true, None);
+        let req = pb::TxnDeleteRequest::new("k1", None);
         assert_eq!(req.to_string(), "Delete key=k1");
     }
 }

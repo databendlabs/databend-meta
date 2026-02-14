@@ -176,6 +176,13 @@ impl Spec {
             remove(&mut cli, F::KvApiMGetKv, ver(1, 2, 287));
             remove(&mut cli, F::KvApiListKv, ver(1, 2, 287));
 
+            // 2024-01-17: since 1.2.304:
+            // 🖥 server: do not use TxnPutRequest.prev_value;
+            // 🖥 server: do not use TxnDeleteRequest.prev_value;
+            // Always return the previous value;
+            // field index is reserved, no compatibility changes.
+            add(&mut srv, F::TransactionPrevValue, ver(1, 2, 304));
+
             // 2024-01-25: since 1.2.315:
             // 🖥 server: add export_v1() to let client specify export chunk size
             add(&mut srv, F::ExportV1, ver(1, 2, 315));
@@ -273,6 +280,11 @@ impl Spec {
             // 2026-02-14: since 260214.0.0
             // 👥 client: use `kv_get_many` gRPC API.
             add(&mut cli, F::KvGetMany, ver(260214, 0, 0));
+
+            // 2026-02-14: since 260214.0.0
+            // 👥 client: remove `prev_value` from TxnPutRequest and TxnDeleteRequest
+            // Client starts relying on this feature for removing `prev_value`
+            add(&mut cli, F::TransactionPrevValue, ver(260214, 0, 0));
 
             // client not yet using these features
             add(&mut cli, F::ExportV1, Version::max());
