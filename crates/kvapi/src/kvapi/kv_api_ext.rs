@@ -13,7 +13,10 @@
 // limitations under the License.
 
 use async_trait::async_trait;
+use databend_meta_types::Change;
 use databend_meta_types::SeqV;
+use databend_meta_types::TxnRequest;
+use databend_meta_types::UpsertKV;
 use databend_meta_types::errors;
 use futures_util::StreamExt;
 use futures_util::TryStreamExt;
@@ -26,6 +29,14 @@ use crate::kvapi::ListOptions;
 /// Extend the `KVApi` trait with auto implemented handy methods.
 #[async_trait]
 pub trait KvApiExt: KVApi {
+    /// Update or insert a key-value record.
+    async fn upsert_kv(&self, req: UpsertKV) -> Result<Change<Vec<u8>>, Self::Error> {
+        let txn = TxnRequest::from_upsert(req);
+        let reply = self.transaction(txn).await?;
+        let change = reply.into_upsert_reply()?;
+        Ok(change)
+    }
+
     /// Get key-values by keys.
     ///
     /// 2024-01-06: since: 1.2.287
@@ -113,11 +124,9 @@ mod tests {
     use std::io;
 
     use async_trait::async_trait;
-    use databend_meta_types::Change;
     use databend_meta_types::SeqV;
     use databend_meta_types::TxnReply;
     use databend_meta_types::TxnRequest;
-    use databend_meta_types::UpsertKV;
     use databend_meta_types::protobuf;
     use databend_meta_types::protobuf::StreamItem;
     use futures_util::StreamExt;
@@ -149,10 +158,6 @@ mod tests {
     #[async_trait]
     impl kvapi::KVApi for MockKVApi {
         type Error = io::Error;
-
-        async fn upsert_kv(&self, _req: UpsertKV) -> Result<Change<Vec<u8>>, Self::Error> {
-            unimplemented!()
-        }
 
         async fn get_many_kv(
             &self,

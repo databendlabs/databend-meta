@@ -283,7 +283,8 @@ impl Spec {
 
             // 2026-02-14: since 260214.0.0
             // 👥 client: remove `prev_value` from TxnPutRequest and TxnDeleteRequest
-            // Client starts relying on this feature for removing `prev_value`
+            // Client starts relying on this feature for removing `prev_value`.
+            // In this version we removed KVApi::upsert, and provide a default impl upon transaction(), which require it to always return prev_value
             add(&mut cli, F::TransactionPrevValue, ver(260214, 0, 0));
 
             // client not yet using these features

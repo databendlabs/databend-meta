@@ -20,11 +20,9 @@ use databend_meta_kvapi::kvapi;
 use databend_meta_kvapi::kvapi::KVStream;
 use databend_meta_kvapi::kvapi::ListOptions;
 use databend_meta_kvapi::kvapi::limit_stream;
-use databend_meta_types::Change;
 use databend_meta_types::SeqV;
 use databend_meta_types::TxnReply;
 use databend_meta_types::TxnRequest;
-use databend_meta_types::UpsertKV;
 use databend_meta_types::protobuf::StreamItem;
 use futures_util::TryStreamExt;
 use futures_util::stream::BoxStream;
@@ -48,10 +46,6 @@ pub struct SMV003KVApi<'a> {
 #[async_trait::async_trait]
 impl kvapi::KVApi for SMV003KVApi<'_> {
     type Error = io::Error;
-
-    async fn upsert_kv(&self, _req: UpsertKV) -> Result<Change<Vec<u8>>, Self::Error> {
-        unreachable!("write operation SM2KVApi::upsert_kv is disabled")
-    }
 
     async fn list_kv(
         &self,

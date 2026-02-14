@@ -30,7 +30,6 @@ use databend_meta_types::MetaClientError;
 use databend_meta_types::MetaError;
 use databend_meta_types::TxnReply;
 use databend_meta_types::TxnRequest;
-use databend_meta_types::UpsertKV;
 use databend_meta_types::protobuf::ClientInfo;
 use databend_meta_types::protobuf::ClusterStatus;
 use databend_meta_types::protobuf::MemberListReply;
@@ -58,7 +57,6 @@ use crate::grpc_action::ListKVReq;
 use crate::grpc_action::MGetKVReply;
 use crate::grpc_action::MGetKVReq;
 use crate::grpc_action::StreamedGetMany;
-use crate::grpc_action::UpsertKVReply;
 use crate::message;
 use crate::message::Response;
 
@@ -158,19 +156,6 @@ impl<RT: SpawnApi> ClientHandle<RT> {
         watch: WatchRequest,
     ) -> Result<tonic::codec::Streaming<WatchResponse>, MetaClientError> {
         self.request((watch, InitFlag)).await
-    }
-
-    pub async fn upsert_via_txn(&self, upsert: UpsertKV) -> Result<UpsertKVReply, MetaClientError> {
-        let txn = TxnRequest::from_upsert(upsert);
-
-        let resp = self.request(txn).await?;
-
-        let reply = resp.into_upsert_reply()?;
-        Ok(reply)
-    }
-
-    pub async fn upsert_kv(&self, upsert: UpsertKV) -> Result<UpsertKVReply, MetaError> {
-        self.upsert_via_txn(upsert).await.map_err(MetaError::from)
     }
 
     pub async fn transaction(&self, txn: TxnRequest) -> Result<TxnReply, MetaError> {
