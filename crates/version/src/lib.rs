@@ -53,7 +53,7 @@ pub static MIN_CLIENT_VERSION: Version = Version::new(1, 2, 676);
 /// Minimum compatible meta-server version.
 ///
 /// See [module documentation](self) for details.
-pub static MIN_SERVER_VERSION: Version = Version::new(1, 2, 770);
+pub static MIN_SERVER_VERSION: Version = Version::new(1, 2, 869);
 
 use std::sync::LazyLock;
 
@@ -100,17 +100,17 @@ mod tests {
 
     #[test]
     fn test_version_string() {
-        assert_eq!(version_str(), "260205.3.0");
+        assert_eq!(version_str(), "260214.0.0");
     }
 
     #[test]
     fn test_semver_components() {
-        assert_eq!(semver_tuple(version()), (260205, 3, 0));
+        assert_eq!(semver_tuple(version()), (260214, 0, 0));
     }
 
     #[test]
     fn test_semver_display() {
-        assert_eq!(version().to_semver().to_string(), "260205.3.0");
+        assert_eq!(version().to_semver().to_string(), "260214.0.0");
     }
 
     #[test]
