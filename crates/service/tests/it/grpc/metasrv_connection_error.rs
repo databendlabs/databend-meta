@@ -51,22 +51,20 @@ async fn test_metasrv_connection_error() -> anyhow::Result<()> {
     let a0 = || addresses[0].clone();
     let a1 = || addresses[1].clone();
     let a2 = || addresses[2].clone();
+    let all_addrs = || vec![a0(), a1(), a2()];
 
     let mut stopped = tcs.remove(1);
     { stopped }.grpc_srv.take().unwrap().do_stop(None).await;
 
-    for addrs in [
-        vec![a0(), a1(), a2()], // a1() is down
-        vec![a1(), a2()],       // a1() is down
-        vec![a0(), a1()],       // a1() is down
-        vec![a0()],
-        vec![a2()],
-    ] {
-        let addrs_str = addrs.join(",").to_string();
-        info!("--- test write with api addresses: {}", addrs_str);
+    // Each client gets all endpoints so it can follow redirects to the leader.
+    // set_current_endpoint controls which node the client connects to first.
+    // When that node is down (a1), the client retries other endpoints.
+    for current in [a0(), a1(), a2()] {
+        info!("--- test write with current endpoint: {}", current);
 
-        let client = make_client(addrs.to_vec())?;
-        test_write_read(&client, &format!("grpc-conn-error-{}", addrs_str)).await?;
+        let client = make_client(all_addrs())?;
+        client.set_current_endpoint(current.clone());
+        test_write_read(&client, &format!("grpc-conn-error-{}", current)).await?;
     }
 
     info!("--- using only one crashed node won't work");
@@ -96,10 +94,11 @@ async fn test_metasrv_one_client_follower_down() -> anyhow::Result<()> {
         .collect::<Vec<_>>();
 
     let a1 = || addresses[1].clone();
-    let a2 = || addresses[2].clone();
 
-    // a1() will be shut down
-    let client = make_client(vec![a1(), a2()])?;
+    // Client has all endpoints so it can follow redirects to the leader.
+    // Starts connected to follower node 1.
+    let client = make_client(addresses.clone())?;
+    client.set_current_endpoint(a1());
 
     test_write_read(&client, "conn-error-one-client-node-1-running").await?;
 
@@ -129,13 +128,14 @@ async fn test_metasrv_one_client_leader_down() -> anyhow::Result<()> {
         .collect::<Vec<_>>();
 
     let a1 = || addresses[1].clone();
-    let a2 = || addresses[2].clone();
 
-    // a0() will be shut down
-    let client = make_client(vec![a1(), a2()])?;
+    // Client has all endpoints. Starts connected to follower node 1.
+    let client = make_client(addresses.clone())?;
+    client.set_current_endpoint(a1());
 
     test_write_read(&client, "conn-error-one-client-node-0-running").await?;
 
+    // a0() (leader) will be shut down
     let mut stopped = tcs.remove(0);
     { stopped }.grpc_srv.take().unwrap().do_stop(None).await;
 
