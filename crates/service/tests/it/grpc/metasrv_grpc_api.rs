@@ -30,6 +30,7 @@ use tokio::time::Duration;
 
 use crate::testing::meta_service_test_harness;
 use crate::tests::service::MetaSrvTestContext;
+use crate::tests::service::make_grpc_client;
 use crate::tests::start_metasrv_with_context;
 
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
@@ -179,8 +180,15 @@ async fn test_join() -> anyhow::Result<()> {
     start_metasrv_with_context::<TokioRuntime>(&mut tc0).await?;
     start_metasrv_with_context::<TokioRuntime>(&mut tc1).await?;
 
-    let client0 = tc0.grpc_client().await?;
-    let client1 = tc1.grpc_client().await?;
+    let all_addrs = vec![
+        tc0.config.grpc.api_address().unwrap(),
+        tc1.config.grpc.api_address().unwrap(),
+    ];
+
+    let client0 = make_grpc_client::<TokioRuntime>(all_addrs.clone()).unwrap();
+    client0.set_current_endpoint(tc0.config.grpc.api_address().unwrap());
+    let client1 = make_grpc_client::<TokioRuntime>(all_addrs).unwrap();
+    client1.set_current_endpoint(tc1.config.grpc.api_address().unwrap());
 
     let clients = [client0, client1];
 
@@ -263,7 +271,9 @@ async fn test_auto_sync_addr() -> anyhow::Result<()> {
     let addr1 = tc1.config.grpc.api_address().unwrap();
     let addr2 = tc2.config.grpc.api_address().unwrap();
 
-    let client = tc1.grpc_client().await?;
+    let all_addrs = vec![addr0.clone(), addr1.clone(), addr2.clone()];
+    let client = make_grpc_client::<TokioRuntime>(all_addrs).unwrap();
+    client.set_current_endpoint(addr1.clone());
 
     let addrs = HashSet::from([addr0, addr1, addr2]);
 

@@ -29,6 +29,7 @@ use tokio::time::sleep;
 
 use crate::testing::meta_service_test_harness;
 use crate::tests::service::MetaSrvTestContext;
+use crate::tests::service::make_grpc_client;
 use crate::tests::service::start_metasrv_cluster;
 use crate::tests::start_metasrv_with_context;
 
@@ -50,8 +51,15 @@ async fn test_kv_api_restart_cluster_write_read() -> anyhow::Result<()> {
     ) -> anyhow::Result<()> {
         info!("--- test write on every node: {}", key_suffix);
 
+        let all_addrs: Vec<String> = tcs
+            .iter()
+            .map(|tc| tc.config.grpc.api_address().unwrap())
+            .collect();
+
         for tc in tcs.iter() {
-            let client = tc.grpc_client().await?;
+            let current = tc.config.grpc.api_address().unwrap();
+            let client = make_grpc_client::<TokioRuntime>(all_addrs.clone()).unwrap();
+            client.set_current_endpoint(current);
 
             let k = make_key(tc, key_suffix);
             let res = client.upsert_kv(UpsertKV::update(&k, &b(&k))).await?;
@@ -140,13 +148,20 @@ async fn test_kv_api_restart_cluster_token_expired() -> anyhow::Result<()> {
     ) -> anyhow::Result<()> {
         info!("--- test write on every node: {}", key_suffix);
 
+        let all_addrs: Vec<String> = tcs
+            .iter()
+            .map(|tc| tc.config.grpc.api_address().unwrap())
+            .collect();
+
         for (i, tc) in tcs.iter().enumerate() {
             let k = make_key(tc, key_suffix);
             if i == 0 {
                 let res = client.upsert_kv(UpsertKV::update(&k, &b(&k))).await?;
                 info!("--- upsert res: {:?}", res);
             } else {
-                let client = tc.grpc_client().await.unwrap();
+                let current = tc.config.grpc.api_address().unwrap();
+                let client = make_grpc_client::<TokioRuntime>(all_addrs.clone()).unwrap();
+                client.set_current_endpoint(current);
                 let res = client.upsert_kv(UpsertKV::update(&k, &b(&k))).await?;
                 info!("--- upsert res: {:?}", res);
             }
@@ -161,8 +176,12 @@ async fn test_kv_api_restart_cluster_token_expired() -> anyhow::Result<()> {
     }
 
     let tcs = start_metasrv_cluster::<TokioRuntime>(&[0, 1, 2]).await?;
+    let all_addrs: Vec<String> = tcs
+        .iter()
+        .map(|tc| tc.config.grpc.api_address().unwrap())
+        .collect();
     let client = MetaGrpcClient::<TokioRuntime>::try_create(
-        vec![tcs[0].config.grpc.api_address().unwrap()],
+        all_addrs,
         "root",
         "xxx",
         // Without timeout, the client will not be able to reconnect.
@@ -172,6 +191,7 @@ async fn test_kv_api_restart_cluster_token_expired() -> anyhow::Result<()> {
         None,
         DEFAULT_GRPC_MESSAGE_SIZE,
     )?;
+    client.set_current_endpoint(tcs[0].config.grpc.api_address().unwrap());
 
     info!("--- test write on a fresh cluster");
     let key_suffix = "1st";
