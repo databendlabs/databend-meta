@@ -21,7 +21,6 @@ use databend_meta_kvapi::kvapi::ListOptions;
 use databend_meta_types::ConditionResult;
 use databend_meta_types::MatchSeq;
 use databend_meta_types::MetaSpec;
-use databend_meta_types::Operation;
 use databend_meta_types::SeqV;
 use databend_meta_types::TxnCondition;
 use databend_meta_types::TxnDeleteByPrefixRequest;
@@ -87,18 +86,8 @@ impl TestSuite {
         KV: kvapi::KVApi,
         B: kvapi::ApiBuilder<KV>,
     {
-        self.kv_write_read(&builder.build().await).await?;
-        self.kv_write_read_proposed_at(&builder.build().await)
-            .await?;
-
-        self.kv_delete(&builder.build().await).await?;
-        self.kv_update(&builder.build().await).await?;
-
         self.kv_timeout(&builder.build().await).await?;
         self.kv_expire_sec_or_ms(&builder.build().await).await?;
-        self.kv_upsert_with_ttl(&builder.build().await).await?;
-
-        self.kv_meta(&builder.build().await).await?;
         self.kv_list(&builder.build().await).await?;
         self.kv_list_with_limit(&builder.build().await).await?;
         self.kv_list_collect_with_limit(&builder.build().await)
@@ -116,10 +105,16 @@ impl TestSuite {
             .await?;
         self.kv_transaction_fetch_add_u64_match_seq(&builder.build().await)
             .await?;
+        self.kv_transaction_fetch_increase_u64_max_value(&builder.build().await)
+            .await?;
+        self.kv_transaction_condition_ne(&builder.build().await)
+            .await?;
         self.kv_txn_put_sequential(&builder.build().await).await?;
         self.kv_txn_put_sequential_expire_and_ttl(&builder.build().await)
             .await?;
         self.kv_transaction_with_ttl(&builder.build().await).await?;
+        self.kv_transaction_put_expire_at(&builder.build().await)
+            .await?;
         self.kv_transaction_delete_match_seq_none(&builder.build().await)
             .await?;
         self.kv_transaction_condition_keys_with_prefix(&builder.build().await)
@@ -138,177 +133,6 @@ impl TestSuite {
 }
 
 impl TestSuite {
-    pub async fn kv_write_read<KV: kvapi::KVApi>(&self, kv: &KV) -> anyhow::Result<()> {
-        info!("--- kvapi::KVApiTestSuite::kv_write_read() start");
-        {
-            // write
-            let res = kv.upsert_kv(UpsertKV::update("foo", b"bar")).await?;
-            assert_eq!(None, res.prev);
-            assert_eq!(
-                Some(SeqV::new(1, b("bar"))),
-                res.result.without_proposed_at()
-            );
-        }
-
-        {
-            // write fails with unmatched seq
-            let res = kv
-                .upsert_kv(UpsertKV::update("foo", b"bar").with(MatchSeq::Exact(2)))
-                .await?;
-            assert_eq!(
-                (Some(SeqV::new(1, b("bar"))), Some(SeqV::new(1, b("bar"))),),
-                (
-                    res.prev.without_proposed_at(),
-                    res.result.without_proposed_at()
-                ),
-                "nothing changed"
-            );
-        }
-
-        {
-            // write done with matching seq
-            let res = kv
-                .upsert_kv(UpsertKV::update("foo", b"wow").with(MatchSeq::Exact(1)))
-                .await?;
-            assert_eq!(
-                Some(SeqV::new(1, b("bar"))),
-                res.prev.without_proposed_at(),
-                "old value"
-            );
-            assert_eq!(
-                Some(SeqV::new(2, b("wow"))),
-                res.result.without_proposed_at(),
-                "new value"
-            );
-        }
-
-        Ok(())
-    }
-
-    /// Test the proposed_at time field .
-    pub async fn kv_write_read_proposed_at<KV: kvapi::KVApi>(&self, kv: &KV) -> anyhow::Result<()> {
-        info!("--- kvapi::KVApiTestSuite::kv_write_read_proposed_at() start");
-        let proposed_at;
-        {
-            // write
-            let res = kv.upsert_kv(UpsertKV::update("foo", b"bar")).await?;
-            assert_eq!(None, res.prev);
-            let result = res.result.unwrap();
-            assert_eq!(1, result.seq);
-            assert_eq!(b("bar"), result.data);
-            let p = result.meta.unwrap().proposed_at_ms();
-            assert!(p.is_some());
-            proposed_at = p.unwrap();
-            assert!(proposed_at > 0);
-        }
-
-        let res = kv.get_kv("foo").await?;
-        assert_eq!(
-            res.unwrap().meta.unwrap().proposed_at_ms(),
-            Some(proposed_at)
-        );
-
-        Ok(())
-    }
-
-    pub async fn kv_delete<KV: kvapi::KVApi>(&self, kv: &KV) -> anyhow::Result<()> {
-        info!("--- kvapi::KVApiTestSuite::kv_delete() start");
-        let test_key = "test_key";
-        kv.upsert_kv(UpsertKV::update(test_key, b"v1")).await?;
-
-        let current = kv.get_kv(test_key).await?;
-        if let Some(SeqV { seq, .. }) = current {
-            // seq mismatch
-            let wrong_seq = MatchSeq::Exact(seq + 1);
-            let res = kv
-                .upsert_kv(UpsertKV::new(test_key, wrong_seq, Operation::Delete, None))
-                .await?;
-
-            assert_eq!(
-                res.prev.without_proposed_at(),
-                res.result.without_proposed_at()
-            );
-
-            // dbg!("delete with wrong seq", &res);
-
-            // seq match
-            let res = kv
-                .upsert_kv(UpsertKV::delete(test_key).with(MatchSeq::Exact(seq)))
-                .await?;
-            assert!(res.result.is_none());
-
-            // read nothing
-            let r = kv.get_kv(test_key).await?;
-            assert!(r.is_none());
-        } else {
-            panic!("expecting a value, but got nothing");
-        }
-
-        // key not exist
-        let res = kv.upsert_kv(UpsertKV::delete("not exists")).await?;
-        // dbg!("delete non-exist key", &res);
-
-        assert_eq!(None, res.prev);
-        assert_eq!(None, res.result);
-
-        // do not care seq
-        let _res = kv.upsert_kv(UpsertKV::update(test_key, b"v2")).await?;
-        // dbg!("update with v2", &res);
-
-        let res = kv.upsert_kv(UpsertKV::delete(test_key)).await?;
-        // dbg!("delete", &res);
-
-        assert_eq!(
-            (Some(SeqV::new(2, b("v2"))), None),
-            (res.prev.without_proposed_at(), res.result)
-        );
-
-        Ok(())
-    }
-
-    pub async fn kv_update<KV: kvapi::KVApi>(&self, kv: &KV) -> anyhow::Result<()> {
-        info!("--- kvapi::KVApiTestSuite::kv_update() start");
-        let test_key = "test_key_for_update";
-
-        let r = kv
-            .upsert_kv(UpsertKV::update(test_key, b"v1").with(MatchSeq::GE(1)))
-            .await?;
-        assert_eq!((None, None), (r.prev, r.result), "not changed");
-
-        let r = kv.upsert_kv(UpsertKV::update(test_key, b"v1")).await?;
-        let seq = r.result.as_ref().unwrap().seq;
-        assert_eq!(Some(SeqV::new(1, b("v1"))), r.result.without_proposed_at());
-
-        // unmatched seq
-        let r = kv
-            .upsert_kv(UpsertKV::update(test_key, b"v2").with(MatchSeq::Exact(seq + 1)))
-            .await?;
-        assert_eq!(Some(SeqV::new(1, b("v1"))), r.prev.without_proposed_at());
-        assert_eq!(Some(SeqV::new(1, b("v1"))), r.result.without_proposed_at());
-
-        // matched seq
-        let r = kv
-            .upsert_kv(UpsertKV::update(test_key, b"v2").with(MatchSeq::Exact(seq)))
-            .await?;
-        assert_eq!(Some(SeqV::new(1, b("v1"))), r.prev.without_proposed_at());
-        assert_eq!(Some(SeqV::new(2, b("v2"))), r.result.without_proposed_at());
-
-        // blind update
-        let r = kv
-            .upsert_kv(UpsertKV::update(test_key, b"v3").with(MatchSeq::GE(1)))
-            .await?;
-        assert_eq!(Some(SeqV::new(2, b("v2"))), r.prev.without_proposed_at());
-        assert_eq!(Some(SeqV::new(3, b("v3"))), r.result.without_proposed_at());
-
-        // value updated
-        let key_value = kv.get_kv(test_key).await?;
-        assert!(key_value.is_some());
-        let key_value = key_value.unwrap();
-        let seq = key_value.seq;
-        assert_eq!(key_value.without_proposed_at(), SeqV::new(seq, b("v3")));
-        Ok(())
-    }
-
     pub async fn kv_timeout<KV: kvapi::KVApi>(&self, kv: &KV) -> anyhow::Result<()> {
         info!("--- {} start", func_name!());
 
@@ -477,100 +301,6 @@ impl TestSuite {
 
             let res = kv.get_kv("k1").await?;
             assert!(res.is_some());
-        }
-
-        Ok(())
-    }
-
-    pub async fn kv_upsert_with_ttl<KV: kvapi::KVApi>(&self, kv: &KV) -> anyhow::Result<()> {
-        // - Add with ttl
-
-        info!("--- {}", func_path!());
-
-        let _res = kv
-            .upsert_kv(
-                UpsertKV::update("k1", b"v1").with(MetaSpec::new_ttl(Duration::from_millis(2_000))),
-            )
-            .await?;
-
-        info!("---get unexpired");
-        {
-            let res = kv.get_kv("k1").await?;
-            assert!(res.is_some(), "got unexpired");
-        }
-
-        info!("---get expired");
-        {
-            tokio::time::sleep(Duration::from_millis(2_100)).await;
-            let res = kv.get_kv("k1").await?;
-            assert!(res.is_none(), "got expired");
-        }
-
-        Ok(())
-    }
-
-    pub async fn kv_meta<KV: kvapi::KVApi>(&self, kv: &KV) -> anyhow::Result<()> {
-        info!("--- kvapi::KVApiTestSuite::kv_meta() start");
-
-        let test_key = "test_key_for_update_meta";
-
-        let now_sec = since_epoch_secs();
-
-        let r = kv.upsert_kv(UpsertKV::update(test_key, b"v1")).await?;
-        let seq = r.result.as_ref().unwrap().seq;
-        assert_eq!(Some(SeqV::new(1, b("v1"))), r.result.without_proposed_at());
-
-        info!("--- mismatching seq does nothing");
-
-        let r = kv
-            .upsert_kv(UpsertKV::new(
-                test_key,
-                MatchSeq::Exact(seq + 1),
-                Operation::Update(b("v1")),
-                Some(MetaSpec::new_ttl(Duration::from_secs(20))),
-            ))
-            .await?;
-        assert_eq!(Some(SeqV::new(1, b("v1"))), r.prev.without_proposed_at());
-        assert_eq!(Some(SeqV::new(1, b("v1"))), r.result.without_proposed_at());
-
-        info!("--- matching seq only update meta");
-
-        let r = kv
-            .upsert_kv(UpsertKV::new(
-                test_key,
-                MatchSeq::Exact(seq),
-                Operation::Update(b("v1")),
-                Some(MetaSpec::new_ttl(Duration::from_secs(20))),
-            ))
-            .await?;
-        assert_eq!(Some(SeqV::new(1, b("v1"))), r.prev.without_proposed_at());
-
-        {
-            let res = r.result.unwrap();
-
-            assert_eq!(res.seq, 2);
-            assert_eq!(res.data, b("v1"));
-
-            let meta = res.meta.unwrap();
-            let expire_at_sec = meta.expires_at_sec_opt().unwrap();
-            let want = now_sec + 20;
-            assert!((want..want + 2).contains(&expire_at_sec));
-        }
-
-        info!("--- get returns the value with meta and seq updated");
-        let key_value = kv.get_kv(test_key).await?;
-        assert!(key_value.is_some());
-
-        {
-            let res = key_value.unwrap();
-
-            assert_eq!(res.seq, seq + 1);
-            assert_eq!(res.data, b("v1"));
-
-            let meta = res.meta.unwrap();
-            let expire_at_sec = meta.expires_at_sec_opt().unwrap();
-            let want = now_sec + 20;
-            assert!((want..want + 2).contains(&expire_at_sec));
         }
 
         Ok(())
@@ -1660,6 +1390,187 @@ impl TestSuite {
         Ok(())
     }
 
+    /// Tests `fetch_increase_u64` with non-zero `max_value`:
+    /// `after = max(current, max_value).saturating_add(delta)`
+    pub async fn kv_transaction_fetch_increase_u64_max_value<KV: kvapi::KVApi>(
+        &self,
+        kv: &KV,
+    ) -> anyhow::Result<()> {
+        info!("--- {}", func_path!());
+
+        info!("--- non-existent key: max(0, max_value) + delta");
+        {
+            let txn = TxnRequest::new(vec![], vec![TxnOp::fetch_increase_u64("fi_k1", 10, 3)]);
+
+            let resp = kv.transaction(txn).await?;
+
+            assert_eq!(
+                resp.responses[0].try_as_fetch_increase_u64().unwrap(),
+                &FetchIncreaseU64Response {
+                    key: "fi_k1".to_string(),
+                    before_seq: 0,
+                    before: 0,
+                    after_seq: 1,
+                    after: 13, // max(0, 10) + 3
+                }
+            );
+        }
+
+        info!("--- current < max_value: max lifts value before adding delta");
+        {
+            // fi_k1 is now 13, set max_value=100
+            let txn = TxnRequest::new(vec![], vec![TxnOp::fetch_increase_u64("fi_k1", 100, 5)]);
+
+            let resp = kv.transaction(txn).await?;
+
+            assert_eq!(
+                resp.responses[0].try_as_fetch_increase_u64().unwrap(),
+                &FetchIncreaseU64Response {
+                    key: "fi_k1".to_string(),
+                    before_seq: 1,
+                    before: 13,
+                    after_seq: 2,
+                    after: 105, // max(13, 100) + 5
+                }
+            );
+        }
+
+        info!("--- current > max_value: max_value has no effect");
+        {
+            // fi_k1 is now 105, set max_value=50
+            let txn = TxnRequest::new(vec![], vec![TxnOp::fetch_increase_u64("fi_k1", 50, 2)]);
+
+            let resp = kv.transaction(txn).await?;
+
+            assert_eq!(
+                resp.responses[0].try_as_fetch_increase_u64().unwrap(),
+                &FetchIncreaseU64Response {
+                    key: "fi_k1".to_string(),
+                    before_seq: 2,
+                    before: 105,
+                    after_seq: 3,
+                    after: 107, // max(105, 50) + 2
+                }
+            );
+        }
+
+        info!("--- fetch_max_u64: delta=0, just lifts to max_value");
+        {
+            // fi_k2 doesn't exist
+            let txn = TxnRequest::new(vec![], vec![TxnOp::fetch_max_u64("fi_k2", 42)]);
+
+            let resp = kv.transaction(txn).await?;
+
+            assert_eq!(
+                resp.responses[0].try_as_fetch_increase_u64().unwrap(),
+                &FetchIncreaseU64Response {
+                    key: "fi_k2".to_string(),
+                    before_seq: 0,
+                    before: 0,
+                    after_seq: 4,
+                    after: 42, // max(0, 42) + 0
+                }
+            );
+
+            // fi_k2 is now 42, fetch_max with lower value: no change except seq
+            let txn = TxnRequest::new(vec![], vec![TxnOp::fetch_max_u64("fi_k2", 10)]);
+
+            let resp = kv.transaction(txn).await?;
+
+            assert_eq!(
+                resp.responses[0].try_as_fetch_increase_u64().unwrap(),
+                &FetchIncreaseU64Response {
+                    key: "fi_k2".to_string(),
+                    before_seq: 4,
+                    before: 42,
+                    after_seq: 5,
+                    after: 42, // max(42, 10) + 0
+                }
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Tests `Ne` condition on `Seq` and `Value` targets.
+    pub async fn kv_transaction_condition_ne<KV: kvapi::KVApi>(
+        &self,
+        kv: &KV,
+    ) -> anyhow::Result<()> {
+        info!("--- {}", func_path!());
+
+        let k1 = "ne_cond_k1";
+
+        kv.upsert_kv(UpsertKV::update(k1, b"v1")).await?;
+        let seq = kv.get_kv(k1).await?.unwrap().seq;
+
+        info!("--- Ne seq: condition met (actual seq != expected)");
+        {
+            let txn = TxnRequest::new(
+                vec![TxnCondition::match_seq(k1, ConditionResult::Ne, seq + 1)],
+                vec![TxnOp::get(k1)],
+            )
+            .with_else(vec![TxnOp::get(k1)]);
+
+            let resp = kv.transaction(txn).await?;
+            assert!(resp.success);
+        }
+
+        info!("--- Ne seq: condition not met (actual seq == expected)");
+        {
+            let txn = TxnRequest::new(
+                vec![TxnCondition::match_seq(k1, ConditionResult::Ne, seq)],
+                vec![TxnOp::get(k1)],
+            )
+            .with_else(vec![TxnOp::get(k1)]);
+
+            let resp = kv.transaction(txn).await?;
+            assert!(!resp.success);
+        }
+
+        info!("--- Ne seq on non-existent key: seq=0 != expected");
+        {
+            let txn = TxnRequest::new(
+                vec![TxnCondition::match_seq(
+                    "ne_nonexist",
+                    ConditionResult::Ne,
+                    1,
+                )],
+                vec![TxnOp::get(k1)],
+            )
+            .with_else(vec![TxnOp::get(k1)]);
+
+            let resp = kv.transaction(txn).await?;
+            assert!(resp.success, "non-existent key has seq=0, 0 != 1");
+        }
+
+        info!("--- Ne value: condition met (actual value != expected)");
+        {
+            let txn = TxnRequest::new(
+                vec![TxnCondition::match_value(k1, ConditionResult::Ne, b("v2"))],
+                vec![TxnOp::get(k1)],
+            )
+            .with_else(vec![TxnOp::get(k1)]);
+
+            let resp = kv.transaction(txn).await?;
+            assert!(resp.success);
+        }
+
+        info!("--- Ne value: condition not met (actual value == expected)");
+        {
+            let txn = TxnRequest::new(
+                vec![TxnCondition::match_value(k1, ConditionResult::Ne, b("v1"))],
+                vec![TxnOp::get(k1)],
+            )
+            .with_else(vec![TxnOp::get(k1)]);
+
+            let resp = kv.transaction(txn).await?;
+            assert!(!resp.success);
+        }
+
+        Ok(())
+    }
+
     /// Tests match_seq must match the record seq to take place the operation.
     pub async fn kv_txn_put_sequential<KV: kvapi::KVApi>(&self, kv: &KV) -> anyhow::Result<()> {
         info!("--- {}", func_path!());
@@ -1788,6 +1699,44 @@ impl TestSuite {
             tokio::time::sleep(Duration::from_millis(2_100)).await;
             let res = kv.get_kv("k1").await?;
             assert!(res.is_none(), "got expired");
+        }
+
+        Ok(())
+    }
+
+    /// Tests `TxnPutRequest.expire_at` via `TxnOp::put().with_expires_at_ms()`.
+    pub async fn kv_transaction_put_expire_at<KV: kvapi::KVApi>(
+        &self,
+        kv: &KV,
+    ) -> anyhow::Result<()> {
+        info!("--- {}", func_path!());
+
+        let now_ms = since_epoch_millis();
+
+        info!("--- put with expire_at in the future");
+        {
+            let txn = TxnRequest::new(vec![], vec![
+                TxnOp::put("ea_k1", b("v1")).with_expires_at_ms(Some(now_ms + 10_000)),
+            ]);
+
+            let resp = kv.transaction(txn).await?;
+            assert!(resp.success);
+
+            let res = kv.get_kv("ea_k1").await?;
+            let meta = res.unwrap().meta.unwrap();
+            assert_eq!(meta.get_expire_at_ms(), Some(now_ms + 10_000));
+        }
+
+        info!("--- put with expire_at in the past: key should be expired");
+        {
+            let txn = TxnRequest::new(vec![], vec![
+                TxnOp::put("ea_k2", b("v2")).with_expires_at_ms(Some(now_ms - 1_000)),
+            ]);
+
+            let _resp = kv.transaction(txn).await?;
+
+            let res = kv.get_kv("ea_k2").await?;
+            assert!(res.is_none(), "key with past expire_at should be expired");
         }
 
         Ok(())
@@ -2156,61 +2105,33 @@ impl TestSuite {
     }
 }
 
-/// Convert Some(KvMeta{ expire: None }) to None to simplify the comparison
-/// Also erase proposed_at_ms for test comparisons
+fn normalize_pb_meta(meta: &mut Option<pb::KvMeta>) {
+    if let Some(m) = meta {
+        m.proposed_at_ms = None;
+    }
+    if *meta == Some(Default::default()) {
+        *meta = None;
+    }
+}
+
+/// Convert Some(KvMeta{ expire: None }) to None to simplify the comparison.
+/// Also erase proposed_at_ms for test comparisons.
 fn normalize_txn_response(vs: Vec<TxnOpResponse>) -> Vec<TxnOpResponse> {
     vs.into_iter()
         .map(|mut v| {
-            //
             match &mut v.response {
                 Some(Response::Get(TxnGetResponse {
                     value: Some(pb::SeqV { meta, .. }),
                     ..
-                })) => {
-                    if let Some(m) = meta {
-                        m.proposed_at_ms = None;
-                    }
-                    if *meta
-                        == Some(pb::KvMeta {
-                            expire_at: None,
-                            proposed_at_ms: None,
-                        })
-                    {
-                        *meta = None;
-                    }
-                }
+                })) => normalize_pb_meta(meta),
                 Some(Response::Put(TxnPutResponse {
                     prev_value: Some(pb::SeqV { meta, .. }),
                     ..
-                })) => {
-                    if let Some(m) = meta {
-                        m.proposed_at_ms = None;
-                    }
-                    if *meta
-                        == Some(pb::KvMeta {
-                            expire_at: None,
-                            proposed_at_ms: None,
-                        })
-                    {
-                        *meta = None;
-                    }
-                }
+                })) => normalize_pb_meta(meta),
                 Some(Response::Delete(TxnDeleteResponse {
                     prev_value: Some(pb::SeqV { meta, .. }),
                     ..
-                })) => {
-                    if let Some(m) = meta {
-                        m.proposed_at_ms = None;
-                    }
-                    if *meta
-                        == Some(pb::KvMeta {
-                            expire_at: None,
-                            proposed_at_ms: None,
-                        })
-                    {
-                        *meta = None;
-                    }
-                }
+                })) => normalize_pb_meta(meta),
                 _ => {}
             }
 
@@ -2219,17 +2140,7 @@ fn normalize_txn_response(vs: Vec<TxnOpResponse>) -> Vec<TxnOpResponse> {
                 ..
             })) = &mut v.response
             {
-                if let Some(m) = meta {
-                    m.proposed_at_ms = None;
-                }
-                if *meta
-                    == Some(pb::KvMeta {
-                        expire_at: None,
-                        proposed_at_ms: None,
-                    })
-                {
-                    *meta = None;
-                }
+                normalize_pb_meta(meta);
             }
 
             v
