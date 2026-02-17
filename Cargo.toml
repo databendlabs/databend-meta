@@ -55,7 +55,7 @@ byteorder = "1.5.0"
 chrono = { version = "0.4.40", features = ["serde"] }
 deepsize = "0.2.0"
 derive_more = { version = "2.1.1", features = ["full"] }
-display-more = "0.2.1"
+display-more = "0.2.5"
 env_logger = "0.11"
 fastrace = { version = "0.7.14", features = ["enable"] }
 feature-set = "0.1.1"

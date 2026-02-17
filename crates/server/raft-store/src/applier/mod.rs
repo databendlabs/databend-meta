@@ -25,35 +25,21 @@ use databend_meta_types::AppliedState;
 use databend_meta_types::Change;
 use databend_meta_types::Cmd;
 use databend_meta_types::CmdContext;
-use databend_meta_types::ConditionResult;
 use databend_meta_types::Interval;
 use databend_meta_types::MatchSeq;
 use databend_meta_types::MetaSpec;
 use databend_meta_types::SeqV;
-use databend_meta_types::TxnCondition;
-use databend_meta_types::TxnDeleteByPrefixRequest;
-use databend_meta_types::TxnDeleteByPrefixResponse;
-use databend_meta_types::TxnDeleteRequest;
-use databend_meta_types::TxnDeleteResponse;
-use databend_meta_types::TxnGetRequest;
 use databend_meta_types::TxnOpResponse;
-use databend_meta_types::TxnPutRequest;
-use databend_meta_types::TxnPutResponse;
-use databend_meta_types::TxnReply;
-use databend_meta_types::TxnRequest;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::With;
+use databend_meta_types::kv_transaction;
+use databend_meta_types::kv_transaction::operation;
 use databend_meta_types::node::Node;
 use databend_meta_types::protobuf as pb;
-use databend_meta_types::protobuf::BooleanExpression;
-use databend_meta_types::protobuf::FetchIncreaseU64;
-use databend_meta_types::protobuf::boolean_expression::CombiningOperator;
 use databend_meta_types::raft_types::Entry;
 use databend_meta_types::raft_types::EntryPayload;
 use databend_meta_types::raft_types::StoredMembership;
 use databend_meta_types::sys_data::SysData;
-use databend_meta_types::txn_condition::Target;
-use databend_meta_types::txn_op::Request;
 use display_more::DisplayUnixTimeStampExt;
 use fastrace::func_name;
 use futures::stream::TryStreamExt;
@@ -63,7 +49,6 @@ use log::debug;
 use log::error;
 use log::info;
 use log::warn;
-use num::FromPrimitive;
 use seq_marked::SeqValue;
 use state_machine_api::StateMachineApi;
 
@@ -223,7 +208,12 @@ where SM: StateMachineApi<SysData> + 'static
 
             Cmd::UpsertKV(upsert_kv) => self.apply_upsert_kv(upsert_kv).await?,
 
-            Cmd::Transaction(txn) => self.apply_txn(txn).await?,
+            Cmd::Transaction(txn) => {
+                let kv_transaction: kv_transaction::Transaction = txn.into();
+                self.apply_kv_transaction(&kv_transaction).await?
+            }
+
+            Cmd::KvTransaction(txn) => self.apply_kv_transaction(txn).await?,
         };
 
         debug!("apply_result: cmd: {}; res: {}", cmd, res);
@@ -339,255 +329,170 @@ where SM: StateMachineApi<SysData> + 'static
     }
 
     #[fastrace::trace]
-    pub(crate) async fn apply_txn(&mut self, req: &TxnRequest) -> Result<AppliedState, io::Error> {
-        debug!("apply txn cmd {}: {}", self.cmd_ctx, req);
-
-        // 1. Evaluate conditional operations one by one.
-        //    Once one of them is successful, execute the corresponding operations and return.
-        //    Otherwise, try next.
-        for (i, conditional) in req.operations.iter().enumerate() {
-            let success = if let Some(predicate) = &conditional.predicate {
-                self.eval_bool_expression(predicate).await?
-            } else {
-                true
-            };
-
-            if success {
-                let mut resp: TxnReply = TxnReply::new(format!("operation:{i}"));
-
-                for op in &conditional.operations {
-                    if let Some(request) = &op.request {
-                        let r = self.txn_execute_operation(request).await?;
-                        resp.responses.push(r);
-                    }
-                }
-
-                return Ok(AppliedState::TxnReply(resp));
-            }
-        }
-
-        // 2. For backward compatibility, evaluate the `condition` as the last conditional-operation.
-        //    If success, execute the `if_then` operations
-
-        let success = self.eval_txn_conditions(&req.condition).await?;
-
-        let (ops, path) = if success {
-            (&req.if_then, "then")
-        } else {
-            (&req.else_then, "else")
-        };
-
-        let mut resp: TxnReply = TxnReply::new(path);
-
-        for op in ops {
-            if let Some(request) = &op.request {
-                let r = self.txn_execute_operation(request).await?;
-                resp.responses.push(r);
-            }
-        }
-
-        Ok(AppliedState::TxnReply(resp))
-    }
-
-    #[fastrace::trace]
-    async fn eval_txn_conditions(
+    pub(crate) async fn apply_kv_transaction(
         &mut self,
-        condition: &Vec<TxnCondition>,
-    ) -> Result<bool, io::Error> {
-        for cond in condition {
-            debug!(condition :% =(cond); "txn_execute_condition");
+        txn: &kv_transaction::Transaction,
+    ) -> Result<AppliedState, io::Error> {
+        debug!("apply_kv_transaction {}: {}", self.cmd_ctx, txn);
 
-            if !self.eval_one_condition(cond).await? {
-                return Ok(false);
+        for (i, branch) in txn.branches.iter().enumerate() {
+            let matched = self.eval_predicate(&branch.predicate).await?;
+
+            if matched {
+                let mut responses = Vec::with_capacity(branch.operations.len());
+                for op in &branch.operations {
+                    let r = self.execute_op(op).await?;
+                    responses.push(r);
+                }
+
+                return Ok(AppliedState::KvTransactionReply(pb::KvTransactionReply {
+                    executed_branch: Some(i as u32),
+                    responses,
+                }));
             }
         }
 
-        Ok(true)
+        Ok(AppliedState::KvTransactionReply(pb::KvTransactionReply {
+            executed_branch: None,
+            responses: vec![],
+        }))
     }
 
-    fn eval_bool_expression<'x>(
+    fn eval_predicate<'x>(
         &'x mut self,
-        tree: &'x BooleanExpression,
+        pred: &'x kv_transaction::Predicate,
     ) -> BoxFuture<'x, Result<bool, io::Error>> {
-        let op = tree.operator();
-
         let fu = async move {
-            match op {
-                CombiningOperator::And => {
-                    for expr in tree.sub_expressions.iter() {
-                        if !self.eval_bool_expression(expr).await? {
+            match pred {
+                kv_transaction::Predicate::And(children) => {
+                    for child in children {
+                        if !self.eval_predicate(child).await? {
                             return Ok(false);
                         }
                     }
-
-                    for cond in tree.conditions.iter() {
-                        if !self.eval_one_condition(cond).await? {
-                            return Ok(false);
-                        }
-                    }
+                    Ok(true)
                 }
-                CombiningOperator::Or => {
-                    for expr in tree.sub_expressions.iter() {
-                        if self.eval_bool_expression(expr).await? {
+                kv_transaction::Predicate::Or(children) => {
+                    for child in children {
+                        if self.eval_predicate(child).await? {
                             return Ok(true);
                         }
                     }
-
-                    for cond in tree.conditions.iter() {
-                        if self.eval_one_condition(cond).await? {
-                            return Ok(true);
-                        }
-                    }
+                    // Empty OR returns true (vacuous truth, consistent with old behavior)
+                    Ok(true)
                 }
+                kv_transaction::Predicate::Leaf(cond) => self.eval_condition(cond).await,
             }
-            Ok(true)
         };
 
         Box::pin(fu)
     }
 
     #[fastrace::trace]
-    async fn eval_one_condition(&self, cond: &TxnCondition) -> Result<bool, io::Error> {
-        debug!(cond :% =(cond); "txn_execute_one_condition");
+    async fn eval_condition(&self, cond: &kv_transaction::Condition) -> Result<bool, io::Error> {
+        debug!("eval_condition: key={} cmp={:?}", cond.key, cond.op);
 
-        let key = &cond.key;
-        // No expiration check:
-        // If the key expired, it should be treated as `None` value.
-        // sm.get_kv() does not check expiration.
-        // Expired keys are cleaned before applying a log, see: `clean_expired_kvs()`.
-        let seqv = self.get_maybe_expired_kv_with_timing(key).await?;
+        let seqv = self.get_maybe_expired_kv_with_timing(&cond.key).await?;
 
         debug!(
-            "txn_execute_one_condition: key: {} curr: seq:{} value:{:?}",
-            key,
+            "eval_condition: key={} seq={} value={:?}",
+            cond.key,
             seqv.seq(),
             seqv.value()
         );
 
-        let op = FromPrimitive::from_i32(cond.expected);
-        let Some(op) = op else {
-            warn!(
-                "Invalid condition: {}; TxnCondition: {}",
-                cond.expected, cond
-            );
-            return Ok(false);
-        };
-
-        let Some(against) = &cond.target else {
-            return Ok(false);
-        };
-
-        let positive = match against {
-            Target::Seq(against_seq) => Self::eval_compare(seqv.seq(), op, *against_seq),
-            Target::Value(against_value) => {
+        let positive = match &cond.target {
+            kv_transaction::Operand::Seq(against_seq) => {
+                Self::eval_compare(seqv.seq(), cond.op, *against_seq)
+            }
+            kv_transaction::Operand::Value(against_value) => {
                 if let Some(stored) = seqv.value() {
-                    Self::eval_compare(stored, op, against_value)
+                    Self::eval_compare(stored, cond.op, against_value)
                 } else {
                     false
                 }
             }
-            Target::KeysWithPrefix(against_n) => {
+            kv_transaction::Operand::KeysWithPrefix(against_n) => {
                 let against_n = *against_n;
-
-                let strm = self.list_kv_with_timing(key).await?;
-                // Taking at most `against_n + 1` keys is just enough for every predicate.
+                let strm = self.list_kv_with_timing(&cond.key).await?;
                 let strm = strm.take((against_n + 1) as usize);
                 let count: u64 = strm.try_fold(0, |acc, _| ready(Ok(acc + 1))).await?;
-
-                Self::eval_compare(count, op, against_n)
+                Self::eval_compare(count, cond.op, against_n)
             }
         };
         Ok(positive)
     }
 
-    fn eval_compare<T>(left: T, op: ConditionResult, right: T) -> bool
+    fn eval_compare<T>(left: T, op: kv_transaction::CompareOperator, right: T) -> bool
     where T: PartialOrd + PartialEq {
-        use ConditionResult::*;
         match op {
-            Eq => left == right,
-            Gt => left > right,
-            Lt => left < right,
-            Ne => left != right,
-            Ge => left >= right,
-            Le => left <= right,
+            kv_transaction::CompareOperator::Eq => left == right,
+            kv_transaction::CompareOperator::Ne => left != right,
+            kv_transaction::CompareOperator::Lt => left < right,
+            kv_transaction::CompareOperator::Le => left <= right,
+            kv_transaction::CompareOperator::Gt => left > right,
+            kv_transaction::CompareOperator::Ge => left >= right,
         }
     }
 
     #[fastrace::trace]
-    async fn txn_execute_operation(
+    async fn execute_op(
         &mut self,
-        request: &pb::txn_op::Request,
+        op: &kv_transaction::Operation,
     ) -> Result<TxnOpResponse, io::Error> {
-        debug!("{}: request={}", func_name!(), request);
+        debug!("{}: op={:?}", func_name!(), op);
 
-        let resp = match request {
-            Request::Get(get) => {
-                let r = self.txn_execute_get(get).await?;
-                TxnOpResponse::new(r)
+        let resp = match op {
+            kv_transaction::Operation::Get(op) => TxnOpResponse::new(self.execute_get(op).await?),
+            kv_transaction::Operation::Put(op) => TxnOpResponse::new(self.execute_put(op).await?),
+            kv_transaction::Operation::Delete(op) => {
+                TxnOpResponse::new(self.execute_delete(op).await?)
             }
-            Request::Put(put) => {
-                let r = self.txn_execute_put(put).await?;
-                TxnOpResponse::new(r)
+            kv_transaction::Operation::DeleteByPrefix(op) => {
+                TxnOpResponse::new(self.execute_delete_by_prefix(op).await?)
             }
-            Request::Delete(delete) => {
-                let r = self.txn_execute_delete(delete).await?;
-                TxnOpResponse::new(r)
+            kv_transaction::Operation::FetchIncreaseU64(op) => {
+                TxnOpResponse::new(self.execute_fetch_increase_u64(op).await?)
             }
-            Request::DeleteByPrefix(delete_by_prefix) => {
-                let r = self.txn_execute_delete_by_prefix(delete_by_prefix).await?;
-                TxnOpResponse::new(r)
-            }
-            Request::FetchIncreaseU64(fetch_increase_u64) => {
-                let r = self
-                    .txn_execute_fetch_increase_u64(fetch_increase_u64)
-                    .await?;
-                TxnOpResponse::new(r)
-            }
-            Request::PutSequential(put_sequential) => {
-                let r = self.txn_execute_put_sequential(put_sequential).await?;
-                TxnOpResponse::new(r)
+            kv_transaction::Operation::PutSequential(op) => {
+                TxnOpResponse::new(self.execute_put_sequential(op).await?)
             }
         };
 
         Ok(resp)
     }
 
-    async fn txn_execute_get(&self, get: &TxnGetRequest) -> Result<pb::TxnGetResponse, io::Error> {
-        let sv = self.get_maybe_expired_kv_with_timing(&get.key).await?;
+    async fn execute_get(&self, op: &operation::Get) -> Result<pb::TxnGetResponse, io::Error> {
+        let sv = self.get_maybe_expired_kv_with_timing(&op.key).await?;
 
-        let get_resp = pb::TxnGetResponse {
-            key: get.key.clone(),
+        Ok(pb::TxnGetResponse {
+            key: op.key.clone(),
             value: sv.map(pb::SeqV::from),
-        };
-
-        Ok(get_resp)
+        })
     }
 
-    async fn txn_execute_put(&mut self, put: &TxnPutRequest) -> Result<TxnPutResponse, io::Error> {
-        let upsert = UpsertKV::update(&put.key, &put.value).with(MetaSpec::new(
-            put.expire_at,
-            put.ttl_ms.map(Interval::from_millis),
+    async fn execute_put(&mut self, op: &operation::Put) -> Result<pb::TxnPutResponse, io::Error> {
+        let upsert = UpsertKV::update(&op.key, &op.value).with(MetaSpec::new(
+            op.expire_at_ms,
+            op.ttl_ms.map(Interval::from_millis),
         ));
 
         let (prev, result) = self.upsert_kv(&upsert).await?;
 
-        let put_resp = TxnPutResponse {
-            key: put.key.clone(),
+        Ok(pb::TxnPutResponse {
+            key: op.key.clone(),
             prev_value: prev.map(pb::SeqV::from),
             current: result.map(pb::SeqV::from),
-        };
-
-        Ok(put_resp)
+        })
     }
 
-    async fn txn_execute_delete(
+    async fn execute_delete(
         &mut self,
-        delete: &TxnDeleteRequest,
-    ) -> Result<TxnDeleteResponse, io::Error> {
-        let upsert = UpsertKV::delete(&delete.key);
+        op: &operation::Delete,
+    ) -> Result<pb::TxnDeleteResponse, io::Error> {
+        let upsert = UpsertKV::delete(&op.key);
 
-        // If `delete.match_seq` is `Some`, only delete the entry with the exact `seq`.
-        let upsert = if let Some(seq) = delete.match_seq {
+        let upsert = if let Some(seq) = op.match_seq {
             upsert.with(MatchSeq::Exact(seq))
         } else {
             upsert
@@ -596,20 +501,18 @@ where SM: StateMachineApi<SysData> + 'static
         let (prev, result) = self.upsert_kv(&upsert).await?;
         let is_deleted = prev.is_some() && result.is_none();
 
-        let del_resp = TxnDeleteResponse {
-            key: delete.key.clone(),
+        Ok(pb::TxnDeleteResponse {
+            key: op.key.clone(),
             success: is_deleted,
             prev_value: prev.map(pb::SeqV::from),
-        };
-
-        Ok(del_resp)
+        })
     }
 
-    async fn txn_execute_delete_by_prefix(
+    async fn execute_delete_by_prefix(
         &mut self,
-        delete_by_prefix: &TxnDeleteByPrefixRequest,
-    ) -> Result<TxnDeleteByPrefixResponse, io::Error> {
-        let mut strm = self.list_kv_with_timing(&delete_by_prefix.prefix).await?;
+        op: &operation::DeleteByPrefix,
+    ) -> Result<pb::TxnDeleteByPrefixResponse, io::Error> {
+        let mut strm = self.list_kv_with_timing(&op.prefix).await?;
 
         let mut count = 0;
         while let Some((key, _seq_v)) = strm.try_next().await? {
@@ -618,19 +521,17 @@ where SM: StateMachineApi<SysData> + 'static
             count += 1;
         }
 
-        let del_resp = TxnDeleteByPrefixResponse {
-            prefix: delete_by_prefix.prefix.clone(),
+        Ok(pb::TxnDeleteByPrefixResponse {
+            prefix: op.prefix.clone(),
             count,
-        };
-
-        Ok(del_resp)
+        })
     }
 
-    async fn txn_execute_fetch_increase_u64(
+    async fn execute_fetch_increase_u64(
         &mut self,
-        req: &FetchIncreaseU64,
+        op: &operation::FetchIncreaseU64,
     ) -> Result<pb::FetchIncreaseU64Response, io::Error> {
-        let before_seqv = self.get_maybe_expired_kv_with_timing(&req.key).await?;
+        let before_seqv = self.get_maybe_expired_kv_with_timing(&op.key).await?;
 
         let before_seq = before_seqv.seq();
 
@@ -651,10 +552,10 @@ where SM: StateMachineApi<SysData> + 'static
             0
         };
 
-        if let Some(match_seq) = req.match_seq {
+        if let Some(match_seq) = op.match_seq {
             if match_seq != before_seq {
                 let response = pb::FetchIncreaseU64Response::new_unchanged(
-                    &req.key,
+                    &op.key,
                     SeqV::new(before_seq, before),
                 );
                 return Ok(response);
@@ -662,16 +563,16 @@ where SM: StateMachineApi<SysData> + 'static
         }
 
         // First take max, then add delta
-        let after = std::cmp::max(before, req.max_value).saturating_add_signed(req.delta);
+        let after = std::cmp::max(before, op.floor).saturating_add_signed(op.delta);
 
         let (_prev, result) = {
             let after_value = serde_json::to_vec(&after).expect("serialize u64 to json");
-            let upsert = UpsertKV::update(&req.key, &after_value);
+            let upsert = UpsertKV::update(&op.key, &after_value);
             self.upsert_kv(&upsert).await?
         };
 
         let response = pb::FetchIncreaseU64Response::new(
-            &req.key,
+            &op.key,
             SeqV::new(before_seq, before),
             SeqV::new(result.seq(), after),
         );
@@ -679,42 +580,42 @@ where SM: StateMachineApi<SysData> + 'static
         Ok(response)
     }
 
-    async fn txn_execute_put_sequential(
+    async fn execute_put_sequential(
         &mut self,
-        req: &pb::PutSequential,
-    ) -> Result<TxnPutResponse, io::Error> {
-        // Step 1. Build sequential key
+        op: &operation::PutSequential,
+    ) -> Result<pb::TxnPutResponse, io::Error> {
+        // Step 1. Get next sequence number
 
-        let fetch_increase_u64 = FetchIncreaseU64 {
-            key: req.sequence_key.clone(),
+        let fetch_op = operation::FetchIncreaseU64 {
+            key: op.sequence_key.clone(),
             delta: 1,
             match_seq: None,
-            max_value: 0,
+            floor: 0,
         };
 
-        let fetch_add_response = self
-            .txn_execute_fetch_increase_u64(&fetch_increase_u64)
-            .await?;
-        let next_seq = fetch_add_response.before;
+        let fetch_response = self.execute_fetch_increase_u64(&fetch_op).await?;
+        let next_seq = fetch_response.before;
 
-        let key = req.build_key(next_seq);
+        let key = format!(
+            "{}{}",
+            op.prefix,
+            pb::PutSequential::format_seq_number(next_seq)
+        );
 
-        // Step 2. Insert the key.
+        // Step 2. Insert the key
 
-        let upsert = UpsertKV::update(&key, &req.value).with(MetaSpec::new(
-            req.expires_at_ms,
-            req.ttl_ms.map(Interval::from_millis),
+        let upsert = UpsertKV::update(&key, &op.value).with(MetaSpec::new(
+            op.expire_at_ms,
+            op.ttl_ms.map(Interval::from_millis),
         ));
 
         let (prev, result) = self.upsert_kv(&upsert).await?;
 
-        let put_resp = TxnPutResponse {
+        Ok(pb::TxnPutResponse {
             key,
             prev_value: prev.map(pb::SeqV::from),
             current: result.map(pb::SeqV::from),
-        };
-
-        Ok(put_resp)
+        })
     }
 
     /// Before applying, list expired keys to clean.

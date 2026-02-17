@@ -307,6 +307,17 @@ impl EstablishedClient {
     }
 
     #[async_backtrace::framed]
+    pub async fn kv_transaction(
+        &mut self,
+        request: impl tonic::IntoRequest<pb::KvTransactionRequest>,
+    ) -> Result<Response<pb::KvTransactionReply>, Status> {
+        self.client
+            .kv_transaction(request)
+            .await
+            .update_client(self)
+    }
+
+    #[async_backtrace::framed]
     pub async fn member_list(
         &mut self,
         request: impl tonic::IntoRequest<MemberListRequest>,

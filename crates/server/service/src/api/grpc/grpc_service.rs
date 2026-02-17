@@ -31,7 +31,6 @@ use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TrackingData;
 use databend_meta_types::Endpoint;
 use databend_meta_types::GrpcHelper;
-use databend_meta_types::TxnReply;
 use databend_meta_types::TxnRequest;
 use databend_meta_types::protobuf as pb;
 use databend_meta_types::protobuf::ClientInfo;
@@ -49,6 +48,7 @@ use databend_meta_types::protobuf::MemberListRequest;
 use databend_meta_types::protobuf::RaftReply;
 use databend_meta_types::protobuf::RaftRequest;
 use databend_meta_types::protobuf::StreamItem;
+use databend_meta_types::protobuf::TxnReply;
 use databend_meta_types::protobuf::WatchRequest;
 use databend_meta_types::protobuf::WatchResponse;
 use databend_meta_types::protobuf::meta_service_server::MetaService;
@@ -290,6 +290,22 @@ impl<SP: SpawnApi> MetaServiceImpl<SP> {
         let res = meta_handle.handle_kv_get_many(input).await;
         network_metrics::incr_request_result(res.is_ok());
 
+        res
+    }
+
+    #[fastrace::trace]
+    async fn handle_kv_transaction(
+        &self,
+        request: Request<pb::KvTransactionRequest>,
+    ) -> Result<pb::KvTransactionReply, Status> {
+        let txn = request.into_inner();
+
+        debug!("{}: Received KvTransactionRequest: {:?}", func_name!(), txn);
+
+        let meta_handle = self.try_get_meta_handle()?;
+
+        let res = meta_handle.handle_kv_transaction(txn).await;
+        network_metrics::incr_request_result(res.is_ok());
         res
     }
 
@@ -538,6 +554,31 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
                 GrpcHelper::add_response_meta_leader(&mut resp, endpoint.as_ref());
 
                 Ok(resp)
+            };
+
+            SP::track_future(fut, vec![TrackingData::new_query_id(query_id)]).await
+        })
+        .await
+    }
+
+    async fn kv_transaction(
+        &self,
+        request: Request<pb::KvTransactionRequest>,
+    ) -> Result<Response<pb::KvTransactionReply>, Status> {
+        self.check_token(request.metadata())?;
+
+        let query_id = get_query_id(&request).map(|s| s.to_owned());
+
+        SP::trace_request(func_path!(), request, |request| async move {
+            let fut = async move {
+                network_metrics::incr_recv_bytes(request.get_ref().encoded_len() as u64);
+                let _guard = InFlightWrite::guard();
+
+                let reply = self.handle_kv_transaction(request).await?;
+
+                network_metrics::incr_sent_bytes(reply.encoded_len() as u64);
+
+                Ok(Response::new(reply))
             };
 
             SP::track_future(fut, vec![TrackingData::new_query_id(query_id)]).await

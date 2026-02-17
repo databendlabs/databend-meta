@@ -79,6 +79,8 @@ use databend_meta_types::TxnRequest;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::protobuf::ClientInfo;
 use databend_meta_types::protobuf::ClusterStatus;
+use databend_meta_types::protobuf::KvTransactionReply;
+use databend_meta_types::protobuf::KvTransactionRequest;
 use databend_meta_types::protobuf::MemberListReply;
 use databend_meta_types::protobuf::RaftRequest;
 use databend_meta_types::protobuf::StreamItem;
@@ -254,6 +256,10 @@ impl RequestFor for GetEndpoints {
 
 impl RequestFor for TxnRequest {
     type Reply = TxnReply;
+}
+
+impl RequestFor for KvTransactionRequest {
+    type Reply = KvTransactionReply;
 }
 
 impl RequestFor for GetClusterStatus {

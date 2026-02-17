@@ -32,6 +32,7 @@ use databend_meta_types::TxnReply;
 use databend_meta_types::TxnRequest;
 use databend_meta_types::protobuf::ClientInfo;
 use databend_meta_types::protobuf::ClusterStatus;
+
 use databend_meta_types::protobuf::MemberListReply;
 use databend_meta_types::protobuf::StreamItem;
 use databend_meta_types::protobuf::WatchRequest;
@@ -159,6 +160,14 @@ impl<RT: SpawnApi> ClientHandle<RT> {
     }
 
     pub async fn transaction(&self, txn: TxnRequest) -> Result<TxnReply, MetaError> {
+        self.request(txn).await.map_err(MetaError::from)
+    }
+
+    #[cfg(any(test, feature = "transaction-v2"))]
+    pub async fn transaction_v2(
+        &self,
+        txn: databend_meta_types::protobuf::KvTransactionRequest,
+    ) -> Result<databend_meta_types::protobuf::KvTransactionReply, MetaError> {
         self.request(txn).await.map_err(MetaError::from)
     }
 
