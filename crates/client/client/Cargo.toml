@@ -38,6 +38,9 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 
+[features]
+transaction-v2 = []
+
 [dev-dependencies]
 anyhow = { workspace = true }
 databend-meta-version = { workspace = true }

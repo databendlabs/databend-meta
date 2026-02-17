@@ -21,6 +21,7 @@ pub mod metasrv_grpc_kv_api_restart_cluster;
 pub mod metasrv_grpc_kv_get_many;
 pub mod metasrv_grpc_kv_list;
 pub mod metasrv_grpc_kv_read_v1;
+pub mod metasrv_grpc_kv_transaction;
 pub mod metasrv_grpc_member_list;
 pub mod metasrv_grpc_tls;
 pub mod metasrv_grpc_transaction;

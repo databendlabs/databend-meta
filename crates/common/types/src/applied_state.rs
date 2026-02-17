@@ -16,8 +16,8 @@ use std::fmt;
 use std::fmt::Formatter;
 
 use crate::Change;
-use crate::TxnReply;
 use crate::node::Node;
+use crate::protobuf as pb;
 use crate::protobuf::RaftReply;
 
 /// The state of an applied raft log.
@@ -40,7 +40,7 @@ pub enum AppliedState {
 
     KV(Change<Vec<u8>>),
 
-    TxnReply(TxnReply),
+    KvTransactionReply(pb::KvTransactionReply),
 
     #[try_into(ignore)]
     None,
@@ -56,8 +56,8 @@ impl fmt::Display for AppliedState {
             AppliedState::KV(change) => {
                 write!(f, "KV: {}", change)
             }
-            AppliedState::TxnReply(txnreply) => {
-                write!(f, "Txn: {}", txnreply)
+            AppliedState::KvTransactionReply(reply) => {
+                write!(f, "KvTransaction: {}", reply)
             }
             AppliedState::None => {
                 write!(f, "None")
@@ -73,7 +73,7 @@ impl AppliedState {
             AppliedState::Node { prev, result } => prev != result,
             AppliedState::KV(ch) => ch.is_changed(),
             AppliedState::None => false,
-            AppliedState::TxnReply(txn) => txn.success,
+            AppliedState::KvTransactionReply(reply) => reply.executed_branch.is_some(),
         }
     }
 
@@ -98,7 +98,7 @@ impl AppliedState {
             AppliedState::Node { prev, .. } => prev.is_none(),
             AppliedState::KV(Change { prev, .. }) => prev.is_none(),
             AppliedState::None => true,
-            AppliedState::TxnReply(_txn) => true,
+            AppliedState::KvTransactionReply(_txn) => true,
         }
     }
 
@@ -107,7 +107,7 @@ impl AppliedState {
             AppliedState::Node { result, .. } => result.is_none(),
             AppliedState::KV(Change { result, .. }) => result.is_none(),
             AppliedState::None => true,
-            AppliedState::TxnReply(txn) => !txn.success,
+            AppliedState::KvTransactionReply(reply) => reply.executed_branch.is_none(),
         }
     }
 }

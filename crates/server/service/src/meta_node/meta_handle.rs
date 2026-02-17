@@ -31,14 +31,16 @@ use databend_meta_types::Endpoint;
 use databend_meta_types::LogEntry;
 use databend_meta_types::MetaAPIError;
 use databend_meta_types::Node;
-use databend_meta_types::TxnReply;
 use databend_meta_types::TxnRequest;
 use databend_meta_types::UpsertKV;
+use databend_meta_types::kv_transaction;
+use databend_meta_types::protobuf as pb;
 use databend_meta_types::protobuf::KeysCount;
 use databend_meta_types::protobuf::KeysLayoutRequest;
 use databend_meta_types::protobuf::KvGetManyRequest;
 use databend_meta_types::protobuf::MemberListRequest;
 use databend_meta_types::protobuf::StreamItem;
+use databend_meta_types::protobuf::TxnReply;
 use databend_meta_types::protobuf::WatchRequest;
 use databend_meta_types::protobuf::WatchResponse;
 use databend_meta_types::raft_types::Fatal;
@@ -265,7 +267,9 @@ impl<SP: SpawnApi> MetaHandle<SP> {
                     let applied_state: AppliedState =
                         forward_resp.try_into().expect("expect AppliedState");
 
-                    let txn_reply: TxnReply = applied_state.try_into().expect("expect TxnReply");
+                    let kv_reply: pb::KvTransactionReply =
+                        applied_state.try_into().expect("expect KvTransactionReply");
+                    let txn_reply: TxnReply = kv_reply.into_txn_reply(&txn);
 
                     (ep, txn_reply)
                 })
@@ -274,6 +278,35 @@ impl<SP: SpawnApi> MetaHandle<SP> {
             Box::pin(fu)
         })
         .await
+    }
+
+    pub async fn handle_kv_transaction(
+        &self,
+        txn: pb::KvTransactionRequest,
+    ) -> Result<pb::KvTransactionReply, Status> {
+        let histogram_label = "KvTransactionRequest";
+        let log_msg = format!("KvTransactionRequest: {:?}", txn);
+        let kv_txn: kv_transaction::Transaction = txn.into();
+
+        let res = self
+            .request(move |meta_node| {
+                let fu = async move {
+                    meta_node
+                        .handle_kv_transaction(kv_txn)
+                        .log_elapsed_info(log_msg)
+                        .inspect_elapsed(|_output, total, _busy| {
+                            request_histogram::record(histogram_label, total);
+                        })
+                        .await
+                };
+                Box::pin(fu)
+            })
+            .await;
+
+        match res {
+            Ok(inner) => inner,
+            Err(stopped) => Err(Status::unavailable(stopped.to_string())),
+        }
     }
 
     pub async fn handle_write(

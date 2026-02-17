@@ -18,6 +18,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::TxnRequest;
+use crate::kv_transaction;
 use crate::node::Node;
 use crate::raft_types::NodeId;
 
@@ -59,6 +60,9 @@ pub enum Cmd {
 
     /// Update one or more kv with a transaction.
     Transaction(TxnRequest),
+
+    /// Update one or more kv with a transaction (new API with Rust-native storage types).
+    KvTransaction(kv_transaction::Transaction),
 }
 
 impl fmt::Display for Cmd {
@@ -86,6 +90,9 @@ impl fmt::Display for Cmd {
             }
             Cmd::Transaction(txn) => {
                 write!(f, "txn:{}", txn)
+            }
+            Cmd::KvTransaction(txn) => {
+                write!(f, "kv_transaction:{}", txn)
             }
         }
     }
