@@ -48,14 +48,17 @@ use databend_meta_types::MetaManagementError;
 use databend_meta_types::MetaNetworkError;
 use databend_meta_types::MetaOperationError;
 use databend_meta_types::MetaStartupError;
+use databend_meta_types::kv_transaction;
 use databend_meta_types::node::Node;
 use databend_meta_types::protobuf::KvGetManyRequest;
+use databend_meta_types::protobuf::KvTransactionReply;
 use databend_meta_types::protobuf::StreamItem;
 use databend_meta_types::protobuf::WatchRequest;
 use databend_meta_types::protobuf::WatchResponse;
 use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
 use databend_meta_types::protobuf::raft_service_server::RaftServiceServer;
 use databend_meta_types::protobuf::watch_request::FilterType;
+use databend_meta_types::raft_types::ClientWriteError;
 use databend_meta_types::raft_types::ForwardToLeader;
 use databend_meta_types::raft_types::InitializeError;
 use databend_meta_types::raft_types::MembershipNode;
@@ -1634,6 +1637,36 @@ impl<SP: SpawnApi> MetaNode<SP> {
         let node = self.get_node(&leader_id).await?;
         let addr = node.grpc_api_advertise_address.as_ref()?;
         Endpoint::parse(addr).ok()
+    }
+
+    /// Handle KvTransaction request. Must be leader to process.
+    ///
+    /// If this node is not the leader, returns a `Status` error with leader endpoint in metadata.
+    pub async fn handle_kv_transaction(
+        &self,
+        txn: kv_transaction::Transaction,
+    ) -> Result<KvTransactionReply, Status> {
+        let leader = match self.assume_leader().await {
+            Ok(leader) => leader,
+            Err(forward) => {
+                let endpoint = self.get_leader_endpoint(forward.leader_id).await;
+                return Err(GrpcHelper::status_forward_to_leader(endpoint.as_ref()));
+            }
+        };
+
+        let entry = LogEntry::new(Cmd::KvTransaction(txn));
+        let applied = match leader.write(entry).await {
+            Ok(applied) => applied,
+            Err(RaftError::APIError(ClientWriteError::ForwardToLeader(forward))) => {
+                let endpoint = self.get_leader_endpoint(forward.leader_id).await;
+                return Err(GrpcHelper::status_forward_to_leader(endpoint.as_ref()));
+            }
+            Err(e) => return Err(Status::internal(e.to_string())),
+        };
+
+        let reply: KvTransactionReply = applied.try_into().expect("expect KvTransactionReply");
+
+        Ok(reply)
     }
 
     /// Handle KvList request. Must be leader to process.

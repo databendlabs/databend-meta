@@ -19,6 +19,7 @@ use std::time::Duration;
 use databend_meta_client::MIN_SERVER_VERSION;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TokioRuntime;
+use databend_meta_types::protobuf as pb;
 use databend_meta_types::protobuf::ClientInfo;
 use databend_meta_types::protobuf::ClusterStatus;
 use databend_meta_types::protobuf::Empty;
@@ -141,6 +142,13 @@ impl MetaService for GrpcServiceForTestImpl {
         &self,
         _request: Request<TxnRequest>,
     ) -> Result<Response<TxnReply>, Status> {
+        unimplemented!()
+    }
+
+    async fn kv_transaction(
+        &self,
+        _request: Request<pb::KvTransactionRequest>,
+    ) -> Result<Response<pb::KvTransactionReply>, Status> {
         unimplemented!()
     }
 

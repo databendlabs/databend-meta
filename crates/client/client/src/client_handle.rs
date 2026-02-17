@@ -162,6 +162,14 @@ impl<RT: SpawnApi> ClientHandle<RT> {
         self.request(txn).await.map_err(MetaError::from)
     }
 
+    #[cfg(any(test, feature = "transaction-v2"))]
+    pub async fn transaction_v2(
+        &self,
+        txn: databend_meta_types::protobuf::KvTransactionRequest,
+    ) -> Result<databend_meta_types::protobuf::KvTransactionReply, MetaError> {
+        self.request(txn).await.map_err(MetaError::from)
+    }
+
     pub async fn get_kv(&self, key: &str) -> Result<GetKVReply, MetaError> {
         let mut res = self.mget_kv(&[key.to_string()]).await?;
         Ok(res.pop().flatten())
