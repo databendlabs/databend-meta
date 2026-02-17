@@ -100,17 +100,17 @@ mod tests {
 
     #[test]
     fn test_version_string() {
-        assert_eq!(version_str(), "260214.0.0");
+        assert_eq!(version_str(), "260217.0.0");
     }
 
     #[test]
     fn test_semver_components() {
-        assert_eq!(semver_tuple(version()), (260214, 0, 0));
+        assert_eq!(semver_tuple(version()), (260217, 0, 0));
     }
 
     #[test]
     fn test_semver_display() {
-        assert_eq!(version().to_semver().to_string(), "260214.0.0");
+        assert_eq!(version().to_semver().to_string(), "260217.0.0");
     }
 
     #[test]
