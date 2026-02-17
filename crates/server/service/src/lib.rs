@@ -24,6 +24,9 @@
     clippy::useless_vec
 )]
 
+pub extern crate databend_meta_raft_store as raft_store;
+pub extern crate databend_meta_sled_store as sled_store;
+
 pub mod analysis;
 pub mod api;
 pub mod configs;
