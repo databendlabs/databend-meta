@@ -8,33 +8,33 @@ edition = "2024"
 [workspace]
 resolver = "2"
 members = [
-    "crates/types",
-    "crates/kvapi",
-    "crates/kvapi-test-suite",
-    "crates/runtime-api",
-    "crates/sled-store",
-    "crates/raft-store",
-    "crates/client",
-    "crates/service",
-    "crates/test-harness",
-    "crates/kvapi-tests",
-    "crates/version",
+    "crates/common/types",
+    "crates/common/runtime-api",
+    "crates/common/version",
+    "crates/common/test-harness",
+    "crates/client/kvapi",
+    "crates/client/kvapi-test-suite",
+    "crates/client/kvapi-tests",
+    "crates/client/client",
+    "crates/server/sled-store",
+    "crates/server/raft-store",
+    "crates/server/service",
 ]
 
 # Workspace dependencies
 [workspace.dependencies]
 # Internal crates
-databend-meta = { path = "crates/service" }
-databend-meta-client = { path = "crates/client" }
-databend-meta-kvapi = { path = "crates/kvapi" }
-databend-meta-kvapi-test-suite = { path = "crates/kvapi-test-suite" }
-databend-meta-kvapi-tests = { path = "crates/kvapi-tests" }
-databend-meta-raft-store = { path = "crates/raft-store" }
-databend-meta-runtime-api = { path = "crates/runtime-api" }
-databend-meta-sled-store = { path = "crates/sled-store" }
-databend-meta-test-harness = { path = "crates/test-harness" }
-databend-meta-types = { path = "crates/types" }
-databend-meta-version = { path = "crates/version" }
+databend-meta = { path = "crates/server/service" }
+databend-meta-client = { path = "crates/client/client" }
+databend-meta-kvapi = { path = "crates/client/kvapi" }
+databend-meta-kvapi-test-suite = { path = "crates/client/kvapi-test-suite" }
+databend-meta-kvapi-tests = { path = "crates/client/kvapi-tests" }
+databend-meta-raft-store = { path = "crates/server/raft-store" }
+databend-meta-runtime-api = { path = "crates/common/runtime-api" }
+databend-meta-sled-store = { path = "crates/server/sled-store" }
+databend-meta-test-harness = { path = "crates/common/test-harness" }
+databend-meta-types = { path = "crates/common/types" }
+databend-meta-version = { path = "crates/common/version" }
 
 # External dependencies from databendlabs forks
 databend-base = "0.2.10"

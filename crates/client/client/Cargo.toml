@@ -17,6 +17,7 @@ async-trait = { workspace = true }
 chrono = { workspace = true }
 databend-base = { workspace = true }
 databend-meta-kvapi = { workspace = true }
+databend-meta-kvapi-test-suite = { workspace = true }
 databend-meta-runtime-api = { workspace = true }
 databend-meta-types = { workspace = true }
 databend-meta-version = { workspace = true }
