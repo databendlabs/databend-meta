@@ -131,6 +131,14 @@ fn build_proto() {
             "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
+            "KvTransactionRequest",
+            "#[derive(Eq, deepsize::DeepSizeOf)]",
+        )
+        .type_attribute(
+            "KvTransactionReply",
+            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+        )
+        .type_attribute(
             "WatchRequest",
             "#[derive(Eq, deepsize::DeepSizeOf)]",
         )

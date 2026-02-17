@@ -103,6 +103,9 @@ pub enum Feature {
 
     /// `kv_get_many()` RPC with streaming request and response.
     KvGetMany,
+
+    /// `kv_transaction()` RPC for multi-key atomic operations with Rust-native storage types.
+    KvTransaction,
 }
 
 impl Feature {
@@ -137,6 +140,7 @@ impl Feature {
             Feature::FetchIncreaseU64,
             Feature::KvList,
             Feature::KvGetMany,
+            Feature::KvTransaction,
         ]
     }
 
@@ -171,6 +175,7 @@ impl Feature {
             Feature::FetchIncreaseU64 => "fetch_increase_u64",
             Feature::KvList => "kv_list",
             Feature::KvGetMany => "kv_get_many",
+            Feature::KvTransaction => "kv_transaction",
         }
     }
 }

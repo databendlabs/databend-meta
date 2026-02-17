@@ -27,7 +27,6 @@ hostname = { workspace = true }
 log = { workspace = true }
 map-api = { workspace = true }
 maplit = { workspace = true }
-num = { workspace = true }
 openraft = { workspace = true }
 raft-log = { workspace = true }
 rmp-serde = { workspace = true }

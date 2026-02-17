@@ -35,6 +35,7 @@ mod proto_ext;
 
 pub mod cmd;
 pub mod errors;
+pub mod kv_transaction;
 pub mod node;
 pub mod normalize_meta;
 pub mod raft_types;

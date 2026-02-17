@@ -51,7 +51,7 @@ impl pb::PutSequential {
     }
 
     /// Format number in Rust style: `1_000_000`, keep max length of u64, 21 digits.
-    pub(crate) fn format_seq_number(n: u64) -> String {
+    pub fn format_seq_number(n: u64) -> String {
         // separate each 3 digit with a '_'
         format!("{:021}", n)
             .chars()

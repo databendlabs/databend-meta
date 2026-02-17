@@ -51,6 +51,7 @@ tonic-reflection = { workspace = true }
 watcher = { workspace = true }
 
 [dev-dependencies]
+databend-meta-client = { workspace = true, features = ["transaction-v2"] }
 databend-meta-test-harness = { workspace = true }
 databend-meta-version = { workspace = true }
 maplit = { workspace = true }
