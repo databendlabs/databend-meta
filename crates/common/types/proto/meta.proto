@@ -261,6 +261,31 @@ message TxnReply {
   string execution_path = 4;
 }
 
+// A transaction request with cleaner branch-based structure.
+//
+// Replaces the legacy `TxnRequest` which couples the wire format to the raft log
+// storage format and carries historical complexity (dual execution paths,
+// stringly-typed `execution_path`, misleading `success` field).
+//
+// Each branch is a ConditionalOperation: optional predicate + operations.
+// Branches are evaluated in order; the first matching branch is executed.
+// A branch with no predicate is unconditional (use as "else" at the end).
+//
+// Since: 2025-02-17, version 260217.0.0
+message KvTransactionRequest {
+  repeated ConditionalOperation branches = 1;
+}
+
+// Response from KvTransaction.
+// Since: 2025-02-17, version 260217.0.0
+message KvTransactionReply {
+  // Index of the branch that was executed, or absent if no branch matched.
+  optional uint32 executed_branch = 1;
+
+  // Responses from the operations in the executed branch.
+  repeated TxnOpResponse responses = 2;
+}
+
 message ClusterStatus {
   uint64 id = 1;
   string binary_version = 2;
@@ -522,6 +547,10 @@ service MetaService {
   rpc Watch(WatchRequest) returns (stream WatchResponse);
 
   rpc Transaction(TxnRequest) returns (TxnReply);
+
+  // Branch-based transaction API, replacing the legacy Transaction RPC.
+  // Since: 2025-02-17, version 260217.0.0
+  rpc KvTransaction(KvTransactionRequest) returns (KvTransactionReply);
 
   // Get MetaSrv member list endpoints
   rpc MemberList(MemberListRequest) returns (MemberListReply);

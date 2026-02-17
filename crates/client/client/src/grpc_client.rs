@@ -349,6 +349,10 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
                 let resp = self.transaction(r).await;
                 Response::Txn(resp)
             }
+            message::Request::KvTransaction(r) => {
+                let resp = self.transaction_v2(r).await;
+                Response::KvTransaction(resp)
+            }
             message::Request::Watch(r) => {
                 let resp = self.watch(r).await;
                 Response::Watch(resp)
@@ -853,6 +857,43 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
 
             let txn_reply = response.into_inner();
             return Ok(txn_reply);
+        }
+
+        let net_err = rpc_handler.create_network_error();
+        Err(net_err.into())
+    }
+
+    #[fastrace::trace]
+    #[async_backtrace::framed]
+    pub(crate) async fn transaction_v2(
+        &self,
+        txn: pb::KvTransactionRequest,
+    ) -> Result<pb::KvTransactionReply, MetaClientError> {
+        debug!("{self}::transaction_v2 request: {txn:?}");
+
+        let mut rpc_handler = RpcHandler::new(self);
+
+        for _i in 0..RPC_RETRIES {
+            let req = RT::prepare_request(Request::new(txn.clone()));
+
+            let established = rpc_handler.new_established_client().await?;
+
+            let result = established
+                .kv_transaction(req)
+                .inspect_elapsed_over(threshold(), info_spent("transaction_v2"))
+                .await;
+
+            let retryable = rpc_handler.process_response_result(&txn, result)?;
+
+            let response = match retryable {
+                ResponseAction::Success(resp) => resp,
+                ResponseAction::ShouldRetry => {
+                    continue;
+                }
+            };
+
+            let reply = response.into_inner();
+            return Ok(reply);
         }
 
         let net_err = rpc_handler.create_network_error();

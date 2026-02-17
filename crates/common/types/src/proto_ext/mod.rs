@@ -19,6 +19,7 @@ mod conditional_operation_ext;
 mod fetch_increase_u64;
 mod fetch_increase_u64_response_ext;
 mod keys_count_ext;
+mod kv_transaction_reply_ext;
 mod put_sequential_ext;
 mod raft_types_ext;
 mod seq_v_ext;

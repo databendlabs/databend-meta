@@ -22,6 +22,8 @@ use databend_meta_types::TxnRequest;
 use databend_meta_types::protobuf::ClientInfo;
 use databend_meta_types::protobuf::ClusterStatus;
 use databend_meta_types::protobuf::ExportedChunk;
+use databend_meta_types::protobuf::KvTransactionReply;
+use databend_meta_types::protobuf::KvTransactionRequest;
 use databend_meta_types::protobuf::MemberListReply;
 use databend_meta_types::protobuf::StreamItem;
 use databend_meta_types::protobuf::WatchRequest;
@@ -89,6 +91,9 @@ pub enum Request {
     /// Run a transaction on remote
     Txn(TxnRequest),
 
+    /// Run a kv_transaction on remote (new API)
+    KvTransaction(KvTransactionRequest),
+
     /// Watch KV changes, expecting a Stream that reports KV change events
     Watch(WatchRequest),
 
@@ -129,6 +134,7 @@ impl Request {
             Request::StreamedGetMany(_) => "StreamGetMany",
             Request::StreamList(_) => "StreamList",
             Request::Txn(_) => "Txn",
+            Request::KvTransaction(_) => "KvTransaction",
             Request::Watch(_) => "Watch",
             Request::WatchWithInitialization(_) => "WatchWithInitialization",
             Request::Export(_) => "Export",
@@ -153,6 +159,7 @@ pub enum Response {
     ),
     StreamList(Result<BoxStream<StreamItem>, MetaError>),
     Txn(Result<TxnReply, MetaClientError>),
+    KvTransaction(Result<KvTransactionReply, MetaClientError>),
     Watch(Result<tonic::codec::Streaming<WatchResponse>, MetaClientError>),
     WatchWithInitialization(Result<tonic::codec::Streaming<WatchResponse>, MetaClientError>),
     Export(Result<tonic::codec::Streaming<ExportedChunk>, MetaClientError>),
@@ -177,6 +184,9 @@ impl fmt::Debug for Response {
             }
             Response::Txn(x) => {
                 write!(f, "Txn({:?})", x)
+            }
+            Response::KvTransaction(x) => {
+                write!(f, "KvTransaction({:?})", x)
             }
             Response::Watch(x) => {
                 write!(f, "Watch({:?})", x)
@@ -221,6 +231,7 @@ impl Response {
             Response::StreamedGetMany(res) => to_err(res),
             Response::StreamList(res) => to_err(res),
             Response::Txn(res) => to_err(res),
+            Response::KvTransaction(res) => to_err(res),
             Response::Watch(res) => to_err(res),
             Response::WatchWithInitialization(res) => to_err(res),
             Response::Export(res) => to_err(res),
