@@ -67,6 +67,7 @@ pub fn label_for_write(entry: &LogEntry) -> Cow<'static, str> {
         Cmd::SetFeature { feature, .. } => Cow::Owned(format!("Write-SetFeature-{}", feature)),
         Cmd::UpsertKV(_) => Cow::Borrowed("Write-UpsertKV"),
         Cmd::Transaction(_) => Cow::Borrowed("Write-Transaction"),
+        Cmd::KvTransaction(_) => Cow::Borrowed("Write-KvTransaction"),
     }
 }
 

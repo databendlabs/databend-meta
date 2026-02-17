@@ -287,11 +287,16 @@ impl Spec {
             // In this version we removed KVApi::upsert, and provide a default impl upon transaction(), which require it to always return prev_value
             add(&mut cli, F::TransactionPrevValue, ver(260214, 0, 0));
 
+            // 2026-02-17: since 260217.0.0
+            // 🖥 server: add kv_transaction gRPC API with Rust-native storage types
+            add(&mut srv, F::KvTransaction, ver(260217, 0, 0));
+
             // client not yet using these features
             add(&mut cli, F::ExportV1, Version::max());
             add(&mut cli, F::ProposedAtMs, Version::max());
             add(&mut cli, F::FetchIncreaseU64, Version::max());
             add(&mut cli, F::KvList, Version::max());
+            add(&mut cli, F::KvTransaction, Version::max());
         }
 
         Self::assert_all_features(&srv);
