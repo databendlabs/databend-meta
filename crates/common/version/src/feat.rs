@@ -106,6 +106,9 @@ pub enum Feature {
 
     /// `kv_transaction()` RPC for multi-key atomic operations with Rust-native storage types.
     KvTransaction,
+
+    /// `TxnPutRequest.match_seq`: conditional put via sequence number.
+    KvTransactionPutMatchSeq,
 }
 
 impl Feature {
@@ -141,6 +144,7 @@ impl Feature {
             Feature::KvList,
             Feature::KvGetMany,
             Feature::KvTransaction,
+            Feature::KvTransactionPutMatchSeq,
         ]
     }
 
@@ -176,6 +180,7 @@ impl Feature {
             Feature::KvList => "kv_list",
             Feature::KvGetMany => "kv_get_many",
             Feature::KvTransaction => "kv_transaction",
+            Feature::KvTransactionPutMatchSeq => "kv_transaction/put_match_seq",
         }
     }
 }

@@ -10,5 +10,8 @@ edition = { workspace = true }
 [dependencies]
 semver = { workspace = true }
 
+[features]
+txn-put-match-seq = []
+
 [lints]
 workspace = true

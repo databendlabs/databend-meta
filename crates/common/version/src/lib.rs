@@ -53,6 +53,10 @@ pub static MIN_CLIENT_VERSION: Version = Version::new(1, 2, 676);
 /// Minimum compatible meta-server version.
 ///
 /// See [module documentation](self) for details.
+#[cfg(feature = "txn-put-match-seq")]
+pub static MIN_SERVER_VERSION: Version = Version::new(260217, 0, 0);
+
+#[cfg(not(feature = "txn-put-match-seq"))]
 pub static MIN_SERVER_VERSION: Version = Version::new(1, 2, 869);
 
 use std::sync::LazyLock;

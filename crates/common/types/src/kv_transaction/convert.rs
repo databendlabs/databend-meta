@@ -122,7 +122,7 @@ impl From<pb::TxnOp> for Operation {
         match op.request {
             Some(txn_op::Request::Get(g)) => Operation::get(g.key),
             Some(txn_op::Request::Put(p)) => Operation::Put(operation::Put {
-                target: operation::KeyLookup::just(p.key),
+                target: operation::KeyLookup::new(p.key, p.match_seq),
                 payload: operation::Payload::new(p.value, p.expire_at, p.ttl_ms),
             }),
             Some(txn_op::Request::Delete(d)) => Operation::Delete(operation::Delete {
