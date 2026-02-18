@@ -421,15 +421,25 @@ async fn test_kv_transaction_put_new_key_response() -> anyhow::Result<()> {
     let put_resp = reply.responses[0]
         .try_as_put()
         .expect("expect Put response");
-    assert_eq!(*put_resp, pb::TxnPutResponse {
-        key: "brand_new".to_string(),
-        prev_value: None,
-        current: Some(pb::SeqV {
-            seq: 1,
-            data: b("val"),
-            meta: None
-        }),
-    });
+    // Strip non-deterministic proposed_at_ms from meta before comparing
+    assert_eq!(
+        pb::TxnPutResponse {
+            current: put_resp
+                .current
+                .clone()
+                .map(|v| pb::SeqV { meta: None, ..v }),
+            ..put_resp.clone()
+        },
+        pb::TxnPutResponse {
+            key: "brand_new".to_string(),
+            prev_value: None,
+            current: Some(pb::SeqV {
+                seq: 1,
+                data: b("val"),
+                meta: None
+            }),
+        }
+    );
 
     Ok(())
 }
@@ -486,15 +496,25 @@ async fn test_kv_transaction_delete_match_seq_matches() -> anyhow::Result<()> {
     let del_resp = reply.responses[0]
         .try_as_delete()
         .expect("expect Delete response");
-    assert_eq!(*del_resp, pb::TxnDeleteResponse {
-        key: "k1".to_string(),
-        success: true,
-        prev_value: Some(pb::SeqV {
-            seq: 1,
-            data: b("val"),
-            meta: None
-        }),
-    });
+    // Strip non-deterministic proposed_at_ms from meta before comparing
+    assert_eq!(
+        pb::TxnDeleteResponse {
+            prev_value: del_resp
+                .prev_value
+                .clone()
+                .map(|v| pb::SeqV { meta: None, ..v }),
+            ..del_resp.clone()
+        },
+        pb::TxnDeleteResponse {
+            key: "k1".to_string(),
+            success: true,
+            prev_value: Some(pb::SeqV {
+                seq: 1,
+                data: b("val"),
+                meta: None
+            }),
+        }
+    );
 
     assert_eq!(client.get_kv("k1").await?, None);
 
@@ -518,20 +538,31 @@ async fn test_kv_transaction_delete_match_seq_mismatch() -> anyhow::Result<()> {
     let del_resp = reply.responses[0]
         .try_as_delete()
         .expect("expect Delete response");
-    // prev_value is populated with the existing entry even when delete fails
-    assert_eq!(*del_resp, pb::TxnDeleteResponse {
-        key: "k1".to_string(),
-        success: false,
-        prev_value: Some(pb::SeqV {
-            seq: 1,
-            data: b("val"),
-            meta: None
-        }),
-    });
-
-    // Key must still exist, unchanged
+    // prev_value is populated with the existing entry even when delete fails.
+    // Strip non-deterministic proposed_at_ms from meta before comparing.
     assert_eq!(
-        client.get_kv("k1").await?,
+        pb::TxnDeleteResponse {
+            prev_value: del_resp
+                .prev_value
+                .clone()
+                .map(|v| pb::SeqV { meta: None, ..v }),
+            ..del_resp.clone()
+        },
+        pb::TxnDeleteResponse {
+            key: "k1".to_string(),
+            success: false,
+            prev_value: Some(pb::SeqV {
+                seq: 1,
+                data: b("val"),
+                meta: None
+            }),
+        }
+    );
+
+    // Key must still exist, unchanged.
+    // Strip non-deterministic proposed_at_ms from meta before comparing.
+    assert_eq!(
+        client.get_kv("k1").await?.map(|v| SeqV { meta: None, ..v }),
         Some(SeqV {
             seq: 1,
             meta: None,
@@ -915,19 +946,32 @@ async fn test_kv_transaction_put_sequential_basic() -> anyhow::Result<()> {
         .expect("PutSequential returns a Put response");
     // next_seq = before of FetchIncreaseU64 = 0 (counter absent), formatted as 21 zero-padded digits
     // seq=2: seq counter write (seq=1) then data key write (seq=2)
-    assert_eq!(*put_resp, pb::TxnPutResponse {
-        key: "log/000_000_000_000_000_000_000".to_string(),
-        prev_value: None,
-        current: Some(pb::SeqV {
-            seq: 2,
-            data: b("e1"),
-            meta: None
-        }),
-    });
+    // Strip non-deterministic proposed_at_ms from meta before comparing
+    assert_eq!(
+        pb::TxnPutResponse {
+            current: put_resp
+                .current
+                .clone()
+                .map(|v| pb::SeqV { meta: None, ..v }),
+            ..put_resp.clone()
+        },
+        pb::TxnPutResponse {
+            key: "log/000_000_000_000_000_000_000".to_string(),
+            prev_value: None,
+            current: Some(pb::SeqV {
+                seq: 2,
+                data: b("e1"),
+                meta: None
+            }),
+        }
+    );
 
     // The actual key should exist in the store
     assert_eq!(
-        client.get_kv("log/000_000_000_000_000_000_000").await?,
+        client
+            .get_kv("log/000_000_000_000_000_000_000")
+            .await?
+            .map(|v| SeqV { meta: None, ..v }),
         Some(SeqV {
             seq: 2,
             meta: None,
