@@ -54,6 +54,9 @@ use crate::state_machine_api_ext::StateMachineApiExt;
 
 pub(crate) mod applier_data;
 
+#[cfg(test)]
+mod applier_test;
+
 /// Threshold in milliseconds for logging slow log entry application
 const SLOW_LOG_ENTRY_THRESHOLD_MS: u128 = 100;
 
