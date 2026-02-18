@@ -291,12 +291,17 @@ impl Spec {
             // 🖥 server: add kv_transaction gRPC API with Rust-native storage types
             add(&mut srv, F::KvTransaction, ver(260217, 0, 0));
 
+            // 2026-02-18: since 260217.0.0
+            // 🖥 server: add TxnPutRequest.match_seq for conditional put
+            add(&mut srv, F::KvTransactionPutMatchSeq, ver(260217, 0, 0));
+
             // client not yet using these features
             add(&mut cli, F::ExportV1, Version::max());
             add(&mut cli, F::ProposedAtMs, Version::max());
             add(&mut cli, F::FetchIncreaseU64, Version::max());
             add(&mut cli, F::KvList, Version::max());
             add(&mut cli, F::KvTransaction, Version::max());
+            add(&mut cli, F::KvTransactionPutMatchSeq, Version::max());
         }
 
         Self::assert_all_features(&srv);

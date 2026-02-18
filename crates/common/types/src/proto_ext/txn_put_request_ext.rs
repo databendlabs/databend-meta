@@ -31,6 +31,7 @@ impl pb::TxnPutRequest {
             value,
             expire_at,
             ttl_ms,
+            match_seq: None,
         }
     }
 }
@@ -47,6 +48,9 @@ impl fmt::Display for pb::TxnPutRequest {
         }
         if let Some(ttl_ms) = self.ttl_ms {
             write!(f, "  ttl: {:?}", Duration::from_millis(ttl_ms))?;
+        }
+        if let Some(match_seq) = self.match_seq {
+            write!(f, " match_seq={}", match_seq)?;
         }
         Ok(())
     }

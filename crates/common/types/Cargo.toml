@@ -31,6 +31,9 @@ tonic = { workspace = true }
 prost-build = { workspace = true }
 tonic-build = { workspace = true }
 
+[features]
+txn-put-match-seq = []
+
 [dev-dependencies]
 anyhow = { workspace = true }
 tempfile = { workspace = true }

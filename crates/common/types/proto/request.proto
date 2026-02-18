@@ -150,6 +150,10 @@ message TxnPutRequest {
   // TTL is the relative expire time, since the raft-log proposed.
   // If `ttl_ms` is set, `expire_at` is ignored.
   optional uint64 ttl_ms = 5;
+
+  // If set, the put is conditional: it only takes effect when the
+  // current sequence number of the key equals this value.
+  optional uint64 match_seq = 6;
 }
 
 message TxnPutResponse {
