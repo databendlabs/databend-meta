@@ -25,9 +25,7 @@ use databend_meta_types::AppliedState;
 use databend_meta_types::Change;
 use databend_meta_types::Cmd;
 use databend_meta_types::CmdContext;
-use databend_meta_types::Interval;
 use databend_meta_types::MatchSeq;
-use databend_meta_types::MetaSpec;
 use databend_meta_types::SeqV;
 use databend_meta_types::TxnOpResponse;
 use databend_meta_types::UpsertKV;
@@ -472,15 +470,17 @@ where SM: StateMachineApi<SysData> + 'static
     }
 
     async fn execute_put(&mut self, op: &operation::Put) -> Result<pb::TxnPutResponse, io::Error> {
-        let upsert = UpsertKV::update(&op.key, &op.value).with(MetaSpec::new(
-            op.expire_at_ms,
-            op.ttl_ms.map(Interval::from_millis),
-        ));
+        let mut upsert =
+            UpsertKV::update(op.key(), &op.payload.value).with(op.payload.to_meta_spec());
+
+        if let Some(seq) = op.match_seq() {
+            upsert = upsert.with(MatchSeq::Exact(seq));
+        }
 
         let (prev, result) = self.upsert_kv(&upsert).await?;
 
         Ok(pb::TxnPutResponse {
-            key: op.key.clone(),
+            key: op.key().to_string(),
             prev_value: prev.map(pb::SeqV::from),
             current: result.map(pb::SeqV::from),
         })
@@ -490,9 +490,9 @@ where SM: StateMachineApi<SysData> + 'static
         &mut self,
         op: &operation::Delete,
     ) -> Result<pb::TxnDeleteResponse, io::Error> {
-        let upsert = UpsertKV::delete(&op.key);
+        let upsert = UpsertKV::delete(op.key());
 
-        let upsert = if let Some(seq) = op.match_seq {
+        let upsert = if let Some(seq) = op.match_seq() {
             upsert.with(MatchSeq::Exact(seq))
         } else {
             upsert
@@ -502,7 +502,7 @@ where SM: StateMachineApi<SysData> + 'static
         let is_deleted = prev.is_some() && result.is_none();
 
         Ok(pb::TxnDeleteResponse {
-            key: op.key.clone(),
+            key: op.key().to_string(),
             success: is_deleted,
             prev_value: prev.map(pb::SeqV::from),
         })
@@ -531,7 +531,7 @@ where SM: StateMachineApi<SysData> + 'static
         &mut self,
         op: &operation::FetchIncreaseU64,
     ) -> Result<pb::FetchIncreaseU64Response, io::Error> {
-        let before_seqv = self.get_maybe_expired_kv_with_timing(&op.key).await?;
+        let before_seqv = self.get_maybe_expired_kv_with_timing(op.key()).await?;
 
         let before_seq = before_seqv.seq();
 
@@ -552,10 +552,10 @@ where SM: StateMachineApi<SysData> + 'static
             0
         };
 
-        if let Some(match_seq) = op.match_seq {
+        if let Some(match_seq) = op.match_seq() {
             if match_seq != before_seq {
                 let response = pb::FetchIncreaseU64Response::new_unchanged(
-                    &op.key,
+                    op.key(),
                     SeqV::new(before_seq, before),
                 );
                 return Ok(response);
@@ -567,12 +567,12 @@ where SM: StateMachineApi<SysData> + 'static
 
         let (_prev, result) = {
             let after_value = serde_json::to_vec(&after).expect("serialize u64 to json");
-            let upsert = UpsertKV::update(&op.key, &after_value);
+            let upsert = UpsertKV::update(op.key(), &after_value);
             self.upsert_kv(&upsert).await?
         };
 
         let response = pb::FetchIncreaseU64Response::new(
-            &op.key,
+            op.key(),
             SeqV::new(before_seq, before),
             SeqV::new(result.seq(), after),
         );
@@ -587,9 +587,8 @@ where SM: StateMachineApi<SysData> + 'static
         // Step 1. Get next sequence number
 
         let fetch_op = operation::FetchIncreaseU64 {
-            key: op.sequence_key.clone(),
+            target: operation::KeyLookup::just(&op.sequence_key),
             delta: 1,
-            match_seq: None,
             floor: 0,
         };
 
@@ -604,10 +603,7 @@ where SM: StateMachineApi<SysData> + 'static
 
         // Step 2. Insert the key
 
-        let upsert = UpsertKV::update(&key, &op.value).with(MetaSpec::new(
-            op.expire_at_ms,
-            op.ttl_ms.map(Interval::from_millis),
-        ));
+        let upsert = UpsertKV::update(&key, &op.payload.value).with(op.payload.to_meta_spec());
 
         let (prev, result) = self.upsert_kv(&upsert).await?;
 

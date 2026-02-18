@@ -126,18 +126,11 @@ impl fmt::Display for Operation {
     }
 }
 
-impl fmt::Display for operation::Get {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Get({})", self.key)
-    }
-}
-
-impl fmt::Display for operation::Put {
+impl fmt::Display for operation::Payload {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "Put({}, {}B, expire_at={}, ttl={:?})",
-            self.key,
+            "{}B, expire_at={}, ttl={:?}",
             self.value.len(),
             self.expire_at_ms
                 .map(Duration::from_millis)
@@ -147,14 +140,27 @@ impl fmt::Display for operation::Put {
     }
 }
 
+impl fmt::Display for operation::KeyLookup {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}, match_seq={}", self.key, self.match_seq.display())
+    }
+}
+
+impl fmt::Display for operation::Get {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Get({})", self.key)
+    }
+}
+
+impl fmt::Display for operation::Put {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Put({}, {})", self.target, self.payload)
+    }
+}
+
 impl fmt::Display for operation::Delete {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Delete({}, match_seq={})",
-            self.key,
-            self.match_seq.display()
-        )
+        write!(f, "Delete({})", self.target)
     }
 }
 
@@ -168,11 +174,8 @@ impl fmt::Display for operation::FetchIncreaseU64 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "FetchIncreaseU64({}, match_seq={}, delta={}, floor={})",
-            self.key,
-            self.match_seq.display(),
-            self.delta,
-            self.floor
+            "FetchIncreaseU64({}, delta={}, floor={})",
+            self.target, self.delta, self.floor
         )
     }
 }
@@ -181,14 +184,8 @@ impl fmt::Display for operation::PutSequential {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "PutSequential({}, seq_key={}, {}B, expire_at={}, ttl={:?})",
-            self.prefix,
-            self.sequence_key,
-            self.value.len(),
-            self.expire_at_ms
-                .map(Duration::from_millis)
-                .display_unix_timestamp_short(),
-            self.ttl_ms.map(Duration::from_millis)
+            "PutSequential({}, seq_key={}, {})",
+            self.prefix, self.sequence_key, self.payload
         )
     }
 }
@@ -241,11 +238,11 @@ mod tests {
 
         assert_eq!(
             Operation::put("k", b("val")).expire_at_ms(1000).to_string(),
-            "Put(k, 3B, expire_at=1970-01-01T00:00:01.000, ttl=None)"
+            "Put(k, match_seq=None, 3B, expire_at=1970-01-01T00:00:01.000, ttl=None)"
         );
         assert_eq!(
             Operation::put("k", b("v")).ttl_ms(500).to_string(),
-            "Put(k, 1B, expire_at=None, ttl=Some(500ms))"
+            "Put(k, match_seq=None, 1B, expire_at=None, ttl=Some(500ms))"
         );
 
         assert_eq!(
@@ -286,7 +283,7 @@ mod tests {
         let branch = Branch::if_(Predicate::eq_seq("k", 0)).then([Operation::put("k", b("v"))]);
         assert_eq!(
             branch.to_string(),
-            "if(k==seq(0)) Put(k, 1B, expire_at=None, ttl=None)"
+            "if(k==seq(0)) Put(k, match_seq=None, 1B, expire_at=None, ttl=None)"
         );
 
         let else_branch = Branch::else_().then([Operation::get("k")]);
@@ -303,7 +300,7 @@ mod tests {
         };
         assert_eq!(
             txn.to_string(),
-            "Transaction[if(k==seq(0)) Put(k, 1B, expire_at=None, ttl=None), else Get(k)]"
+            "Transaction[if(k==seq(0)) Put(k, match_seq=None, 1B, expire_at=None, ttl=None), else Get(k)]"
         );
     }
 
@@ -368,7 +365,7 @@ mod tests {
             concat!(
                 "Transaction[",
                 "if(((x==seq(0) OR y!=value(2B)) AND z<keys_with_prefix(5))) ",
-                "Put(x, 3B, expire_at=1970-01-01T00:00:09.000, ttl=None), Delete(y, match_seq=3), ",
+                "Put(x, match_seq=None, 3B, expire_at=1970-01-01T00:00:09.000, ttl=None), Delete(y, match_seq=3), ",
                 "if(((a>=seq(1) AND b<=seq(2)) OR c>value(1B))) ",
                 "Get(a), FetchIncreaseU64(counter, match_seq=None, delta=1, floor=0), DeleteByPrefix(tmp/), ",
                 "else ",

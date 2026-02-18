@@ -122,20 +122,16 @@ impl From<pb::TxnOp> for Operation {
         match op.request {
             Some(txn_op::Request::Get(g)) => Operation::get(g.key),
             Some(txn_op::Request::Put(p)) => Operation::Put(operation::Put {
-                key: p.key,
-                value: p.value,
-                expire_at_ms: p.expire_at,
-                ttl_ms: p.ttl_ms,
+                target: operation::KeyLookup::just(p.key),
+                payload: operation::Payload::new(p.value, p.expire_at, p.ttl_ms),
             }),
             Some(txn_op::Request::Delete(d)) => Operation::Delete(operation::Delete {
-                key: d.key,
-                match_seq: d.match_seq,
+                target: operation::KeyLookup::new(d.key, d.match_seq),
             }),
             Some(txn_op::Request::DeleteByPrefix(d)) => Operation::delete_by_prefix(d.prefix),
             Some(txn_op::Request::FetchIncreaseU64(f)) => {
                 Operation::FetchIncreaseU64(operation::FetchIncreaseU64 {
-                    key: f.key,
-                    match_seq: f.match_seq,
+                    target: operation::KeyLookup::new(f.key, f.match_seq),
                     delta: f.delta,
                     floor: f.max_value,
                 })
@@ -144,11 +140,10 @@ impl From<pb::TxnOp> for Operation {
                 Operation::PutSequential(operation::PutSequential {
                     prefix: p.prefix,
                     sequence_key: p.sequence_key,
-                    value: p.value,
-                    expire_at_ms: p.expires_at_ms,
-                    ttl_ms: p.ttl_ms,
+                    payload: operation::Payload::new(p.value, p.expires_at_ms, p.ttl_ms),
                 })
             }
+
             None => Operation::get(""),
         }
     }

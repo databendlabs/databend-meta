@@ -214,17 +214,14 @@ impl Operation {
 
     pub fn put(key: impl Into<String>, value: impl Into<Vec<u8>>) -> Self {
         Operation::Put(operation::Put {
-            key: key.into(),
-            value: value.into(),
-            expire_at_ms: None,
-            ttl_ms: None,
+            target: operation::KeyLookup::just(key),
+            payload: operation::Payload::just(value),
         })
     }
 
     pub fn delete(key: impl Into<String>) -> Self {
         Operation::Delete(operation::Delete {
-            key: key.into(),
-            match_seq: None,
+            target: operation::KeyLookup::just(key),
         })
     }
 
@@ -236,16 +233,13 @@ impl Operation {
         Operation::PutSequential(operation::PutSequential {
             prefix: prefix.into(),
             sequence_key: sequence_key.into(),
-            value: value.into(),
-            expire_at_ms: None,
-            ttl_ms: None,
+            payload: operation::Payload::just(value),
         })
     }
 
     pub fn fetch_increase_u64(key: impl Into<String>, delta: i64) -> Self {
         Operation::FetchIncreaseU64(operation::FetchIncreaseU64 {
-            key: key.into(),
-            match_seq: None,
+            target: operation::KeyLookup::just(key),
             delta,
             floor: 0,
         })
@@ -259,8 +253,8 @@ impl Operation {
 
     pub fn expire_at_ms(mut self, ms: u64) -> Self {
         match &mut self {
-            Operation::Put(p) => p.expire_at_ms = Some(ms),
-            Operation::PutSequential(p) => p.expire_at_ms = Some(ms),
+            Operation::Put(p) => p.payload.expire_at_ms = Some(ms),
+            Operation::PutSequential(p) => p.payload.expire_at_ms = Some(ms),
             _ => unreachable!("expire_at_ms only applies to Put/PutSequential"),
         }
         self
@@ -268,8 +262,8 @@ impl Operation {
 
     pub fn ttl_ms(mut self, ms: u64) -> Self {
         match &mut self {
-            Operation::Put(p) => p.ttl_ms = Some(ms),
-            Operation::PutSequential(p) => p.ttl_ms = Some(ms),
+            Operation::Put(p) => p.payload.ttl_ms = Some(ms),
+            Operation::PutSequential(p) => p.payload.ttl_ms = Some(ms),
             _ => unreachable!("ttl_ms only applies to Put/PutSequential"),
         }
         self
@@ -277,9 +271,10 @@ impl Operation {
 
     pub fn match_seq(mut self, seq: u64) -> Self {
         match &mut self {
-            Operation::Delete(d) => d.match_seq = Some(seq),
-            Operation::FetchIncreaseU64(f) => f.match_seq = Some(seq),
-            _ => unreachable!("match_seq only applies to Delete/FetchIncreaseU64"),
+            Operation::Put(p) => p.target.match_seq = Some(seq),
+            Operation::Delete(d) => d.target.match_seq = Some(seq),
+            Operation::FetchIncreaseU64(f) => f.target.match_seq = Some(seq),
+            _ => unreachable!("match_seq only applies to Put/Delete/FetchIncreaseU64"),
         }
         self
     }
@@ -320,30 +315,11 @@ mod tests {
     fn test_all_op_variants_serde() {
         let ops = vec![
             Operation::get("k"),
-            Operation::Put(operation::Put {
-                key: "k".to_string(),
-                value: b("v"),
-                expire_at_ms: Some(999),
-                ttl_ms: Some(500),
-            }),
-            Operation::Delete(operation::Delete {
-                key: "k".to_string(),
-                match_seq: Some(3),
-            }),
+            Operation::put("k", b("v")).expire_at_ms(999).ttl_ms(500),
+            Operation::delete("k").match_seq(3),
             Operation::delete_by_prefix("prefix/"),
-            Operation::FetchIncreaseU64(operation::FetchIncreaseU64 {
-                key: "counter".to_string(),
-                match_seq: None,
-                delta: 10,
-                floor: 0,
-            }),
-            Operation::PutSequential(operation::PutSequential {
-                prefix: "log/".to_string(),
-                sequence_key: "seq".to_string(),
-                value: b("entry"),
-                expire_at_ms: None,
-                ttl_ms: Some(60000),
-            }),
+            Operation::fetch_increase_u64("counter", 10),
+            Operation::put_sequential("log/", "seq", b("entry")).ttl_ms(60000),
         ];
 
         for op in &ops {
@@ -588,10 +564,8 @@ mod tests {
         assert_eq!(
             Operation::put("k", b("v")),
             Operation::Put(operation::Put {
-                key: "k".to_string(),
-                value: b("v"),
-                expire_at_ms: None,
-                ttl_ms: None,
+                target: operation::KeyLookup::just("k"),
+                payload: operation::Payload::just(b("v")),
             }),
         );
     }
@@ -601,8 +575,7 @@ mod tests {
         assert_eq!(
             Operation::delete("k"),
             Operation::Delete(operation::Delete {
-                key: "k".to_string(),
-                match_seq: None,
+                target: operation::KeyLookup::just("k"),
             }),
         );
     }
@@ -624,9 +597,7 @@ mod tests {
             Operation::PutSequential(operation::PutSequential {
                 prefix: "log/".to_string(),
                 sequence_key: "seq".to_string(),
-                value: b("v"),
-                expire_at_ms: None,
-                ttl_ms: None,
+                payload: operation::Payload::just(b("v")),
             }),
         );
     }
@@ -636,8 +607,7 @@ mod tests {
         assert_eq!(
             Operation::fetch_increase_u64("c", 10),
             Operation::FetchIncreaseU64(operation::FetchIncreaseU64 {
-                key: "c".to_string(),
-                match_seq: None,
+                target: operation::KeyLookup::just("c"),
                 delta: 10,
                 floor: 0,
             }),
@@ -648,65 +618,98 @@ mod tests {
 
     #[test]
     fn test_operation_expire_at_ms() {
-        assert_eq!(
-            Operation::put("k", b("v")).expire_at_ms(1000),
-            Operation::Put(operation::Put {
-                key: "k".to_string(),
-                value: b("v"),
-                expire_at_ms: Some(1000),
-                ttl_ms: None,
-            }),
-        );
+        let got = Operation::put("k", b("v")).expire_at_ms(1000);
+        let expect = Operation::put("k", b("v"));
+        // Verify only expire_at_ms differs
+        assert_ne!(got, expect);
+        match got {
+            Operation::Put(p) => {
+                assert_eq!(p.payload.expire_at_ms, Some(1000));
+                assert_eq!(p.payload.ttl_ms, None);
+            }
+            _ => panic!("expected Put"),
+        }
     }
 
     #[test]
     fn test_operation_ttl_ms() {
-        assert_eq!(
-            Operation::put("k", b("v")).ttl_ms(500),
-            Operation::Put(operation::Put {
-                key: "k".to_string(),
-                value: b("v"),
-                expire_at_ms: None,
-                ttl_ms: Some(500),
-            }),
-        );
+        let got = Operation::put("k", b("v")).ttl_ms(500);
+        match got {
+            Operation::Put(p) => {
+                assert_eq!(p.payload.expire_at_ms, None);
+                assert_eq!(p.payload.ttl_ms, Some(500));
+            }
+            _ => panic!("expected Put"),
+        }
     }
 
     #[test]
-    fn test_operation_match_seq() {
-        assert_eq!(
-            Operation::delete("k").match_seq(7),
-            Operation::Delete(operation::Delete {
-                key: "k".to_string(),
-                match_seq: Some(7),
-            }),
-        );
+    fn test_operation_match_seq_delete() {
+        let got = Operation::delete("k").match_seq(7);
+        match got {
+            Operation::Delete(d) => {
+                assert_eq!(d.target.key, "k");
+                assert_eq!(d.target.match_seq, Some(7));
+            }
+            _ => panic!("expected Delete"),
+        }
+    }
+
+    #[test]
+    fn test_operation_match_seq_put() {
+        let got = Operation::put("k", b("v")).match_seq(3);
+        match got {
+            Operation::Put(p) => {
+                assert_eq!(p.target.key, "k");
+                assert_eq!(p.target.match_seq, Some(3));
+                assert_eq!(p.key(), "k");
+                assert_eq!(p.match_seq(), Some(3));
+            }
+            _ => panic!("expected Put"),
+        }
+    }
+
+    #[test]
+    fn test_operation_put_default_no_match_seq() {
+        let got = Operation::put("k", b("v"));
+        match got {
+            Operation::Put(p) => {
+                assert_eq!(p.key(), "k");
+                assert_eq!(p.match_seq(), None);
+            }
+            _ => panic!("expected Put"),
+        }
+    }
+
+    #[test]
+    fn test_operation_put_match_seq_serde() {
+        let op = Operation::put("k", b("v")).match_seq(5);
+        let json = serde_json::to_string(&op).unwrap();
+        let decoded: Operation = serde_json::from_str(&json).unwrap();
+        assert_eq!(op, decoded);
     }
 
     #[test]
     fn test_operation_put_sequential_with_ttl() {
-        assert_eq!(
-            Operation::put_sequential("log/", "seq", b("v")).ttl_ms(60000),
-            Operation::PutSequential(operation::PutSequential {
-                prefix: "log/".to_string(),
-                sequence_key: "seq".to_string(),
-                value: b("v"),
-                expire_at_ms: None,
-                ttl_ms: Some(60000),
-            }),
-        );
+        let got = Operation::put_sequential("log/", "seq", b("v")).ttl_ms(60000);
+        match got {
+            Operation::PutSequential(p) => {
+                assert_eq!(p.payload.ttl_ms, Some(60000));
+                assert_eq!(p.payload.expire_at_ms, None);
+            }
+            _ => panic!("expected PutSequential"),
+        }
     }
 
     #[test]
     fn test_operation_chained_expire_and_ttl() {
-        assert_eq!(
-            Operation::put("k", b("v")).expire_at_ms(1000).ttl_ms(500),
-            Operation::Put(operation::Put {
-                key: "k".to_string(),
-                value: b("v"),
-                expire_at_ms: Some(1000),
-                ttl_ms: Some(500),
-            }),
-        );
+        let got = Operation::put("k", b("v")).expire_at_ms(1000).ttl_ms(500);
+        match got {
+            Operation::Put(p) => {
+                assert_eq!(p.payload.expire_at_ms, Some(1000));
+                assert_eq!(p.payload.ttl_ms, Some(500));
+            }
+            _ => panic!("expected Put"),
+        }
     }
 }
