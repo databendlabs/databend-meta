@@ -1639,6 +1639,19 @@ impl<SP: SpawnApi> MetaNode<SP> {
         Endpoint::parse(addr).ok()
     }
 
+    /// Return a `MetaLeader` if this node is the leader.
+    ///
+    /// Otherwise, resolve the leader endpoint and return a forward-to-leader gRPC `Status`.
+    async fn leader_or_forward(&self) -> Result<MetaLeader<'_, SP>, Status> {
+        match self.assume_leader().await {
+            Ok(leader) => Ok(leader),
+            Err(forward) => {
+                let endpoint = self.get_leader_endpoint(forward.leader_id).await;
+                Err(GrpcHelper::status_forward_to_leader(endpoint.as_ref()))
+            }
+        }
+    }
+
     /// Handle KvTransaction request. Must be leader to process.
     ///
     /// If this node is not the leader, returns a `Status` error with leader endpoint in metadata.
@@ -1646,13 +1659,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
         &self,
         txn: kv_transaction::Transaction,
     ) -> Result<KvTransactionReply, Status> {
-        let leader = match self.assume_leader().await {
-            Ok(leader) => leader,
-            Err(forward) => {
-                let endpoint = self.get_leader_endpoint(forward.leader_id).await;
-                return Err(GrpcHelper::status_forward_to_leader(endpoint.as_ref()));
-            }
-        };
+        let leader = self.leader_or_forward().await?;
 
         let entry = LogEntry::new(Cmd::KvTransaction(txn));
         let applied = match leader.write(entry).await {
@@ -1678,13 +1685,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
         prefix: String,
         limit: Option<u64>,
     ) -> Result<BoxStream<'static, Result<StreamItem, Status>>, Status> {
-        let leader = match self.assume_leader().await {
-            Ok(leader) => leader,
-            Err(forward) => {
-                let endpoint = self.get_leader_endpoint(forward.leader_id).await;
-                return Err(GrpcHelper::status_forward_to_leader(endpoint.as_ref()));
-            }
-        };
+        let leader = self.leader_or_forward().await?;
 
         let strm = leader
             .kv_list(&prefix, limit)
@@ -1702,13 +1703,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
         &self,
         input: impl Stream<Item = Result<KvGetManyRequest, Status>> + Send + 'static,
     ) -> Result<BoxStream<'static, Result<StreamItem, Status>>, Status> {
-        let leader = match self.assume_leader().await {
-            Ok(leader) => leader,
-            Err(forward) => {
-                let endpoint = self.get_leader_endpoint(forward.leader_id).await;
-                return Err(GrpcHelper::status_forward_to_leader(endpoint.as_ref()));
-            }
-        };
+        let leader = self.leader_or_forward().await?;
 
         let strm = leader
             .kv_get_many(input)
