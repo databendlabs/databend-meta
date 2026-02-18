@@ -16,9 +16,12 @@
 
 use databend_meta_kvapi::kvapi::KvApiExt;
 use databend_meta_runtime_api::TokioRuntime;
+use databend_meta_types::Cmd;
+use databend_meta_types::LogEntry;
 use databend_meta_types::TxnCondition;
 use databend_meta_types::TxnOp;
 use databend_meta_types::UpsertKV;
+use databend_meta_types::kv_transaction;
 use databend_meta_types::protobuf as pb;
 use test_harness::test;
 
@@ -309,6 +312,116 @@ async fn test_kv_transaction_multiple_ops_in_branch() -> anyhow::Result<()> {
         .try_as_get()
         .expect("expect Get response");
     assert_eq!(get2.value.as_ref().unwrap().data, b("new"));
+
+    Ok(())
+}
+
+/// Put without match_seq always overwrites.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_put_match_seq_none() -> anyhow::Result<()> {
+    let (_id, tc) = crate::tests::meta_node::start_meta_node_leader().await?;
+    let mn = tc.meta_node();
+
+    mn.write(LogEntry::new(Cmd::UpsertKV(UpsertKV::update("k1", b"old"))))
+        .await?;
+
+    let txn = kv_transaction::Transaction {
+        branches: vec![
+            kv_transaction::Branch::else_().then([kv_transaction::Operation::put("k1", b("new"))]),
+        ],
+    };
+
+    let applied = mn.write(LogEntry::new(Cmd::KvTransaction(txn))).await?;
+    let reply: pb::KvTransactionReply = applied.try_into().unwrap();
+    assert_eq!(reply.executed_branch, Some(0));
+
+    let put_resp = reply.responses[0]
+        .try_as_put()
+        .expect("expect Put response");
+    assert_eq!(put_resp.key, "k1");
+    assert!(put_resp.current.is_some(), "put succeeded");
+
+    let val = mn.raft_store.get_sm_v003().kv_api().get_kv("k1").await?;
+    assert_eq!(val.unwrap().data, b("new"));
+
+    Ok(())
+}
+
+/// Put with match_seq that does NOT match: value is not updated.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_put_match_seq_not_match() -> anyhow::Result<()> {
+    let (_id, tc) = crate::tests::meta_node::start_meta_node_leader().await?;
+    let mn = tc.meta_node();
+
+    mn.write(LogEntry::new(Cmd::UpsertKV(UpsertKV::update("k1", b"old"))))
+        .await?;
+
+    // Use match_seq=100, but actual seq is 1 → should not update
+    let txn = kv_transaction::Transaction {
+        branches: vec![
+            kv_transaction::Branch::else_()
+                .then([kv_transaction::Operation::put("k1", b("new")).match_seq(100)]),
+        ],
+    };
+
+    let applied = mn.write(LogEntry::new(Cmd::KvTransaction(txn))).await?;
+    let reply: pb::KvTransactionReply = applied.try_into().unwrap();
+    assert_eq!(reply.executed_branch, Some(0));
+
+    let put_resp = reply.responses[0]
+        .try_as_put()
+        .expect("expect Put response");
+    assert_eq!(put_resp.key, "k1");
+
+    // prev and current should be the same (not updated due to seq mismatch)
+    assert_eq!(put_resp.prev_value, put_resp.current);
+
+    let val = mn.raft_store.get_sm_v003().kv_api().get_kv("k1").await?;
+    assert_eq!(
+        val.unwrap().data,
+        b("old"),
+        "value unchanged due to seq mismatch"
+    );
+
+    Ok(())
+}
+
+/// Put with match_seq that matches: value is updated.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_put_match_seq_match() -> anyhow::Result<()> {
+    let (_id, tc) = crate::tests::meta_node::start_meta_node_leader().await?;
+    let mn = tc.meta_node();
+
+    mn.write(LogEntry::new(Cmd::UpsertKV(UpsertKV::update("k1", b"old"))))
+        .await?;
+
+    // Use match_seq=1 (correct) → should update
+    let txn = kv_transaction::Transaction {
+        branches: vec![
+            kv_transaction::Branch::else_()
+                .then([kv_transaction::Operation::put("k1", b("new")).match_seq(1)]),
+        ],
+    };
+
+    let applied = mn.write(LogEntry::new(Cmd::KvTransaction(txn))).await?;
+    let reply: pb::KvTransactionReply = applied.try_into().unwrap();
+    assert_eq!(reply.executed_branch, Some(0));
+
+    let put_resp = reply.responses[0]
+        .try_as_put()
+        .expect("expect Put response");
+    assert_eq!(put_resp.key, "k1");
+    assert_ne!(put_resp.prev_value, put_resp.current, "value was updated");
+
+    let val = mn.raft_store.get_sm_v003().kv_api().get_kv("k1").await?;
+    assert_eq!(
+        val.unwrap().data,
+        b("new"),
+        "value updated with matching seq"
+    );
 
     Ok(())
 }
