@@ -16,6 +16,7 @@
 
 use databend_meta_kvapi::kvapi::KvApiExt;
 use databend_meta_runtime_api::TokioRuntime;
+use databend_meta_types::SeqV;
 use databend_meta_types::TxnCondition;
 use databend_meta_types::TxnOp;
 use databend_meta_types::UpsertKV;
@@ -403,6 +404,571 @@ async fn test_kv_transaction_put_match_seq_match() -> anyhow::Result<()> {
         b("new"),
         "value updated with matching seq"
     );
+
+    Ok(())
+}
+
+/// Put for a brand-new key: prev_value is None, current reflects the inserted entry.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_put_new_key_response() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    let txn = kv_transaction_req(vec![(None, vec![TxnOp::put("brand_new", b("val"))])]);
+    let reply = client.transaction_v2(txn).await?;
+
+    let put_resp = reply.responses[0]
+        .try_as_put()
+        .expect("expect Put response");
+    assert_eq!(*put_resp, pb::TxnPutResponse {
+        key: "brand_new".to_string(),
+        prev_value: None,
+        current: Some(pb::SeqV {
+            seq: 1,
+            data: b("val"),
+            meta: None
+        }),
+    });
+
+    Ok(())
+}
+
+/// Get on a key that does not exist: response value is None.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_get_nonexistent() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    let txn = kv_transaction_req(vec![(None, vec![TxnOp::get("does_not_exist")])]);
+    let reply = client.transaction_v2(txn).await?;
+
+    let get_resp = reply.responses[0]
+        .try_as_get()
+        .expect("expect Get response");
+    assert_eq!(get_resp.key, "does_not_exist");
+    assert_eq!(get_resp.value, None);
+
+    Ok(())
+}
+
+/// Empty branches list: no branch executes.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_empty_branches() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    let txn = kv_transaction_req(vec![]);
+    let reply = client.transaction_v2(txn).await?;
+
+    assert_eq!(reply.executed_branch, None);
+    assert_eq!(reply.responses.len(), 0);
+
+    Ok(())
+}
+
+/// Delete with match_seq that matches: key is removed, response reflects success.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_delete_match_seq_matches() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    client.upsert_kv(UpsertKV::update("k1", b"val")).await?;
+
+    // seq=1 is correct after a single upsert
+    let txn = kv_transaction_req(vec![(None, vec![TxnOp::delete_exact("k1", Some(1))])]);
+    let reply = client.transaction_v2(txn).await?;
+    assert_eq!(reply.executed_branch, Some(0));
+
+    let del_resp = reply.responses[0]
+        .try_as_delete()
+        .expect("expect Delete response");
+    assert_eq!(*del_resp, pb::TxnDeleteResponse {
+        key: "k1".to_string(),
+        success: true,
+        prev_value: Some(pb::SeqV {
+            seq: 1,
+            data: b("val"),
+            meta: None
+        }),
+    });
+
+    assert_eq!(client.get_kv("k1").await?, None);
+
+    Ok(())
+}
+
+/// Delete with match_seq that does not match: key is NOT removed, success=false.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_delete_match_seq_mismatch() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    client.upsert_kv(UpsertKV::update("k1", b"val")).await?;
+
+    // seq=999 is wrong
+    let txn = kv_transaction_req(vec![(None, vec![TxnOp::delete_exact("k1", Some(999))])]);
+    let reply = client.transaction_v2(txn).await?;
+    assert_eq!(reply.executed_branch, Some(0));
+
+    let del_resp = reply.responses[0]
+        .try_as_delete()
+        .expect("expect Delete response");
+    // prev_value is populated with the existing entry even when delete fails
+    assert_eq!(*del_resp, pb::TxnDeleteResponse {
+        key: "k1".to_string(),
+        success: false,
+        prev_value: Some(pb::SeqV {
+            seq: 1,
+            data: b("val"),
+            meta: None
+        }),
+    });
+
+    // Key must still exist, unchanged
+    assert_eq!(
+        client.get_kv("k1").await?,
+        Some(SeqV {
+            seq: 1,
+            meta: None,
+            data: b("val")
+        })
+    );
+
+    Ok(())
+}
+
+/// DeleteByPrefix response contains the count of deleted keys.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_delete_by_prefix_response_count() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    client.upsert_kv(UpsertKV::update("p/a", b"1")).await?;
+    client.upsert_kv(UpsertKV::update("p/b", b"2")).await?;
+    client.upsert_kv(UpsertKV::update("p/c", b"3")).await?;
+
+    let txn = kv_transaction_req(vec![(None, vec![TxnOp::delete_by_prefix("p/")])]);
+    let reply = client.transaction_v2(txn).await?;
+    assert_eq!(reply.executed_branch, Some(0));
+    assert_eq!(reply.responses.len(), 1);
+
+    match &reply.responses[0].response {
+        Some(pb::txn_op_response::Response::DeleteByPrefix(resp)) => {
+            assert_eq!(resp.count, 3, "expected 3 keys deleted");
+        }
+        _ => panic!("expected DeleteByPrefix response"),
+    }
+
+    Ok(())
+}
+
+/// AND predicate: both conditions must match.  Both match here → branch executes.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_and_predicate_both_match() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    client.upsert_kv(UpsertKV::update("a", b"va")).await?;
+    client.upsert_kv(UpsertKV::update("b", b"vb")).await?;
+
+    // Both: a seq==1 AND b seq==1 → true
+    let txn = kv_transaction_req(vec![(
+        Some(pb::BooleanExpression::from_conditions_and([
+            TxnCondition::eq_seq("a", 1),
+            TxnCondition::eq_seq("b", 2),
+        ])),
+        vec![TxnOp::put("result", b("ok"))],
+    )]);
+
+    let reply = client.transaction_v2(txn).await?;
+    assert_eq!(reply.executed_branch, Some(0));
+    assert_eq!(client.get_kv("result").await?.unwrap().data, b("ok"));
+
+    Ok(())
+}
+
+/// AND predicate: one condition fails → branch does not execute.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_and_predicate_one_fails() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    client.upsert_kv(UpsertKV::update("a", b"va")).await?;
+    // "b" does not exist → seq==0
+
+    // a seq==1 (true) AND b seq==5 (false) → AND is false
+    let txn = kv_transaction_req(vec![(
+        Some(pb::BooleanExpression::from_conditions_and([
+            TxnCondition::eq_seq("a", 1),
+            TxnCondition::eq_seq("b", 5),
+        ])),
+        vec![TxnOp::put("result", b("ok"))],
+    )]);
+
+    let reply = client.transaction_v2(txn).await?;
+    assert_eq!(
+        reply.executed_branch, None,
+        "AND should fail if any condition fails"
+    );
+    assert_eq!(client.get_kv("result").await?, None);
+
+    Ok(())
+}
+
+/// Keys-with-prefix condition: branch executes when prefix count matches.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_keys_with_prefix_condition() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    client.upsert_kv(UpsertKV::update("ns/x", b"1")).await?;
+    client.upsert_kv(UpsertKV::update("ns/y", b"2")).await?;
+
+    // Branch 0: requires 3 keys with "ns/" → fails
+    // Branch 1: requires 2 keys with "ns/" → matches
+    let txn = kv_transaction_req(vec![
+        (
+            Some(pb::BooleanExpression::from_conditions_and([
+                TxnCondition::keys_with_prefix("ns/", 3),
+            ])),
+            vec![TxnOp::put("r", b("wrong"))],
+        ),
+        (
+            Some(pb::BooleanExpression::from_conditions_and([
+                TxnCondition::keys_with_prefix("ns/", 2),
+            ])),
+            vec![TxnOp::put("r", b("correct"))],
+        ),
+    ]);
+
+    let reply = client.transaction_v2(txn).await?;
+    assert_eq!(reply.executed_branch, Some(1));
+    assert_eq!(client.get_kv("r").await?.unwrap().data, b("correct"));
+
+    Ok(())
+}
+
+/// FetchIncreaseU64 on a new key: counter starts at 0, result equals delta.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_fetch_add_u64_from_zero() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    // "counter" doesn't exist → starts at 0; after = 0 + 5 = 5
+    let txn = kv_transaction_req(vec![(None, vec![TxnOp::fetch_add_u64("counter", 5)])]);
+    let reply = client.transaction_v2(txn).await?;
+    assert_eq!(reply.executed_branch, Some(0));
+
+    let resp = reply.responses[0]
+        .try_as_fetch_increase_u64()
+        .expect("expect FetchIncreaseU64 response");
+    assert_eq!(*resp, pb::FetchIncreaseU64Response {
+        key: "counter".to_string(),
+        before_seq: 0,
+        before: 0,
+        after_seq: 1,
+        after: 5,
+    });
+
+    Ok(())
+}
+
+/// FetchIncreaseU64: multiple increments accumulate correctly.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_fetch_add_u64_accumulates() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    let inc =
+        |delta: i64| kv_transaction_req(vec![(None, vec![TxnOp::fetch_add_u64("counter", delta)])]);
+
+    let r1 = client.transaction_v2(inc(10)).await?;
+    let r2 = client.transaction_v2(inc(3)).await?;
+    let r3 = client.transaction_v2(inc(7)).await?;
+
+    assert_eq!(
+        *r1.responses[0].try_as_fetch_increase_u64().unwrap(),
+        pb::FetchIncreaseU64Response {
+            key: "counter".to_string(),
+            before_seq: 0,
+            before: 0,
+            after_seq: 1,
+            after: 10,
+        }
+    );
+    assert_eq!(
+        *r2.responses[0].try_as_fetch_increase_u64().unwrap(),
+        pb::FetchIncreaseU64Response {
+            key: "counter".to_string(),
+            before_seq: 1,
+            before: 10,
+            after_seq: 2,
+            after: 13,
+        }
+    );
+    assert_eq!(
+        *r3.responses[0].try_as_fetch_increase_u64().unwrap(),
+        pb::FetchIncreaseU64Response {
+            key: "counter".to_string(),
+            before_seq: 2,
+            before: 13,
+            after_seq: 3,
+            after: 20,
+        }
+    );
+
+    Ok(())
+}
+
+/// FetchIncreaseU64 with max_value (floor): after = max(current, floor) + delta.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_fetch_increase_u64_with_floor() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    // current=0 (new key), floor=100, delta=1 → after = max(0, 100) + 1 = 101
+    let txn = kv_transaction_req(vec![(None, vec![TxnOp::fetch_increase_u64(
+        "counter", 100, 1,
+    )])]);
+    let reply = client.transaction_v2(txn).await?;
+
+    let resp = reply.responses[0]
+        .try_as_fetch_increase_u64()
+        .expect("expect FetchIncreaseU64 response");
+    assert_eq!(*resp, pb::FetchIncreaseU64Response {
+        key: "counter".to_string(),
+        before_seq: 0,
+        before: 0,
+        after_seq: 1,
+        after: 101,
+    });
+
+    // Second call: current=101, floor=100, delta=1 → after = max(101, 100) + 1 = 102
+    let txn2 = kv_transaction_req(vec![(None, vec![TxnOp::fetch_increase_u64(
+        "counter", 100, 1,
+    )])]);
+    let reply2 = client.transaction_v2(txn2).await?;
+    assert_eq!(
+        *reply2.responses[0].try_as_fetch_increase_u64().unwrap(),
+        pb::FetchIncreaseU64Response {
+            key: "counter".to_string(),
+            before_seq: 1,
+            before: 101,
+            after_seq: 2,
+            after: 102,
+        }
+    );
+
+    Ok(())
+}
+
+/// fetch_max_u64: sets counter to max(current, provided_value).
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_fetch_max_u64() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    // Set counter to 50 first
+    client
+        .transaction_v2(kv_transaction_req(vec![(None, vec![
+            TxnOp::fetch_add_u64("counter", 50),
+        ])]))
+        .await?;
+
+    // fetch_max_u64(counter, 30): max(50, 30) = 50, unchanged
+    let r1 = client
+        .transaction_v2(kv_transaction_req(vec![(None, vec![
+            TxnOp::fetch_max_u64("counter", 30),
+        ])]))
+        .await?;
+    assert_eq!(
+        *r1.responses[0].try_as_fetch_increase_u64().unwrap(),
+        pb::FetchIncreaseU64Response {
+            key: "counter".to_string(),
+            before_seq: 1,
+            before: 50,
+            after_seq: 2,
+            after: 50,
+        }
+    );
+
+    // fetch_max_u64(counter, 200): max(50, 200) = 200, bumped up
+    let r2 = client
+        .transaction_v2(kv_transaction_req(vec![(None, vec![
+            TxnOp::fetch_max_u64("counter", 200),
+        ])]))
+        .await?;
+    assert_eq!(
+        *r2.responses[0].try_as_fetch_increase_u64().unwrap(),
+        pb::FetchIncreaseU64Response {
+            key: "counter".to_string(),
+            before_seq: 2,
+            before: 50,
+            after_seq: 3,
+            after: 200,
+        }
+    );
+
+    Ok(())
+}
+
+/// FetchIncreaseU64 with match_seq that matches: update proceeds.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_fetch_increase_u64_match_seq_match() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    // First increment to establish the key (seq becomes 1)
+    client
+        .transaction_v2(kv_transaction_req(vec![(None, vec![
+            TxnOp::fetch_add_u64("counter", 10),
+        ])]))
+        .await?;
+
+    // Now increment with correct match_seq=1
+    let txn = kv_transaction_req(vec![(None, vec![
+        TxnOp::fetch_add_u64("counter", 5).match_seq(Some(1)),
+    ])]);
+    let reply = client.transaction_v2(txn).await?;
+
+    assert_eq!(
+        *reply.responses[0].try_as_fetch_increase_u64().unwrap(),
+        pb::FetchIncreaseU64Response {
+            key: "counter".to_string(),
+            before_seq: 1,
+            before: 10,
+            after_seq: 2,
+            after: 15,
+        }
+    );
+
+    Ok(())
+}
+
+/// FetchIncreaseU64 with match_seq that does not match: counter unchanged.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_fetch_increase_u64_match_seq_mismatch() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    // Establish counter at 10 (seq=1)
+    client
+        .transaction_v2(kv_transaction_req(vec![(None, vec![
+            TxnOp::fetch_add_u64("counter", 10),
+        ])]))
+        .await?;
+
+    // Try to increment with wrong seq (999)
+    let txn = kv_transaction_req(vec![(None, vec![
+        TxnOp::fetch_add_u64("counter", 5).match_seq(Some(999)),
+    ])]);
+    let reply = client.transaction_v2(txn).await?;
+
+    // Unchanged: before == after, seq unchanged
+    assert_eq!(
+        *reply.responses[0].try_as_fetch_increase_u64().unwrap(),
+        pb::FetchIncreaseU64Response {
+            key: "counter".to_string(),
+            before_seq: 1,
+            before: 10,
+            after_seq: 1,
+            after: 10,
+        }
+    );
+
+    Ok(())
+}
+
+/// PutSequential inserts with an auto-incremented key and returns a Put response.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_put_sequential_basic() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    let txn = kv_transaction_req(vec![(None, vec![TxnOp::put_sequential(
+        "log/",
+        "log/__seq",
+        b("e1"),
+    )])]);
+    let reply = client.transaction_v2(txn).await?;
+    assert_eq!(reply.executed_branch, Some(0));
+    assert_eq!(reply.responses.len(), 1);
+
+    let put_resp = reply.responses[0]
+        .try_as_put()
+        .expect("PutSequential returns a Put response");
+    // next_seq = before of FetchIncreaseU64 = 0 (counter absent), formatted as 21 zero-padded digits
+    // seq=2: seq counter write (seq=1) then data key write (seq=2)
+    assert_eq!(*put_resp, pb::TxnPutResponse {
+        key: "log/000_000_000_000_000_000_000".to_string(),
+        prev_value: None,
+        current: Some(pb::SeqV {
+            seq: 2,
+            data: b("e1"),
+            meta: None
+        }),
+    });
+
+    // The actual key should exist in the store
+    assert_eq!(
+        client.get_kv("log/000_000_000_000_000_000_000").await?,
+        Some(SeqV {
+            seq: 2,
+            meta: None,
+            data: b("e1")
+        })
+    );
+
+    Ok(())
+}
+
+/// Multiple PutSequential calls produce different, lexicographically ordered keys.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_kv_transaction_put_sequential_unique_keys() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = tc.grpc_client().await?;
+
+    let mk_txn = |v: &'static str| {
+        kv_transaction_req(vec![(None, vec![TxnOp::put_sequential(
+            "entries/",
+            "entries/__seq",
+            v.as_bytes().to_vec(),
+        )])])
+    };
+
+    let r1 = client.transaction_v2(mk_txn("first")).await?;
+    let r2 = client.transaction_v2(mk_txn("second")).await?;
+    let r3 = client.transaction_v2(mk_txn("third")).await?;
+
+    let key1 = r1.responses[0].try_as_put().unwrap().key.clone();
+    let key2 = r2.responses[0].try_as_put().unwrap().key.clone();
+    let key3 = r3.responses[0].try_as_put().unwrap().key.clone();
+
+    assert_eq!(key1, "entries/000_000_000_000_000_000_000");
+    assert_eq!(key2, "entries/000_000_000_000_000_000_001");
+    assert_eq!(key3, "entries/000_000_000_000_000_000_002");
+
+    // Also verify stored values
+    assert_eq!(client.get_kv(&key1).await?.unwrap().data, b("first"));
+    assert_eq!(client.get_kv(&key2).await?.unwrap().data, b("second"));
+    assert_eq!(client.get_kv(&key3).await?.unwrap().data, b("third"));
 
     Ok(())
 }
