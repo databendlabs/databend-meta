@@ -16,10 +16,10 @@ use std::future;
 use std::io;
 use std::sync::Arc;
 
-use databend_meta_kvapi::kvapi;
-use databend_meta_kvapi::kvapi::KVStream;
-use databend_meta_kvapi::kvapi::ListOptions;
-use databend_meta_kvapi::kvapi::limit_stream;
+use databend_meta_kvapi as kvapi;
+use databend_meta_kvapi::KVStream;
+use databend_meta_kvapi::ListOptions;
+use databend_meta_kvapi::limit_stream;
 use databend_meta_types::SeqV;
 use databend_meta_types::TxnReply;
 use databend_meta_types::TxnRequest;
@@ -114,7 +114,7 @@ fn state_machine_snapshot_get_many_kv(
     keys: BoxStream<'static, Result<String, io::Error>>,
     local_now_ms: u64,
 ) -> KVStream<io::Error> {
-    use databend_meta_kvapi::kvapi::fail_fast;
+    use databend_meta_kvapi::fail_fast;
     use futures_util::StreamExt;
     use futures_util::TryStreamExt;
 

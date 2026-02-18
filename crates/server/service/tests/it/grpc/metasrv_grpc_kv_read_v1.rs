@@ -22,7 +22,7 @@ use databend_meta_client::ClientHandle;
 use databend_meta_client::ListKVReq;
 use databend_meta_client::MGetKVReq;
 use databend_meta_client::Streamed;
-use databend_meta_kvapi::kvapi::KvApiExt;
+use databend_meta_kvapi::KvApiExt;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_types::MetaSpec;
 use databend_meta_types::UpsertKV;

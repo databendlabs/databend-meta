@@ -14,8 +14,8 @@
 
 //! A helper for building a string key from a structured key
 
-use crate::kvapi::helper::escape;
-use crate::kvapi::helper::escape_specified;
+use crate::helper::escape;
+use crate::helper::escape_specified;
 
 pub struct KeyBuilder {
     buf: Vec<u8>,
@@ -67,7 +67,7 @@ impl KeyBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::kvapi::key_builder::KeyBuilder;
+    use crate::key_builder::KeyBuilder;
 
     #[test]
     fn test_key_builder() -> anyhow::Result<()> {

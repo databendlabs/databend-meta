@@ -17,7 +17,7 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use databend_meta_client::ClientHandle;
-use databend_meta_kvapi::kvapi;
+use databend_meta_kvapi as kvapi;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_test_harness::MetaSrvTestContext;
 use databend_meta_test_harness::make_grpc_client;

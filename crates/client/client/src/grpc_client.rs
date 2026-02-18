@@ -419,7 +419,7 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
         futures_util::stream::BoxStream<'static, Result<pb::StreamItem, MetaError>>,
         MetaClientError,
     > {
-        use databend_meta_kvapi::kvapi::fail_fast;
+        use databend_meta_kvapi::fail_fast;
 
         let mut keys = req.keys;
         let input_err: Arc<Mutex<Option<MetaError>>> = Arc::new(Mutex::new(None));

@@ -14,7 +14,7 @@
 
 //! Define behaviors of a `kvapi::Value` that contains a name.
 
-use crate::kvapi;
+use crate as kvapi;
 
 /// Define behaviors of a `kvapi::Value` that contains a name.
 pub trait ValueWithName: kvapi::Value {

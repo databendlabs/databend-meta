@@ -14,7 +14,7 @@
 
 use databend_meta_types::SeqV;
 
-use crate::kvapi;
+use crate as kvapi;
 
 /// A Key-Value pair for type Key. The value does not have a seq number.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -23,7 +23,7 @@ use databend_meta_client::MetaChannelManager;
 use databend_meta_client::MetaGrpcClient;
 use databend_meta_client::Streamed;
 use databend_meta_client::handshake;
-use databend_meta_kvapi::kvapi::KvApiExt;
+use databend_meta_kvapi::KvApiExt;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_types::MetaError;

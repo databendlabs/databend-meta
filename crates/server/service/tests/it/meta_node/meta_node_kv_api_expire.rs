@@ -14,7 +14,7 @@
 
 use std::time::Duration;
 
-use databend_meta_kvapi::kvapi::KvApiExt;
+use databend_meta_kvapi::KvApiExt;
 use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
 use databend_meta_types::MatchSeq;

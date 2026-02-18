@@ -17,8 +17,8 @@
 use std::fmt::Debug;
 use std::string::FromUtf8Error;
 
-use crate::kvapi;
-use crate::kvapi::key_codec::KeyCodec;
+use crate as kvapi;
+use crate::key_codec::KeyCodec;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum KeyError {
@@ -80,9 +80,9 @@ where Self: Sized
 #[cfg(test)]
 mod tests {
 
-    use crate::kvapi::DirName;
-    use crate::kvapi::Key;
-    use crate::kvapi::testing::FooKey;
+    use crate::DirName;
+    use crate::Key;
+    use crate::testing::FooKey;
 
     #[test]
     fn test_with_key_space() {

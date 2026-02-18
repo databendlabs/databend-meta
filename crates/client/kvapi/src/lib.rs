@@ -14,4 +14,47 @@
 
 #![allow(clippy::uninlined_format_args)]
 
-pub mod kvapi;
+mod api;
+mod dir_name;
+mod helper;
+mod item;
+mod key;
+mod key_builder;
+mod key_codec;
+mod key_parser;
+mod kv_api_ext;
+mod list_options;
+mod message;
+mod pair;
+mod value;
+mod value_with_name;
+
+pub(crate) mod testing;
+
+pub use api::ApiBuilder;
+pub use api::KVApi;
+pub use api::KVStream;
+pub use api::fail_fast;
+pub use api::limit_stream;
+pub use dir_name::DirName;
+pub use item::Item;
+pub use item::NonEmptyItem;
+pub use key::Key;
+pub use key::KeyError;
+pub use key_builder::KeyBuilder;
+pub use key_codec::KeyCodec;
+pub use key_parser::KeyParser;
+pub use kv_api_ext::KvApiExt;
+pub use list_options::ListOptions;
+pub use message::GetKVReply;
+pub use message::GetKVReq;
+pub use message::ListKVReply;
+pub use message::ListKVReq;
+pub use message::MGetKVReply;
+pub use message::MGetKVReq;
+pub use message::UpsertKVReply;
+pub use pair::BasicPair;
+pub use pair::Pair;
+pub use pair::SeqPair;
+pub use value::Value;
+pub use value_with_name::ValueWithName;

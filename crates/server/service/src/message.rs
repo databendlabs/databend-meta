@@ -14,12 +14,12 @@
 
 use anyerror::AnyError;
 use databend_meta_client::MetaGrpcReadReq;
-use databend_meta_kvapi::kvapi::GetKVReply;
-use databend_meta_kvapi::kvapi::GetKVReq;
-use databend_meta_kvapi::kvapi::ListKVReply;
-use databend_meta_kvapi::kvapi::ListKVReq;
-use databend_meta_kvapi::kvapi::MGetKVReply;
-use databend_meta_kvapi::kvapi::MGetKVReq;
+use databend_meta_kvapi::GetKVReply;
+use databend_meta_kvapi::GetKVReq;
+use databend_meta_kvapi::ListKVReply;
+use databend_meta_kvapi::ListKVReq;
+use databend_meta_kvapi::MGetKVReply;
+use databend_meta_kvapi::MGetKVReq;
 use databend_meta_types::AppliedState;
 use databend_meta_types::Endpoint;
 use databend_meta_types::GrpcHelper;

@@ -201,7 +201,7 @@ impl<RT: SpawnApi> ClientHandle<RT> {
     pub async fn streamed_get_many(
         &self,
         req: StreamedGetMany,
-    ) -> Result<databend_meta_kvapi::kvapi::KVStream<MetaError>, MetaClientError> {
+    ) -> Result<databend_meta_kvapi::KVStream<MetaError>, MetaClientError> {
         self.request(req).await
     }
 

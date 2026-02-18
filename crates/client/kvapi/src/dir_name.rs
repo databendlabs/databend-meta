@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::kvapi;
-use crate::kvapi::Key;
-use crate::kvapi::KeyCodec;
-use crate::kvapi::KeyError;
+use crate as kvapi;
+use crate::Key;
+use crate::KeyCodec;
+use crate::KeyError;
 
 /// The dir name of a key.
 ///
@@ -96,9 +96,9 @@ impl<K: Key> Key for DirName<K> {
 #[cfg(test)]
 mod tests {
 
-    use crate::kvapi::Key;
-    use crate::kvapi::dir_name::DirName;
-    use crate::kvapi::testing::FooKey;
+    use crate::Key;
+    use crate::dir_name::DirName;
+    use crate::testing::FooKey;
 
     #[test]
     fn test_dir_name_from_key() {

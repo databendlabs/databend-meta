@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::kvapi;
-use crate::kvapi::KeyError;
+use crate as kvapi;
+use crate::KeyError;
 
 /// Encode or decode part of a meta-service key.
 pub trait KeyCodec {
@@ -26,10 +26,10 @@ pub trait KeyCodec {
 }
 
 mod impls {
-    use crate::kvapi::KeyBuilder;
-    use crate::kvapi::KeyCodec;
-    use crate::kvapi::KeyError;
-    use crate::kvapi::KeyParser;
+    use crate::KeyBuilder;
+    use crate::KeyCodec;
+    use crate::KeyError;
+    use crate::KeyParser;
 
     impl KeyCodec for String {
         fn encode_key(&self, b: KeyBuilder) -> KeyBuilder {

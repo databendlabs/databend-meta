@@ -14,7 +14,7 @@
 
 use std::string::FromUtf8Error;
 
-use crate::kvapi::KeyError;
+use crate::KeyError;
 
 /// Function that escapes special characters in a string.
 ///
