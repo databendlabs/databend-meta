@@ -1,6 +1,6 @@
 CARGO_TARGET_DIR ?= $(CURDIR)/target
 
-.PHONY: all setup fmt lint build build-release check test unit-test miri clean doc doc-open
+.PHONY: all setup fmt lint build build-release check test unit-test miri coverage coverage-html clean doc doc-open
 
 all: lint test
 
@@ -11,6 +11,7 @@ setup:
 	cargo install typos-cli --locked
 	cargo install cargo-machete --locked
 	cargo install cargo-nextest --locked
+	cargo install cargo-llvm-cov --locked
 
 # Formatting
 fmt:
@@ -42,6 +43,14 @@ unit-test:
 	ulimit -n 10000 2>/dev/null || true; \
 	ulimit -s 16384 2>/dev/null || true; \
 	RUST_LOG="ERROR" cargo nextest run --workspace
+
+# Coverage report (requires cargo-llvm-cov: `make setup`)
+coverage:
+	cargo llvm-cov nextest --workspace
+
+coverage-html:
+	cargo llvm-cov nextest --workspace --html
+	@echo "Report: target/llvm-cov/html/index.html"
 
 miri:
 	cargo miri setup
