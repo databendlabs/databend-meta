@@ -379,8 +379,8 @@ where SM: StateMachineApi<SysData> + 'static
                             return Ok(true);
                         }
                     }
-                    // Empty OR returns true (vacuous truth, consistent with old behavior)
-                    Ok(true)
+                    // Empty OR returns true (vacuous truth); non-empty OR with no match is false.
+                    Ok(children.is_empty())
                 }
                 kv_transaction::Predicate::Leaf(cond) => self.eval_condition(cond).await,
             }

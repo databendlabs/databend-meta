@@ -609,7 +609,7 @@ async fn test_kv_transaction_and_predicate_both_match() -> anyhow::Result<()> {
     client.upsert_kv(UpsertKV::update("a", b"va")).await?;
     client.upsert_kv(UpsertKV::update("b", b"vb")).await?;
 
-    // Both: a seq==1 AND b seq==1 → true
+    // Both: a seq==1 AND b seq==2 → true
     let txn = kv_transaction_req(vec![(
         Some(pb::BooleanExpression::from_conditions_and([
             TxnCondition::eq_seq("a", 1),

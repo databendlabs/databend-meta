@@ -515,17 +515,9 @@ async fn test_eval_predicate_or_short_circuit() -> anyhow::Result<()> {
     let pred = Predicate::or([Predicate::eq_seq("k1", 99), Predicate::eq_seq("k1", 0)]);
     assert!(a.eval_predicate(&pred).await?);
 
-    // Or(eq_seq("k1",99), eq_seq("k1",88)) → false OR false → true (empty OR is vacuous)
-    // Actually this is non-empty, so it checks each.
+    // Or(eq_seq("k1",99), eq_seq("k1",88)) → false OR false → false
     let pred = Predicate::or([Predicate::eq_seq("k1", 99), Predicate::eq_seq("k1", 88)]);
-    // Looking at the code: non-empty Or returns false when none match? No!
-    // The code says: for each child, if true → return true. After loop: return true (vacuous).
-    // Wait, the comment says "Empty OR returns true". But this behavior means non-empty OR
-    // that finds no match also returns true? Let me re-read:
-    //   for child in children { if self.eval(child)? { return Ok(true) } }
-    //   Ok(true) // <-- this returns true even when no child matched
-    // This is actually a bug-like behavior but let's test what the code actually does.
-    assert!(a.eval_predicate(&pred).await?);
+    assert!(!a.eval_predicate(&pred).await?);
 
     // Empty Or → true
     assert!(a.eval_predicate(&Predicate::Or(vec![])).await?);
