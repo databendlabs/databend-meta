@@ -28,7 +28,7 @@ fn test_txn_request_serde() -> anyhow::Result<()> {
     let want = concat!(
         r#"{"#,
         r#""condition":[{"key":"k","expected":0,"target":{"Value":[118]}}],"#,
-        r#""if_then":[{"request":{"Put":{"key":"k","value":[118],"expire_at":null,"ttl_ms":100}}}],"#,
+        r#""if_then":[{"request":{"Put":{"key":"k","value":[118],"expire_at":null,"ttl_ms":100,"match_seq":null}}}],"#,
         r#""else_then":[]"#,
         r#"}"#
     );
