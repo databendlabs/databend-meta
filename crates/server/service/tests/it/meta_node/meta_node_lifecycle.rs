@@ -21,7 +21,7 @@ use databend_meta::message::ForwardRequestBody;
 use databend_meta::message::JoinRequest;
 use databend_meta::message::LeaveRequest;
 use databend_meta::meta_service::MetaNode;
-use databend_meta_kvapi::kvapi::KvApiExt;
+use databend_meta_kvapi::KvApiExt;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_sled_store::openraft::LogIdOptionExt;
 use databend_meta_sled_store::openraft::RaftLogReader;

@@ -14,7 +14,7 @@
 
 use databend_meta_types::SeqV;
 
-use crate::kvapi::Key;
+use crate::Key;
 
 /// Key-Value item contains key and optional value with seq number.
 #[derive(Clone, Debug, PartialEq, Eq)]

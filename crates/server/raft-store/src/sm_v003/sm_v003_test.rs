@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use databend_meta_kvapi::kvapi::KVApi;
-use databend_meta_kvapi::kvapi::ListOptions;
+use databend_meta_kvapi::KVApi;
+use databend_meta_kvapi::ListOptions;
 use databend_meta_types::CmdContext;
 use databend_meta_types::SeqV;
 use databend_meta_types::UpsertKV;

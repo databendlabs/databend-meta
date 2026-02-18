@@ -15,9 +15,9 @@
 use std::time::Duration;
 use std::time::SystemTime;
 
-use databend_meta_kvapi::kvapi;
-use databend_meta_kvapi::kvapi::KvApiExt;
-use databend_meta_kvapi::kvapi::ListOptions;
+use databend_meta_kvapi as kvapi;
+use databend_meta_kvapi::KvApiExt;
+use databend_meta_kvapi::ListOptions;
 use databend_meta_types::ConditionResult;
 use databend_meta_types::MatchSeq;
 use databend_meta_types::MetaSpec;
@@ -507,7 +507,7 @@ impl TestSuite {
         &self,
         kv: &KV,
     ) -> anyhow::Result<()> {
-        use databend_meta_kvapi::kvapi::KVStream;
+        use databend_meta_kvapi::KVStream;
         use databend_meta_types::errors::IncompleteStream;
         use futures_util::StreamExt;
 

@@ -13,11 +13,11 @@
 // limitations under the License.
 
 use async_trait::async_trait;
-use databend_meta_kvapi::kvapi;
-use databend_meta_kvapi::kvapi::KVStream;
-use databend_meta_kvapi::kvapi::ListOptions;
-use databend_meta_kvapi::kvapi::fail_fast;
-use databend_meta_kvapi::kvapi::limit_stream;
+use databend_meta_kvapi as kvapi;
+use databend_meta_kvapi::KVStream;
+use databend_meta_kvapi::ListOptions;
+use databend_meta_kvapi::fail_fast;
+use databend_meta_kvapi::limit_stream;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_types::MetaError;
 use databend_meta_types::MetaNetworkError;

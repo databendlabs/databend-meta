@@ -18,10 +18,10 @@ use std::string::FromUtf8Error;
 
 use databend_base::non_empty::NonEmptyString;
 
-use crate::kvapi::KeyError;
-use crate::kvapi::helper::decode_id;
-use crate::kvapi::helper::unescape;
-use crate::kvapi::helper::unescape_specified;
+use crate::KeyError;
+use crate::helper::decode_id;
+use crate::helper::unescape;
+use crate::helper::unescape_specified;
 
 /// A helper for parsing a string key into structured key.
 pub struct KeyParser<'s> {
@@ -179,8 +179,8 @@ impl<'s> KeyParser<'s> {
 
 #[cfg(test)]
 mod tests {
-    use crate::kvapi::KeyError;
-    use crate::kvapi::key_parser::KeyParser;
+    use crate::KeyError;
+    use crate::key_parser::KeyParser;
 
     #[test]
     fn test_key_parser_new_prefixed() -> anyhow::Result<()> {

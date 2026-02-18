@@ -23,8 +23,8 @@ use futures_util::Stream;
 use futures_util::StreamExt;
 use futures_util::stream::BoxStream;
 
-use crate::kvapi;
-use crate::kvapi::ListOptions;
+use crate as kvapi;
+use crate::ListOptions;
 
 /// Build an API impl instance or a cluster of API impl
 #[async_trait]

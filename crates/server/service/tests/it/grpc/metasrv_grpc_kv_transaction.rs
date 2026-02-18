@@ -14,7 +14,7 @@
 
 //! Integration tests for the `KvTransaction` gRPC endpoint.
 
-use databend_meta_kvapi::kvapi::KvApiExt;
+use databend_meta_kvapi::KvApiExt;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_types::SeqV;
 use databend_meta_types::TxnCondition;

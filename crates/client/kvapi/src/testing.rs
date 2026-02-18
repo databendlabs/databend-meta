@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::kvapi;
-use crate::kvapi::Key;
-use crate::kvapi::KeyCodec;
-use crate::kvapi::KeyError;
-use crate::kvapi::KeyParser;
-use crate::kvapi::Value;
+use crate as kvapi;
+use crate::Key;
+use crate::KeyCodec;
+use crate::KeyError;
+use crate::KeyParser;
+use crate::Value;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]

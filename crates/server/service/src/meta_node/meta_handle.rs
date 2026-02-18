@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use databend_base::futures::ElapsedFutureExt;
 use databend_meta_client::MetaGrpcReadReq;
-use databend_meta_kvapi::kvapi::UpsertKVReply;
+use databend_meta_kvapi::UpsertKVReply;
 use databend_meta_raft_store::leveled_store::db_exporter::DBExporter;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_types::AppliedState;

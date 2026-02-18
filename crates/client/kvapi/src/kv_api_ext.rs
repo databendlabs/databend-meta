@@ -22,9 +22,9 @@ use futures_util::StreamExt;
 use futures_util::TryStreamExt;
 use log::debug;
 
-use crate::kvapi::KVApi;
-use crate::kvapi::KVStream;
-use crate::kvapi::ListOptions;
+use crate::KVApi;
+use crate::KVStream;
+use crate::ListOptions;
 
 /// Extend the `KVApi` trait with auto implemented handy methods.
 #[async_trait]
@@ -133,12 +133,12 @@ mod tests {
     use futures_util::TryStreamExt;
     use futures_util::stream::BoxStream;
 
-    use crate::kvapi;
-    use crate::kvapi::KVStream;
-    use crate::kvapi::KvApiExt;
-    use crate::kvapi::ListOptions;
-    use crate::kvapi::fail_fast;
-    use crate::kvapi::limit_stream;
+    use crate as kvapi;
+    use crate::KVStream;
+    use crate::KvApiExt;
+    use crate::ListOptions;
+    use crate::fail_fast;
+    use crate::limit_stream;
 
     /// In-memory mock of KVApi backed by a BTreeMap of protobuf SeqV.
     struct MockKVApi {
