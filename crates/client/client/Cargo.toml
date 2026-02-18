@@ -40,6 +40,7 @@ tonic = { workspace = true }
 
 [features]
 transaction-v2 = []
+txn-put-match-seq = ["databend-meta-types/txn-put-match-seq", "databend-meta-version/txn-put-match-seq"]
 
 [dev-dependencies]
 anyhow = { workspace = true }

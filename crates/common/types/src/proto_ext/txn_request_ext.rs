@@ -206,6 +206,7 @@ mod tests {
 
                             expire_at: None,
                             ttl_ms: None,
+                            match_seq: None,
                         })),
                     }],
                     else_then: vec![],
@@ -233,6 +234,7 @@ mod tests {
 
                             expire_at: None,
                             ttl_ms: None,
+                            match_seq: None,
                         })),
                     }],
                     else_then: vec![pb::TxnOp::get("test_key")],
@@ -260,6 +262,7 @@ mod tests {
 
                             expire_at: None,
                             ttl_ms: None,
+                            match_seq: None,
                         })),
                     }],
                     else_then: vec![pb::TxnOp::get("test_key")],
@@ -307,6 +310,7 @@ mod tests {
 
                             expire_at: Some(1_234_567_890_000),
                             ttl_ms: Some(3600 * 1000), // 3600 seconds in milliseconds
+                            match_seq: None,
                         })),
                     }],
                     else_then: vec![],
@@ -333,6 +337,7 @@ mod tests {
 
                             expire_at: None,
                             ttl_ms: Some(500),
+                            match_seq: None,
                         })),
                     }],
                     else_then: vec![],
@@ -359,6 +364,7 @@ mod tests {
 
                             expire_at: Some(9_876_543_210_000),
                             ttl_ms: None,
+                            match_seq: None,
                         })),
                     }],
                     else_then: vec![],
