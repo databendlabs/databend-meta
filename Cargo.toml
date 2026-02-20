@@ -99,7 +99,7 @@ tokio = { version = "1.35.0", features = ["full"] }
 tokio-stream = { version = "0.1.11", features = ["net"] }
 tonic = { version = "0.13", features = ["transport", "codegen", "tls-native-roots"] }
 tonic-build = "0.13"
-tonic-reflection = "0.13"
+tonic-reflection = "0.14"
 watcher = "0.5.0"
 
 [workspace.lints.rust]
