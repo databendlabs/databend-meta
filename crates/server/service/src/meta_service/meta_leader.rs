@@ -98,12 +98,20 @@ impl<SP: SpawnApi> Handler<ForwardRequestBody> for MetaLeader<'_, SP> {
 
             ForwardRequestBody::GetKV(req) => {
                 let sm = self.sto.get_sm_v003();
-                let res = sm.kv_api().get_kv(&req.key).await.unwrap();
+                let res = sm.kv_api().get_kv(&req.key).await.map_err(|e| {
+                    MetaOperationError::DataError(MetaDataError::ReadError(MetaDataReadError::new(
+                        "get_kv", &req.key, &e,
+                    )))
+                })?;
                 Ok(ForwardResponse::GetKV(res))
             }
             ForwardRequestBody::MGetKV(req) => {
                 let sm = self.sto.get_sm_v003();
-                let res = sm.kv_api().mget_kv(&req.keys).await.unwrap();
+                let res = sm.kv_api().mget_kv(&req.keys).await.map_err(|e| {
+                    MetaOperationError::DataError(MetaDataError::ReadError(MetaDataReadError::new(
+                        "mget_kv", "", &e,
+                    )))
+                })?;
                 Ok(ForwardResponse::MGetKV(res))
             }
             ForwardRequestBody::ListKV(req) => {
@@ -112,7 +120,11 @@ impl<SP: SpawnApi> Handler<ForwardRequestBody> for MetaLeader<'_, SP> {
                     .kv_api()
                     .list_kv_collect(ListOptions::unlimited(&req.prefix))
                     .await
-                    .unwrap();
+                    .map_err(|e| {
+                        MetaOperationError::DataError(MetaDataError::ReadError(
+                            MetaDataReadError::new("list_kv_collect", &req.prefix, &e),
+                        ))
+                    })?;
                 Ok(ForwardResponse::ListKV(res))
             }
         }
@@ -134,8 +146,11 @@ impl<SP: SpawnApi> Handler<MetaGrpcReadReq> for MetaLeader<'_, SP> {
 
         match req.body {
             MetaGrpcReadReq::GetKV(req) => {
-                // safe unwrap(): Infallible
-                let got = kv_api.get_kv(&req.key).await.unwrap();
+                let got = kv_api.get_kv(&req.key).await.map_err(|e| {
+                    MetaOperationError::DataError(MetaDataError::ReadError(MetaDataReadError::new(
+                        "get_kv", &req.key, &e,
+                    )))
+                })?;
 
                 let item = StreamItem::from((req.key.clone(), got));
                 let strm = futures::stream::iter([Ok(item)]);
@@ -144,8 +159,12 @@ impl<SP: SpawnApi> Handler<MetaGrpcReadReq> for MetaLeader<'_, SP> {
             }
 
             MetaGrpcReadReq::MGetKV(req) => {
-                // safe unwrap(): Infallible
-                let strm = kv_api.get_kv_stream(&req.keys).await.unwrap();
+                let strm =
+                    kv_api.get_kv_stream(&req.keys).await.map_err(|e| {
+                        MetaOperationError::DataError(MetaDataError::ReadError(
+                            MetaDataReadError::new("get_kv_stream", "", &e),
+                        ))
+                    })?;
 
                 let strm = strm.map_err(|e| Status::internal(e.to_string()));
 
