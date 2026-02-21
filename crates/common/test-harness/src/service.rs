@@ -248,7 +248,7 @@ impl<R: RuntimeApi> MetaSrvTestContext<R> {
 
         let max_retries = 20;
         let interval = tokio::time::Duration::from_millis(200);
-        let mut last_err = None;
+        let mut last_err = String::new();
 
         for attempt in 1..=max_retries {
             let client = RaftServiceClient::connect(format!("http://{}", addr)).await;
@@ -259,18 +259,19 @@ impl<R: RuntimeApi> MetaSrvTestContext<R> {
                         "can not yet connect to {} (attempt {}/{}): {}",
                         addr, attempt, max_retries, err
                     );
-                    last_err = Some(err);
-                    tokio::time::sleep(interval).await;
+                    last_err = err.to_string();
+                    if attempt < max_retries {
+                        tokio::time::sleep(interval).await;
+                    }
                 }
             }
         }
 
         Err(anyhow::anyhow!(
-            "can not connect to raft server at {} after {} attempts over {:.1}s: {}",
+            "can not connect to raft server at {} after {} attempts: {}",
             addr,
             max_retries,
-            max_retries as f64 * interval.as_secs_f64(),
-            last_err.unwrap()
+            last_err
         ))
     }
 
