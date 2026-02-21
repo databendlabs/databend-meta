@@ -217,6 +217,13 @@ mod tests {
 
         let out = super::unescape_specified("a/%25/%2", b"%").unwrap();
         assert_eq!("a/%/%2", out, "incomplete input wont be unescaped");
+
+        // Invalid hex chars: kept as-is regardless of the `chars` filter
+        let out = super::unescape_specified("%GG", b"%").unwrap();
+        assert_eq!("%GG", out, "invalid hex sequence is kept verbatim");
+
+        let out = super::unescape_specified("%g0", b"%").unwrap();
+        assert_eq!("%g0", out, "lowercase non-hex char kept verbatim");
     }
 
     #[test]
