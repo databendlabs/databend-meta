@@ -14,7 +14,6 @@
 
 use std::iter::Peekable;
 use std::str::Split;
-use std::string::FromUtf8Error;
 
 use databend_base::non_empty::NonEmptyString;
 
@@ -167,12 +166,12 @@ impl<'s> KeyParser<'s> {
     }
 
     /// Re-export unescape()
-    pub fn unescape(s: &str) -> Result<String, FromUtf8Error> {
+    pub fn unescape(s: &str) -> Result<String, KeyError> {
         unescape(s)
     }
 
     /// Re-export unescape()
-    pub fn unescape_specified(s: &str, chars: &[u8]) -> Result<String, FromUtf8Error> {
+    pub fn unescape_specified(s: &str, chars: &[u8]) -> Result<String, KeyError> {
         unescape_specified(s, chars)
     }
 }

@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::string::FromUtf8Error;
-
 use crate::KeyError;
 
 /// Function that escapes special characters in a string.
@@ -72,7 +70,7 @@ pub(crate) fn escape_specified(key: &str, chars: &[u8]) -> String {
 /// let original_key = unescape(&key);
 /// assert_eq!(Ok("data_bend!!".to_string()), original_key);
 /// ```
-pub(crate) fn unescape(key: &str) -> Result<String, FromUtf8Error> {
+pub(crate) fn unescape(key: &str) -> Result<String, KeyError> {
     let mut new_key = Vec::with_capacity(key.len());
 
     let bytes = key.as_bytes();
@@ -81,10 +79,21 @@ pub(crate) fn unescape(key: &str) -> Result<String, FromUtf8Error> {
     while index < bytes.len() {
         match bytes[index] {
             b'%' => {
-                // The last byte of the string won't be '%'
-                let mut num = unhex(bytes[index + 1]) * 16;
-                num += unhex(bytes[index + 2]);
-                new_key.push(num);
+                if index + 2 >= bytes.len() {
+                    return Err(KeyError::InvalidEscape {
+                        pos: index,
+                        input: key.to_string(),
+                    });
+                }
+                let hi = unhex(bytes[index + 1]).ok_or_else(|| KeyError::InvalidEscape {
+                    pos: index,
+                    input: key.to_string(),
+                })?;
+                let lo = unhex(bytes[index + 2]).ok_or_else(|| KeyError::InvalidEscape {
+                    pos: index,
+                    input: key.to_string(),
+                })?;
+                new_key.push(hi * 16 + lo);
                 index += 3;
             }
             other => {
@@ -94,11 +103,11 @@ pub(crate) fn unescape(key: &str) -> Result<String, FromUtf8Error> {
         }
     }
 
-    String::from_utf8(new_key)
+    String::from_utf8(new_key).map_err(KeyError::from)
 }
 
 /// Unescape only the specified `chars` in a string.
-pub(crate) fn unescape_specified(key: &str, chars: &[u8]) -> Result<String, FromUtf8Error> {
+pub(crate) fn unescape_specified(key: &str, chars: &[u8]) -> Result<String, KeyError> {
     let mut new_key = Vec::with_capacity(key.len());
 
     let bytes = key.as_bytes();
@@ -108,13 +117,21 @@ pub(crate) fn unescape_specified(key: &str, chars: &[u8]) -> Result<String, From
         match bytes[index] {
             b'%' => {
                 if index + 2 < bytes.len() {
-                    let mut num = unhex(bytes[index + 1]) * 16;
-                    num += unhex(bytes[index + 2]);
+                    let hi = unhex(bytes[index + 1]);
+                    let lo = unhex(bytes[index + 2]);
 
-                    if chars.contains(&num) {
-                        new_key.push(num);
+                    if let (Some(hi), Some(lo)) = (hi, lo) {
+                        let num = hi * 16 + lo;
+                        if chars.contains(&num) {
+                            new_key.push(num);
+                        } else {
+                            // Not specified char, do not unescape
+                            new_key.push(bytes[index]);
+                            new_key.push(bytes[index + 1]);
+                            new_key.push(bytes[index + 2]);
+                        }
                     } else {
-                        // Not specified char, do not unescape
+                        // Invalid hex chars, keep as-is
                         new_key.push(bytes[index]);
                         new_key.push(bytes[index + 1]);
                         new_key.push(bytes[index + 2]);
@@ -134,7 +151,7 @@ pub(crate) fn unescape_specified(key: &str, chars: &[u8]) -> Result<String, From
         }
     }
 
-    String::from_utf8(new_key)
+    String::from_utf8(new_key).map_err(KeyError::from)
 }
 
 /// Decode a string into u64 id.
@@ -156,12 +173,13 @@ fn hex(num: u8) -> u8 {
     }
 }
 
-/// Convert a hexadecimal char to a 4bit word.
-fn unhex(num: u8) -> u8 {
+/// Convert a hexadecimal char to a 4bit word, returning `None` for invalid input.
+fn unhex(num: u8) -> Option<u8> {
     match num {
-        b'0'..=b'9' => num - b'0',
-        b'a'..=b'f' => num - b'a' + 10,
-        unreachable => unreachable!("Unreachable branch num = {}", unreachable),
+        b'0'..=b'9' => Some(num - b'0'),
+        b'a'..=b'f' => Some(num - b'a' + 10),
+        b'A'..=b'F' => Some(num - b'A' + 10),
+        _ => None,
     }
 }
 
@@ -199,5 +217,20 @@ mod tests {
 
         let out = super::unescape_specified("a/%25/%2", b"%").unwrap();
         assert_eq!("a/%/%2", out, "incomplete input wont be unescaped");
+    }
+
+    #[test]
+    fn test_unescape_malformed() {
+        // Trailing percent with no hex digits
+        assert!(super::unescape("%").is_err());
+        // Only one hex digit
+        assert!(super::unescape("%2").is_err());
+        // Non-hex characters
+        assert!(super::unescape("%GG").is_err());
+        assert!(super::unescape("%g0").is_err());
+        // Valid uppercase hex should succeed
+        assert_eq!(super::unescape("%2A").unwrap(), "*");
+        // Valid lowercase remains working
+        assert_eq!(super::unescape("%21").unwrap(), "!");
     }
 }
