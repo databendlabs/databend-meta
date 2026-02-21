@@ -46,6 +46,9 @@ pub enum KeyError {
 
     #[error("Unknown kvapi::Key prefix: '{prefix}'")]
     UnknownPrefix { prefix: String },
+
+    #[error("Invalid percent-encoded sequence at byte {pos} in '{input}'")]
+    InvalidEscape { pos: usize, input: String },
 }
 
 /// Convert structured key to a string key used by kvapi::KVApi and backwards
