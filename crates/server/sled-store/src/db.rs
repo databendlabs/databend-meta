@@ -66,6 +66,11 @@ pub fn init_sled_db(path: String, cache_size: u64) {
             "sled db is already initialized with temp dir: {}, can not re-init with path {}",
             curr_path, path
         );
+    } else if curr_path != path {
+        warn!(
+            "sled db is already initialized with path: {}, ignoring re-init with different path: {}",
+            curr_path, path
+        );
     }
 }
 
