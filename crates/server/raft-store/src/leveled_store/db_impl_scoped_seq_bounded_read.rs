@@ -54,15 +54,16 @@ where
 
         let marked = SeqMarked::<K::V>::decode_from(seq_marked)?;
 
+        let seq = *marked.internal_seq();
         // The persisted DB stores one version per key (the latest at compaction time).
         // The design invariant: all MVCC readers with snapshot_seq < db_max_seq must
         // release before the DB is persisted.  Therefore no live reader should see an
         // entry whose seq exceeds their snapshot boundary.
         debug_assert!(
-            *marked.internal_seq() <= snapshot_seq,
+            seq <= snapshot_seq,
             "persisted DB entry seq {} > snapshot_seq {}; \
              violates the invariant that all MVCC readers must release before DB is persisted",
-            *marked.internal_seq(),
+            seq,
             snapshot_seq
         );
 
@@ -97,15 +98,16 @@ where
             let key = RotblCodec::decode_key(&str_k)?;
             let marked = SeqMarked::decode_from(seq_marked)?;
 
+            let seq = *marked.internal_seq();
             // The persisted DB stores one version per key (the latest at compaction time).
             // The design invariant: all MVCC readers with snapshot_seq < db_max_seq must
             // release before the DB is persisted.  Therefore no live reader should see an
             // entry whose seq exceeds their snapshot boundary.
             debug_assert!(
-                *marked.internal_seq() <= snapshot_seq,
+                seq <= snapshot_seq,
                 "persisted DB entry seq {} > snapshot_seq {}; \
                  violates the invariant that all MVCC readers must release before DB is persisted",
-                *marked.internal_seq(),
+                seq,
                 snapshot_seq
             );
 
