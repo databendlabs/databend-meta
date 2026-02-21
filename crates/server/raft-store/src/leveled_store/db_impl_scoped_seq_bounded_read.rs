@@ -42,8 +42,7 @@ where
     K::V: ViewValue,
     SeqMarked<K::V>: PersistedCodec<SeqMarked>,
 {
-    async fn get(&self, key: K, _snapshot_seq: u64) -> Result<SeqMarked<K::V>, io::Error> {
-        // TODO: DB does not consider snapshot_seq
+    async fn get(&self, key: K, snapshot_seq: u64) -> Result<SeqMarked<K::V>, io::Error> {
         let key = RotblCodec::encode_key(&key)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
@@ -54,6 +53,19 @@ where
         };
 
         let marked = SeqMarked::<K::V>::decode_from(seq_marked)?;
+
+        // The persisted DB stores one version per key (the latest at compaction time).
+        // The design invariant: all MVCC readers with snapshot_seq < db_max_seq must
+        // release before the DB is persisted.  Therefore no live reader should see an
+        // entry whose seq exceeds their snapshot boundary.
+        debug_assert!(
+            *marked.internal_seq() <= snapshot_seq,
+            "persisted DB entry seq {} > snapshot_seq {}; \
+             violates the invariant that all MVCC readers must release before DB is persisted",
+            *marked.internal_seq(),
+            snapshot_seq
+        );
+
         Ok(marked)
     }
 }
@@ -70,22 +82,33 @@ where
     async fn range<R>(
         &self,
         range: R,
-        _snapshot_seq: u64,
+        snapshot_seq: u64,
     ) -> Result<IOResultStream<(K, SeqMarked<K::V>)>, io::Error>
     where
         R: RangeBounds<K> + Send + Sync + Clone + 'static,
     {
-        // TODO: DB does not consider snapshot_seq
-
         let rng = RotblCodec::encode_range(&range)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         let strm = self.0.rotbl.range(rng);
 
-        let strm = strm.map(|res_item: Result<(String, SeqMarked), io::Error>| {
+        let strm = strm.map(move |res_item: Result<(String, SeqMarked), io::Error>| {
             let (str_k, seq_marked) = res_item?;
             let key = RotblCodec::decode_key(&str_k)?;
             let marked = SeqMarked::decode_from(seq_marked)?;
+
+            // The persisted DB stores one version per key (the latest at compaction time).
+            // The design invariant: all MVCC readers with snapshot_seq < db_max_seq must
+            // release before the DB is persisted.  Therefore no live reader should see an
+            // entry whose seq exceeds their snapshot boundary.
+            debug_assert!(
+                *marked.internal_seq() <= snapshot_seq,
+                "persisted DB entry seq {} > snapshot_seq {}; \
+                 violates the invariant that all MVCC readers must release before DB is persisted",
+                *marked.internal_seq(),
+                snapshot_seq
+            );
+
             Ok((key, marked))
         });
 
