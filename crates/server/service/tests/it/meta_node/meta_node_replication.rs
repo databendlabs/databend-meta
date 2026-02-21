@@ -276,7 +276,10 @@ async fn test_raft_service_install_snapshot_v004() -> anyhow::Result<()> {
         db
     };
 
-    let sys_data = db.sys_data().clone();
+    let mut sys_data = db.sys_data().clone();
+    // The stream contains an entry with SeqV.seq=1, so curr_seq must be >= 1
+    // to satisfy the invariant that all DB entries have internal_seq <= curr_seq.
+    sys_data.update_seq(1);
     let sys_data_str = serde_json::to_string(&sys_data)?;
 
     let strm_data = vec![
