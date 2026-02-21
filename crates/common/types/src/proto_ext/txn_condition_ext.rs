@@ -18,7 +18,6 @@ mod target_ext;
 use std::fmt;
 
 use display_more::DisplayOptionExt;
-use num_traits::FromPrimitive;
 use pb::txn_condition::ConditionResult;
 use pb::txn_condition::Target;
 
@@ -80,9 +79,16 @@ impl pb::TxnCondition {
 
 impl fmt::Display for pb::TxnCondition {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let expect: ConditionResult = FromPrimitive::from_i32(self.expected).unwrap();
-
-        write!(f, "{} {} {}", self.key, expect, self.target.display())
+        match ConditionResult::try_from(self.expected) {
+            Ok(expect) => write!(f, "{} {} {}", self.key, expect, self.target.display()),
+            Err(_) => write!(
+                f,
+                "{} unknown({}) {}",
+                self.key,
+                self.expected,
+                self.target.display()
+            ),
+        }
     }
 }
 
@@ -305,6 +311,16 @@ mod tests {
             format!("{}", prefix_cond),
             "/prefix/ == keys_with_prefix(10)"
         );
+    }
+
+    #[test]
+    fn test_display_unknown_expected_value() {
+        let cond = pb::TxnCondition {
+            key: "k".to_string(),
+            expected: 999,
+            target: Some(Target::Seq(1)),
+        };
+        assert_eq!(format!("{}", cond), "k unknown(999) seq(1)");
     }
 
     #[test]
