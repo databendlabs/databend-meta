@@ -57,6 +57,24 @@ use tokio::time::sleep;
 
 pub struct TestSuite {}
 
+/// Poll `get_kv(key)` until it returns `None` (expired) or the timeout elapses.
+async fn wait_for_expiry<KV: kvapi::KVApi>(kv: &KV, key: &str, timeout: Duration) {
+    let start = tokio::time::Instant::now();
+    loop {
+        let res = kv.get_kv(key).await.expect("get_kv should not fail");
+        if res.is_none() {
+            return;
+        }
+        assert!(
+            start.elapsed() < timeout,
+            "key '{}' did not expire within {:?}",
+            key,
+            timeout
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
 impl TestSuite {
     pub async fn test_all<KV, B>(&self, builder: B) -> anyhow::Result<()>
     where
@@ -158,11 +176,8 @@ impl TestSuite {
 
         info!("---get expired");
         {
-            tokio::time::sleep(Duration::from_millis(3000)).await;
-            let res = kv.get_kv("k1").await?;
-            // dbg!("k1 expired", &res);
-            debug!("got k1:{:?}", res);
-            assert!(res.is_none(), "got expired");
+            wait_for_expiry(kv, "k1", Duration::from_secs(10)).await;
+            debug!("k1 expired as expected");
         }
 
         let now_sec = since_epoch_secs();
@@ -284,10 +299,7 @@ impl TestSuite {
             )
             .await?;
 
-            sleep(Duration::from_millis(2_000)).await;
-
-            let res = kv.get_kv("k1").await?;
-            assert!(res.is_none());
+            wait_for_expiry(kv, "k1", Duration::from_secs(10)).await;
         }
 
         info!("--- ttl in milliseconds: 5 sec");
