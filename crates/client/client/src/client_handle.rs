@@ -311,7 +311,7 @@ impl<RT: SpawnApi> ClientHandle<RT> {
 
         let res: Result<Reply, E> = response.try_into().map_err(|e| {
             let msg = format!("expect: {}, got: {}", std::any::type_name::<Reply>(), e);
-            let conn_err = ConnectionError::new(AnyError::error(&msg), msg);
+            let conn_err = ConnectionError::new(AnyError::error(&msg), "response type mismatch");
             E::from(MetaClientError::from(conn_err))
         })?;
 
