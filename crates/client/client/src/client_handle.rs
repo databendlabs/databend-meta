@@ -309,10 +309,11 @@ impl<RT: SpawnApi> ClientHandle<RT> {
             MetaClientError::from(conn_err)
         })?;
 
-        let res: Result<Reply, E> = response
-            .try_into()
-            .map_err(|e| format!("expect: {}, got: {}", std::any::type_name::<Reply>(), e))
-            .unwrap();
+        let res: Result<Reply, E> = response.try_into().map_err(|e| {
+            let msg = format!("expect: {}, got: {}", std::any::type_name::<Reply>(), e);
+            let conn_err = ConnectionError::new(AnyError::error(&msg), msg);
+            E::from(MetaClientError::from(conn_err))
+        })?;
 
         res
     }
