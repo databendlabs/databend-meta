@@ -28,6 +28,7 @@ use databend_meta_runtime_api::SpawnApi;
 use databend_meta_types::AppliedState;
 use databend_meta_types::Cmd;
 use databend_meta_types::Endpoint;
+use databend_meta_types::InvalidReply;
 use databend_meta_types::LogEntry;
 use databend_meta_types::MetaAPIError;
 use databend_meta_types::Node;
@@ -263,15 +264,18 @@ impl<SP: SpawnApi> MetaHandle<SP> {
                     })
                     .await;
 
-                res.map(|(ep, forward_resp)| {
-                    let applied_state: AppliedState =
-                        forward_resp.try_into().expect("expect AppliedState");
+                res.and_then(|(ep, forward_resp)| {
+                    let applied_state: AppliedState = forward_resp.try_into().map_err(|e| {
+                        MetaAPIError::from(InvalidReply::new("expect AppliedState", &e))
+                    })?;
 
                     let kv_reply: pb::KvTransactionReply =
-                        applied_state.try_into().expect("expect KvTransactionReply");
+                        applied_state.try_into().map_err(|e| {
+                            MetaAPIError::from(InvalidReply::new("expect KvTransactionReply", &e))
+                        })?;
                     let txn_reply: TxnReply = kv_reply.into_txn_reply(&txn);
 
-                    (ep, txn_reply)
+                    Ok((ep, txn_reply))
                 })
             };
 
@@ -331,8 +335,11 @@ impl<SP: SpawnApi> MetaHandle<SP> {
             })
             .await?;
 
-        let res: Result<AppliedState, _> =
-            res.map(|(_ep, forward_resp)| forward_resp.try_into().expect("expect AppliedState"));
+        let res: Result<AppliedState, MetaAPIError> = res.and_then(|(_ep, forward_resp)| {
+            forward_resp
+                .try_into()
+                .map_err(|e| MetaAPIError::from(InvalidReply::new("expect AppliedState", &e)))
+        });
         Ok(res)
     }
 
