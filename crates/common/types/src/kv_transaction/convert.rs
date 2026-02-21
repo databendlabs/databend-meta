@@ -14,6 +14,8 @@
 
 //! Conversions between protobuf transport types and Rust-native storage types.
 
+use log::warn;
+
 use super::Branch;
 use super::CompareOperator;
 use super::Condition;
@@ -110,7 +112,13 @@ impl CompareOperator {
             Some(ConditionResult::Lt) => CompareOperator::Lt,
             Some(ConditionResult::Le) => CompareOperator::Le,
             Some(ConditionResult::Ne) => CompareOperator::Ne,
-            None => CompareOperator::Eq,
+            None => {
+                warn!(
+                    "unknown ConditionResult value {}; defaulting to Eq",
+                    expected
+                );
+                CompareOperator::Eq
+            }
         }
     }
 }
@@ -144,7 +152,10 @@ impl From<pb::TxnOp> for Operation {
                 })
             }
 
-            None => Operation::get(""),
+            None => {
+                warn!("TxnOp has no request; defaulting to get(\"\")");
+                Operation::get("")
+            }
         }
     }
 }
