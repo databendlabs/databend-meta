@@ -246,19 +246,32 @@ impl<R: RuntimeApi> MetaSrvTestContext<R> {
     ) -> anyhow::Result<RaftServiceClient<tonic::transport::Channel>> {
         let addr = self.config.raft_config.raft_api_addr::<R>().await?;
 
-        // retry 3 times until server starts listening.
-        for _ in 0..3 {
+        let max_retries = 20;
+        let interval = tokio::time::Duration::from_millis(200);
+        let mut last_err = None;
+
+        for attempt in 1..=max_retries {
             let client = RaftServiceClient::connect(format!("http://{}", addr)).await;
             match client {
                 Ok(x) => return Ok(x),
                 Err(err) => {
-                    info!("can not yet connect to {}, {}, sleep a while", addr, err);
-                    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                    info!(
+                        "can not yet connect to {} (attempt {}/{}): {}",
+                        addr, attempt, max_retries, err
+                    );
+                    last_err = Some(err);
+                    tokio::time::sleep(interval).await;
                 }
             }
         }
 
-        panic!("can not connect to raft server: {:?}", self.config);
+        Err(anyhow::anyhow!(
+            "can not connect to raft server at {} after {} attempts over {:.1}s: {}",
+            addr,
+            max_retries,
+            max_retries as f64 * interval.as_secs_f64(),
+            last_err.unwrap()
+        ))
     }
 
     pub async fn assert_raft_server_connection(&self) -> anyhow::Result<()> {
