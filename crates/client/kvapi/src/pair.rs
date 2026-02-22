@@ -111,3 +111,89 @@ where K: kvapi::Key
         sp.into_pair()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use databend_meta_types::SeqV;
+
+    use super::*;
+    use crate::testing::FooKey;
+    use crate::testing::FooValue;
+
+    fn foo_key(a: u64, b: &str, c: u64) -> FooKey {
+        FooKey {
+            a,
+            b: b.to_string(),
+            c,
+        }
+    }
+
+    #[test]
+    fn test_basic_pair() {
+        let k = foo_key(1, "x", 2);
+        let p = BasicPair::new(k.clone(), FooValue);
+
+        assert_eq!(p.key(), &k);
+
+        let (uk, _uv) = p.unpack();
+        assert_eq!(uk, k);
+    }
+
+    #[test]
+    fn test_pair() {
+        let k = foo_key(1, "x", 2);
+        let sv = SeqV::new(5, FooValue);
+        let p = Pair::new(k.clone(), sv);
+
+        assert_eq!(p.key(), &k);
+        assert_eq!(p.seq_value().seq, 5);
+    }
+
+    #[test]
+    fn test_seq_pair() {
+        let k = foo_key(1, "x", 2);
+        let sk = SeqV::new(10, k.clone());
+        let sv = SeqV::new(20, FooValue);
+        let sp = SeqPair::new(sk.clone(), sv);
+
+        assert_eq!(sp.seq_key().seq, 10);
+        assert_eq!(sp.seq_value().seq, 20);
+    }
+
+    #[test]
+    fn test_seq_pair_unpack() {
+        let k = foo_key(1, "x", 2);
+        let sk = SeqV::new(10, k.clone());
+        let sv = SeqV::new(20, FooValue);
+        let sp = SeqPair::new(sk, sv);
+
+        let (uk, uv) = sp.unpack();
+        assert_eq!(uk.seq, 10);
+        assert_eq!(uk.data, k);
+        assert_eq!(uv.seq, 20);
+    }
+
+    #[test]
+    fn test_seq_pair_into_pair() {
+        let k = foo_key(1, "x", 2);
+        let sk = SeqV::new(10, k.clone());
+        let sv = SeqV::new(20, FooValue);
+        let sp = SeqPair::new(sk, sv);
+
+        let p: Pair<FooKey> = sp.into_pair();
+        assert_eq!(p.key(), &k);
+        assert_eq!(p.seq_value().seq, 20);
+    }
+
+    #[test]
+    fn test_seq_pair_from_into() {
+        let k = foo_key(1, "x", 2);
+        let sk = SeqV::new(10, k.clone());
+        let sv = SeqV::new(20, FooValue);
+        let sp = SeqPair::new(sk, sv);
+
+        let p: Pair<FooKey> = sp.into();
+        assert_eq!(p.key(), &k);
+        assert_eq!(p.seq_value().seq, 20);
+    }
+}

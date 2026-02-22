@@ -41,3 +41,50 @@ impl<K: Key> NonEmptyItem<K> {
         NonEmptyItem { key, seqv }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use databend_meta_types::SeqV;
+
+    use super::*;
+    use crate::testing::FooKey;
+    use crate::testing::FooValue;
+
+    fn foo_key(a: u64, b: &str, c: u64) -> FooKey {
+        FooKey {
+            a,
+            b: b.to_string(),
+            c,
+        }
+    }
+
+    #[test]
+    fn test_item_with_value() {
+        let k = foo_key(1, "x", 2);
+        let sv = SeqV::new(5, FooValue);
+        let item = Item::new(k.clone(), Some(sv));
+
+        assert_eq!(item.key, k);
+        assert!(item.seqv.is_some());
+        assert_eq!(item.seqv.as_ref().unwrap().seq, 5);
+    }
+
+    #[test]
+    fn test_item_without_value() {
+        let k = foo_key(1, "x", 2);
+        let item = Item::<FooKey>::new(k.clone(), None);
+
+        assert_eq!(item.key, k);
+        assert!(item.seqv.is_none());
+    }
+
+    #[test]
+    fn test_non_empty_item() {
+        let k = foo_key(1, "x", 2);
+        let sv = SeqV::new(10, FooValue);
+        let item = NonEmptyItem::new(k.clone(), sv);
+
+        assert_eq!(item.key, k);
+        assert_eq!(item.seqv.seq, 10);
+    }
+}

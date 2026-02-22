@@ -68,3 +68,58 @@ pub type UpsertKVReply = Change<Vec<u8>>;
 pub type GetKVReply = Option<SeqV<Vec<u8>>>;
 pub type MGetKVReply = Vec<Option<SeqV<Vec<u8>>>>;
 pub type ListKVReply = Vec<(String, SeqV<Vec<u8>>)>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_kv_req() {
+        let r = GetKVReq::new("foo");
+        assert_eq!(r.key, "foo");
+
+        let r2 = GetKVReq::new(format!("bar/{}", 42));
+        assert_eq!(r2.key, "bar/42");
+    }
+
+    #[test]
+    fn test_mget_kv_req() {
+        let r = MGetKVReq::new(["a", "b", "c"]);
+        assert_eq!(r.keys, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn test_mget_kv_req_display() {
+        let r = MGetKVReq::new(["x", "y"]);
+        let s = r.to_string();
+        assert!(s.contains("x"), "{}", s);
+        assert!(s.contains("y"), "{}", s);
+    }
+
+    #[test]
+    fn test_list_kv_req() {
+        let r = ListKVReq::new("prefix/");
+        assert_eq!(r.prefix, "prefix/");
+    }
+
+    #[test]
+    fn test_get_kv_req_clone_eq() {
+        let r = GetKVReq::new("foo");
+        let r2 = r.clone();
+        assert_eq!(r, r2);
+    }
+
+    #[test]
+    fn test_mget_kv_req_clone_eq() {
+        let r = MGetKVReq::new(["a", "b"]);
+        let r2 = r.clone();
+        assert_eq!(r, r2);
+    }
+
+    #[test]
+    fn test_list_kv_req_clone_eq() {
+        let r = ListKVReq::new("prefix/");
+        let r2 = r.clone();
+        assert_eq!(r, r2);
+    }
+}
