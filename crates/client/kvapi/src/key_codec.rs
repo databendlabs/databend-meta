@@ -66,3 +66,62 @@ mod impls {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::KeyBuilder;
+    use crate::KeyCodec;
+    use crate::KeyParser;
+    use crate::testing::FooKey;
+
+    #[test]
+    fn test_string_round_trip() {
+        let s = "hello world".to_string();
+        let encoded = s.encode_key(KeyBuilder::new()).done();
+        let mut p = KeyParser::new(&encoded);
+        let decoded = String::decode_key(&mut p).unwrap();
+        assert_eq!(s, decoded);
+    }
+
+    #[test]
+    fn test_string_with_special_chars() {
+        let s = "a/b%c".to_string();
+        let encoded = s.encode_key(KeyBuilder::new()).done();
+        let mut p = KeyParser::new(&encoded);
+        let decoded = String::decode_key(&mut p).unwrap();
+        assert_eq!(s, decoded);
+    }
+
+    #[test]
+    fn test_u64_round_trip() {
+        for v in [0u64, 1, 42, u64::MAX] {
+            let encoded = v.encode_key(KeyBuilder::new()).done();
+            let mut p = KeyParser::new(&encoded);
+            let decoded = u64::decode_key(&mut p).unwrap();
+            assert_eq!(v, decoded);
+        }
+    }
+
+    #[test]
+    fn test_unit_round_trip() {
+        let encoded = ().encode_key(KeyBuilder::new()).done();
+        assert_eq!(encoded, "");
+        let mut p = KeyParser::new(&encoded);
+        <()>::decode_key(&mut p).unwrap();
+    }
+
+    #[test]
+    fn test_foo_key_round_trip() {
+        let k = FooKey {
+            a: 1,
+            b: "hello world".to_string(),
+            c: 42,
+        };
+        let encoded = k.encode_key(KeyBuilder::new_prefixed("pref")).done();
+        assert_eq!(encoded, "pref/1/hello%20world/42");
+
+        let mut p = KeyParser::new_prefixed(&encoded, "pref").unwrap();
+        let decoded = FooKey::decode_key(&mut p).unwrap();
+        assert_eq!(k, decoded);
+    }
+}
