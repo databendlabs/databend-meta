@@ -13,4 +13,5 @@
 //  limitations under the License.
 
 mod cluster;
+mod error_types;
 mod txn_serde;
