@@ -229,7 +229,6 @@ mod test_meta_api_errors {
 
     use anyerror::AnyError;
     use databend_meta_types::ConnectionError;
-    use databend_meta_types::InvalidArgument;
     use databend_meta_types::InvalidReply;
     use databend_meta_types::MetaAPIError;
     use databend_meta_types::MetaDataError;
@@ -282,13 +281,6 @@ mod test_meta_api_errors {
         let read_err2 = MetaDataReadError::new("r", "m", &io::Error::other("e"));
         let remote_read = MetaAPIError::RemoteError(MetaDataError::ReadError(read_err2));
         assert!(!remote_read.is_retryable());
-    }
-
-    #[test]
-    fn test_from_invalid_argument() {
-        let inv = InvalidArgument::new(io::Error::other("bad"), "test");
-        let e: MetaAPIError = inv.into();
-        assert_eq!(e.name(), "NetworkError");
     }
 
     #[test]
@@ -452,7 +444,7 @@ mod test_meta_errors {
     fn test_from_invalid_argument() {
         let inv = InvalidArgument::new(io::Error::other("bad"), "test");
         let e: MetaError = inv.into();
-        assert_eq!(e.name(), "NetworkError");
+        assert_eq!(e.name(), "InvalidArgument");
     }
 
     #[test]
