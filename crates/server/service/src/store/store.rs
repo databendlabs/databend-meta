@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyerror::AnyError;
+use databend_meta_raft_store::MetaStartupError;
 use databend_meta_raft_store::config::RaftConfig;
 use databend_meta_raft_store::key_spaces::RaftStoreEntry;
 use databend_meta_raft_store::leveled_store::db_exporter::DBExporter;
@@ -35,7 +36,6 @@ use databend_meta_raft_store::sm_v003::compactor_acquirer::CompactorAcquirer;
 use databend_meta_raft_store::state_machine::MetaSnapshotId;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_types::Endpoint;
-use databend_meta_types::MetaStartupError;
 use databend_meta_types::Node;
 use databend_meta_types::raft_types::Entry;
 use databend_meta_types::raft_types::Membership;

@@ -136,17 +136,14 @@
 //! - `MetaOperationError` is a intermediate error and a subset error of `MetaApiError` and is
 //!   defined for a local request handler without forwarding. It is finally converted to `MetaApiError`.
 //!
-//! - `ForwardRPCError` is another intermediate error to wrap a result of a forwarded request.
+//! - `ForwardRPCError` (in `service` crate) is another intermediate error to wrap a result of a forwarded request.
 
 pub mod meta_api_errors;
 pub mod meta_client_errors;
 pub mod meta_errors;
 pub mod meta_handshake_errors;
-pub mod meta_management_error;
 pub mod meta_network_errors;
 pub mod meta_raft_errors;
-pub mod meta_startup_errors;
-pub mod rpc_errors;
 
 mod incomplete_stream;
 

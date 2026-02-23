@@ -14,8 +14,8 @@
 
 use std::sync::Arc;
 
+use databend_meta_raft_store::MetaStartupError;
 use databend_meta_runtime_api::RuntimeApi;
-use databend_meta_types::MetaStartupError;
 use log::error;
 use log::info;
 use tokio::sync::mpsc;

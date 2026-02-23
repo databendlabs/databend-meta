@@ -20,9 +20,9 @@ use std::path::Path;
 
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_types::Endpoint;
-use databend_meta_types::MetaStartupError;
 use databend_meta_types::raft_types::NodeId;
 
+use crate::MetaStartupError;
 use crate::ondisk::DATA_VERSION;
 use crate::raft_log_v004;
 

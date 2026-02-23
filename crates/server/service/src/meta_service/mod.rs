@@ -13,6 +13,7 @@
 // limitations under the License.
 
 pub(crate) mod errors;
+pub mod forward_rpc_error;
 mod forwarder;
 
 pub mod meta_leader;

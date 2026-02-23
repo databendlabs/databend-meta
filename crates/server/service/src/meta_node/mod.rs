@@ -16,6 +16,7 @@
 
 pub mod errors;
 pub mod meta_handle;
+pub mod meta_management_error;
 #[allow(clippy::module_inception)]
 pub mod meta_node;
 pub mod meta_node_builder;

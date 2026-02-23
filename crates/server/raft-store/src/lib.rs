@@ -57,7 +57,9 @@ pub mod state_machine_api_ext;
 pub(crate) mod testing;
 pub mod utils;
 
+pub mod meta_startup_error;
 mod state_machine_features;
 
+pub use meta_startup_error::MetaStartupError;
 pub use raft_log;
 pub use state_machine_features::StateMachineFeature;
