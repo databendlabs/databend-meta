@@ -23,10 +23,8 @@ use crate::InvalidReply;
 use crate::MetaNetworkError;
 use crate::errors;
 use crate::raft_types::ChangeMembershipError;
-use crate::raft_types::ClientWriteError;
 use crate::raft_types::Fatal;
 use crate::raft_types::ForwardToLeader;
-use crate::raft_types::RaftError;
 
 /// Errors raised when meta-service handling a request.
 #[derive(thiserror::Error, serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -165,23 +163,6 @@ impl From<errors::IncompleteStream> for MetaAPIError {
     fn from(e: errors::IncompleteStream) -> Self {
         let net_err = MetaNetworkError::from(e);
         Self::NetworkError(net_err)
-    }
-}
-
-impl From<RaftError<ClientWriteError>> for MetaAPIError {
-    fn from(value: RaftError<ClientWriteError>) -> Self {
-        match value {
-            RaftError::APIError(cli_write_err) => {
-                //
-                match cli_write_err {
-                    ClientWriteError::ForwardToLeader(f) => MetaAPIError::ForwardToLeader(f),
-                    ClientWriteError::ChangeMembershipError(c) => {
-                        MetaAPIError::DataError(MetaDataError::ChangeMembershipError(c))
-                    }
-                }
-            }
-            RaftError::Fatal(f) => MetaAPIError::DataError(MetaDataError::WriteError(f)),
-        }
     }
 }
 
