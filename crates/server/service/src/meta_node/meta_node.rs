@@ -1413,7 +1413,8 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 ChangeMembers::AddNodes(btreemap! {node_id => MembershipNode{}}),
                 true,
             )
-            .await?;
+            .await
+            .map_err(MetaOperationError::from)?;
 
         Ok(resp)
     }
