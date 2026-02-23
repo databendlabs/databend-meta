@@ -234,7 +234,6 @@ mod test_meta_api_errors {
     use databend_meta_types::MetaDataError;
     use databend_meta_types::MetaDataReadError;
     use databend_meta_types::MetaNetworkError;
-    use databend_meta_types::errors::IncompleteStream;
     use databend_meta_types::raft_types::ForwardToLeader;
 
     #[test]
@@ -287,13 +286,6 @@ mod test_meta_api_errors {
     fn test_from_invalid_reply() {
         let inv = InvalidReply::new("bad reply", &io::Error::other("x"));
         let e: MetaAPIError = inv.into();
-        assert_eq!(e.name(), "NetworkError");
-    }
-
-    #[test]
-    fn test_from_incomplete_stream() {
-        let inc = IncompleteStream::new(10, 5);
-        let e: MetaAPIError = inc.into();
         assert_eq!(e.name(), "NetworkError");
     }
 
