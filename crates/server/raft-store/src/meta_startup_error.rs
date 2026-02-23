@@ -15,10 +15,9 @@
 use std::io;
 
 use anyerror::AnyError;
-
-use crate::MetaNetworkError;
-use crate::raft_types::InitializeError;
-use crate::raft_types::RaftError;
+use databend_meta_types::MetaNetworkError;
+use databend_meta_types::raft_types::InitializeError;
+use databend_meta_types::raft_types::RaftError;
 
 /// Error raised when meta-server startup.
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
@@ -60,5 +59,52 @@ impl From<RaftError<InitializeError>> for MetaStartupError {
 impl From<io::Error> for MetaStartupError {
     fn from(e: io::Error) -> Self {
         MetaStartupError::StoreOpenError(AnyError::new(&e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use anyerror::AnyError;
+    use databend_meta_types::MetaNetworkError;
+
+    use super::MetaStartupError;
+
+    #[test]
+    fn test_display_variants() {
+        let e = MetaStartupError::InvalidConfig("bad config".into());
+        assert_eq!(e.to_string(), "bad config");
+
+        let e = MetaStartupError::StoreOpenError(AnyError::error("disk full"));
+        assert!(e.to_string().contains("disk full"), "{}", e);
+
+        let e = MetaStartupError::MetaStoreAlreadyExists(5);
+        assert!(e.to_string().contains("5"), "{}", e);
+
+        let e = MetaStartupError::MetaStoreNotFound;
+        assert!(e.to_string().contains("absent"), "{}", e);
+
+        let e = MetaStartupError::MetaServiceError("service failed".into());
+        assert_eq!(e.to_string(), "service failed");
+
+        let e = MetaStartupError::AddNodeError {
+            source: AnyError::error("join failed"),
+        };
+        assert!(e.to_string().contains("join failed"), "{}", e);
+    }
+
+    #[test]
+    fn test_from_io_error() {
+        let io_err = io::Error::other("disk error");
+        let e: MetaStartupError = io_err.into();
+        assert!(e.to_string().contains("disk error"), "{}", e);
+    }
+
+    #[test]
+    fn test_from_meta_network_error() {
+        let net = MetaNetworkError::GetNodeAddrError("no addr".into());
+        let e: MetaStartupError = net.into();
+        assert!(e.to_string().contains("no addr"), "{}", e);
     }
 }

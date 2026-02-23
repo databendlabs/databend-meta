@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use databend_meta_raft_store::MetaStartupError;
 use databend_meta_raft_store::config::RaftConfig;
-use databend_meta_types::MetaStartupError;
 
 #[test]
 fn test_raft_config() -> anyhow::Result<()> {

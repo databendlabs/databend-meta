@@ -14,8 +14,8 @@
 
 use std::net::SocketAddr;
 
+use databend_meta_raft_store::MetaStartupError;
 use databend_meta_raft_store::config::RaftConfig;
-use databend_meta_types::MetaStartupError;
 use databend_meta_types::node::Node;
 
 /// TLS configuration for server endpoints.

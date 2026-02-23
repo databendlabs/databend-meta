@@ -8,6 +8,7 @@ publish = { workspace = true }
 edition = { workspace = true }
 
 [dependencies]
+anyerror = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 bincode = { workspace = true }

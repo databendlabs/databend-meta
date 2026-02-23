@@ -15,10 +15,10 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 
+use databend_meta_raft_store::MetaStartupError;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_sled_store::openraft::Config;
 use databend_meta_types::Endpoint;
-use databend_meta_types::MetaStartupError;
 use databend_meta_types::raft_types::NodeId;
 use log::info;
 use tokio::sync::Mutex;
