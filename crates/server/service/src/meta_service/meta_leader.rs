@@ -31,7 +31,7 @@ use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
 use databend_meta_types::MetaDataError;
 use databend_meta_types::MetaDataReadError;
-use databend_meta_types::MetaOperationError;
+use crate::meta_service::meta_operation_error::MetaOperationError;
 use databend_meta_types::node::Node;
 use databend_meta_types::protobuf::KvGetManyRequest;
 use databend_meta_types::protobuf::StreamItem;

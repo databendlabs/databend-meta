@@ -61,7 +61,6 @@ pub use endpoint::Endpoint;
 pub use errors::meta_api_errors::MetaAPIError;
 pub use errors::meta_api_errors::MetaDataError;
 pub use errors::meta_api_errors::MetaDataReadError;
-pub use errors::meta_api_errors::MetaOperationError;
 pub use errors::meta_client_errors::MetaClientError;
 pub use errors::meta_errors::MetaError;
 pub use errors::meta_handshake_errors::MetaHandshakeError;

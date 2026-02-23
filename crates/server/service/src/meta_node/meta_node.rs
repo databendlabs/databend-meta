@@ -45,7 +45,7 @@ use databend_meta_types::LogEntry;
 use databend_meta_types::MetaAPIError;
 use databend_meta_types::MetaError;
 use databend_meta_types::MetaNetworkError;
-use databend_meta_types::MetaOperationError;
+use crate::meta_service::meta_operation_error::MetaOperationError;
 use databend_meta_types::kv_transaction;
 use databend_meta_types::node::Node;
 use databend_meta_types::protobuf::KvGetManyRequest;

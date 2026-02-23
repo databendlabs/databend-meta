@@ -100,26 +100,6 @@ impl MetaAPIError {
     }
 }
 
-/// Errors raised when handling a request by raft node.
-#[derive(thiserror::Error, serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
-pub enum MetaOperationError {
-    /// If a request can only be dealt by a leader, it informs the caller to forward the request to a leader it knows of.
-    #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader),
-
-    #[error(transparent)]
-    DataError(#[from] MetaDataError),
-}
-
-impl From<MetaOperationError> for MetaAPIError {
-    fn from(e: MetaOperationError) -> Self {
-        match e {
-            MetaOperationError::ForwardToLeader(e) => e.into(),
-            MetaOperationError::DataError(d) => d.into(),
-        }
-    }
-}
-
 /// Errors raised when read or write meta data locally.
 #[derive(thiserror::Error, serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum MetaDataError {
@@ -157,13 +137,6 @@ impl MetaDataReadError {
             msg: msg.to_string(),
             source: AnyError::new(source),
         }
-    }
-}
-
-impl From<MetaDataReadError> for MetaOperationError {
-    fn from(e: MetaDataReadError) -> Self {
-        let de = MetaDataError::from(e);
-        MetaOperationError::from(de)
     }
 }
 

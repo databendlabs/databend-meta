@@ -14,7 +14,7 @@
 
 use databend_meta_client::RequestFor;
 use databend_meta_types::Endpoint;
-use databend_meta_types::MetaOperationError;
+use crate::meta_service::meta_operation_error::MetaOperationError;
 use databend_meta_types::raft_types::NodeId;
 
 use crate::message::ForwardRequest;
