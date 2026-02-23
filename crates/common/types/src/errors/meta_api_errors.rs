@@ -19,7 +19,6 @@ use anyerror::AnyError;
 
 use crate::InvalidReply;
 use crate::MetaNetworkError;
-use crate::errors;
 use crate::raft_types::ChangeMembershipError;
 use crate::raft_types::Fatal;
 use crate::raft_types::ForwardToLeader;
@@ -138,13 +137,6 @@ impl MetaDataReadError {
 
 impl From<InvalidReply> for MetaAPIError {
     fn from(e: InvalidReply) -> Self {
-        let net_err = MetaNetworkError::from(e);
-        Self::NetworkError(net_err)
-    }
-}
-
-impl From<errors::IncompleteStream> for MetaAPIError {
-    fn from(e: errors::IncompleteStream) -> Self {
         let net_err = MetaNetworkError::from(e);
         Self::NetworkError(net_err)
     }
