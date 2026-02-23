@@ -285,13 +285,6 @@ mod test_meta_api_errors {
     }
 
     #[test]
-    fn test_from_tonic_status() {
-        let status = tonic::Status::unavailable("server down");
-        let e: MetaAPIError = status.into();
-        assert_eq!(e.name(), "NetworkError");
-    }
-
-    #[test]
     fn test_from_invalid_argument() {
         let inv = InvalidArgument::new(io::Error::other("bad"), "test");
         let e: MetaAPIError = inv.into();

@@ -16,8 +16,6 @@ use std::fmt::Display;
 use std::io;
 
 use anyerror::AnyError;
-use tonic::Status;
-
 use crate::InvalidArgument;
 use crate::InvalidReply;
 use crate::MetaNetworkError;
@@ -135,13 +133,6 @@ impl MetaDataReadError {
             msg: msg.to_string(),
             source: AnyError::new(source),
         }
-    }
-}
-
-impl From<Status> for MetaAPIError {
-    fn from(status: Status) -> Self {
-        let net_err = MetaNetworkError::from(status);
-        Self::NetworkError(net_err)
     }
 }
 
