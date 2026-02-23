@@ -68,8 +68,8 @@ impl From<tonic::Status> for MetaError {
 
 impl From<InvalidArgument> for MetaError {
     fn from(e: InvalidArgument) -> Self {
-        let api_err = MetaAPIError::from(e);
-        Self::APIError(api_err)
+        let net_err = MetaNetworkError::from(e);
+        Self::NetworkError(net_err)
     }
 }
 impl From<InvalidReply> for MetaError {

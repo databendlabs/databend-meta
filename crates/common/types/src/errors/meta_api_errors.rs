@@ -17,7 +17,6 @@ use std::io;
 
 use anyerror::AnyError;
 
-use crate::InvalidArgument;
 use crate::InvalidReply;
 use crate::MetaNetworkError;
 use crate::errors;
@@ -134,13 +133,6 @@ impl MetaDataReadError {
             msg: msg.to_string(),
             source: AnyError::new(source),
         }
-    }
-}
-
-impl From<InvalidArgument> for MetaAPIError {
-    fn from(e: InvalidArgument) -> Self {
-        let net_err = MetaNetworkError::from(e);
-        Self::NetworkError(net_err)
     }
 }
 
