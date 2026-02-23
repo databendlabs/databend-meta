@@ -133,7 +133,7 @@
 //!
 //! ## Other errors:
 //!
-//! - `MetaOperationError` is a intermediate error and a subset error of `MetaApiError` and is
+//! - `MetaOperationError` (in `service` crate) is an intermediate error and a subset error of `MetaApiError` and is
 //!   defined for a local request handler without forwarding. It is finally converted to `MetaApiError`.
 //!
 //! - `ForwardRPCError` (in `service` crate) is another intermediate error to wrap a result of a forwarded request.

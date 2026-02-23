@@ -15,6 +15,7 @@
 pub(crate) mod errors;
 pub mod forward_rpc_error;
 mod forwarder;
+pub mod meta_operation_error;
 
 pub mod meta_leader;
 pub mod raft_service_impl;

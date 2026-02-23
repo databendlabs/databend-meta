@@ -14,13 +14,13 @@
 
 use databend_meta_client::RequestFor;
 use databend_meta_types::Endpoint;
-use databend_meta_types::MetaOperationError;
 use databend_meta_types::raft_types::NodeId;
 
 use crate::message::ForwardRequest;
 use crate::message::ForwardRequestBody;
 use crate::message::ForwardResponse;
 use crate::meta_service::forward_rpc_error::ForwardRPCError;
+use crate::meta_service::meta_operation_error::MetaOperationError;
 
 /// A handler that handles meta node request locally
 #[async_trait::async_trait]
