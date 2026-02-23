@@ -235,7 +235,6 @@ mod test_meta_api_errors {
     use databend_meta_types::MetaDataError;
     use databend_meta_types::MetaDataReadError;
     use databend_meta_types::MetaNetworkError;
-    use databend_meta_types::MetaOperationError;
     use databend_meta_types::errors::IncompleteStream;
     use databend_meta_types::raft_types::ForwardToLeader;
 
@@ -311,30 +310,6 @@ mod test_meta_api_errors {
         let inc = IncompleteStream::new(10, 5);
         let e: MetaAPIError = inc.into();
         assert_eq!(e.name(), "NetworkError");
-    }
-
-    #[test]
-    fn test_from_meta_operation_error() {
-        let ftl = ForwardToLeader {
-            leader_id: None,
-            leader_node: None,
-        };
-        let op_err = MetaOperationError::ForwardToLeader(ftl);
-        let api_err: MetaAPIError = op_err.into();
-        assert_eq!(api_err.name(), "ForwardToLeader");
-
-        let read_err = MetaDataReadError::new("r", "m", &io::Error::other("e"));
-        let op_err = MetaOperationError::DataError(MetaDataError::ReadError(read_err));
-        let api_err: MetaAPIError = op_err.into();
-        assert_eq!(api_err.name(), "DataError");
-    }
-
-    #[test]
-    fn test_meta_data_read_error_into_operation_error() {
-        let read_err = MetaDataReadError::new("read", "msg", &io::Error::other("io"));
-        let op_err: MetaOperationError = read_err.into();
-        let s = op_err.to_string();
-        assert!(s.contains("read"), "{}", s);
     }
 
     #[test]
@@ -538,62 +513,6 @@ mod test_meta_errors {
             let io_err: io::Error = meta_err.into();
             assert_eq!(io_err.kind(), expected_kind);
         }
-    }
-}
-
-mod test_meta_raft_errors {
-    use databend_meta_types::MetaDataError;
-    use databend_meta_types::MetaOperationError;
-    use databend_meta_types::raft_types::ChangeMembershipError;
-    use databend_meta_types::raft_types::ClientWriteError;
-    use databend_meta_types::raft_types::Fatal;
-    use databend_meta_types::raft_types::ForwardToLeader;
-    use databend_meta_types::raft_types::RaftError;
-    use openraft::error::EmptyMembership;
-
-    #[test]
-    fn test_raft_change_membership_forward_to_leader() {
-        let ftl = ForwardToLeader {
-            leader_id: Some(3),
-            leader_node: None,
-        };
-        let cwe = ClientWriteError::ForwardToLeader(ftl);
-        let op_err: MetaOperationError = cwe.into();
-        assert!(matches!(op_err, MetaOperationError::ForwardToLeader(_)));
-    }
-
-    #[test]
-    fn test_raft_change_membership_error() {
-        let cm = ChangeMembershipError::EmptyMembership(EmptyMembership {});
-        let cwe = ClientWriteError::ChangeMembershipError(cm);
-        let op_err: MetaOperationError = cwe.into();
-        assert!(matches!(
-            op_err,
-            MetaOperationError::DataError(MetaDataError::ChangeMembershipError(_))
-        ));
-    }
-
-    #[test]
-    fn test_raft_error_fatal_into_meta_operation_error() {
-        let fatal = Fatal::Panicked;
-        let raft_err: RaftError<ClientWriteError> = RaftError::Fatal(fatal);
-        let op_err: MetaOperationError = raft_err.into();
-        assert!(matches!(
-            op_err,
-            MetaOperationError::DataError(MetaDataError::WriteError(_))
-        ));
-    }
-
-    #[test]
-    fn test_raft_error_api_forward_into_meta_operation_error() {
-        let ftl = ForwardToLeader {
-            leader_id: None,
-            leader_node: None,
-        };
-        let cwe = ClientWriteError::ForwardToLeader(ftl);
-        let raft_err: RaftError<ClientWriteError> = RaftError::APIError(cwe);
-        let op_err: MetaOperationError = raft_err.into();
-        assert!(matches!(op_err, MetaOperationError::ForwardToLeader(_)));
     }
 }
 
