@@ -211,14 +211,12 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
             .parse()
             .map_err(|e| Status::invalid_argument(format!("Invalid snapshot_id: {}", e)))?;
 
-        // Send finish signal to writer (with empty data for now)
         let finish_entry = WriteEntry::Finish((snapshot_id.clone(), sys_data.clone()));
         write_tx
             .send(finish_entry)
             .await
             .map_err(|_| Status::internal("Failed to send finish signal to writer thread"))?;
 
-        // Wait for writer to complete and get the DB
         let db = jh
             .await
             .map_err(|e| Status::internal(format!("Writer thread panicked: {:?}", e)))?
@@ -236,7 +234,6 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
             snapshot: db,
         };
 
-        // Install the snapshot using raft
         let res = self
             .meta_node
             .raft
@@ -318,13 +315,13 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
         SP::trace_request(func_path!(), request, |request| async {
             let forward_req: ForwardRequest<ForwardRequestBody> = GrpcHelper::parse_req(request)?;
 
-            let res = self.meta_node.handle_forwardable_request(forward_req).await;
+            let res = self
+                .meta_node
+                .handle_forwardable_request(forward_req)
+                .await
+                .map(|(_ep, resp)| resp);
 
-            let res = res.map(|(_endpoint, forward_resp)| forward_resp);
-
-            let raft_reply: RaftReply = res.into();
-
-            Ok(Response::new(raft_reply))
+            Ok(Response::new(RaftReply::from_result(res)))
         })
         .await
     }

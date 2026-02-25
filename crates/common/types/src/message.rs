@@ -82,10 +82,8 @@ impl tonic::IntoRequest<RaftRequest> for &VoteRequest {
     }
 }
 
-impl<T> From<Result<T, MetaAPIError>> for RaftReply
-where T: Serialize
-{
-    fn from(r: Result<T, MetaAPIError>) -> Self {
+impl RaftReply {
+    pub fn from_result<T: Serialize, E: Serialize>(r: Result<T, E>) -> Self {
         match r {
             Ok(x) => {
                 let data = serde_json::to_string(&x).expect("fail to serialize");
@@ -102,5 +100,13 @@ where T: Serialize
                 }
             }
         }
+    }
+}
+
+impl<T> From<Result<T, MetaAPIError>> for RaftReply
+where T: Serialize
+{
+    fn from(r: Result<T, MetaAPIError>) -> Self {
+        RaftReply::from_result(r)
     }
 }

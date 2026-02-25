@@ -29,27 +29,10 @@ pub enum ForwardRPCError {
     RemoteError(#[from] MetaAPIError),
 }
 
-impl From<ForwardRPCError> for MetaAPIError {
-    fn from(e: ForwardRPCError) -> Self {
-        match e {
-            ForwardRPCError::NetworkError(e) => e.into(),
-            ForwardRPCError::RemoteError(e) => {
-                //
-                match e {
-                    MetaAPIError::DataError(e) => MetaAPIError::RemoteError(e),
-                    _ => e,
-                }
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::io;
 
-    use anyerror::AnyError;
-    use databend_meta_types::ConnectionError;
     use databend_meta_types::MetaAPIError;
     use databend_meta_types::MetaDataError;
     use databend_meta_types::MetaDataReadError;
@@ -71,41 +54,5 @@ mod tests {
         let api_err = MetaAPIError::DataError(data_err);
         let e = ForwardRPCError::RemoteError(api_err);
         assert!(e.to_string().contains("read kv"), "{}", e);
-    }
-
-    #[test]
-    fn test_forward_rpc_network_error_into_meta_api_error() {
-        let net =
-            MetaNetworkError::ConnectionError(ConnectionError::new(io::Error::other("x"), "y"));
-        let fwd = ForwardRPCError::NetworkError(net);
-        let api_err: MetaAPIError = fwd.into();
-        assert_eq!(api_err.name(), "NetworkError");
-    }
-
-    #[test]
-    fn test_forward_rpc_remote_data_error_becomes_remote_error() {
-        let read_err = MetaDataReadError::new("read", "msg", &io::Error::other("io"));
-        let data_err = MetaDataError::ReadError(read_err);
-        let api_err = MetaAPIError::DataError(data_err);
-        let fwd = ForwardRPCError::RemoteError(api_err);
-        let result: MetaAPIError = fwd.into();
-        assert_eq!(result.name(), "RemoteError");
-    }
-
-    #[test]
-    fn test_forward_rpc_remote_non_data_passes_through() {
-        let net = MetaNetworkError::GetNodeAddrError("addr".into());
-        let api_err = MetaAPIError::NetworkError(net);
-        let fwd = ForwardRPCError::RemoteError(api_err);
-        let result: MetaAPIError = fwd.into();
-        assert_eq!(result.name(), "NetworkError");
-    }
-
-    #[test]
-    fn test_forward_rpc_remote_can_not_forward_passes_through() {
-        let api_err = MetaAPIError::CanNotForward(AnyError::error("no leader"));
-        let fwd = ForwardRPCError::RemoteError(api_err);
-        let result: MetaAPIError = fwd.into();
-        assert_eq!(result.name(), "CanNotForward");
     }
 }
