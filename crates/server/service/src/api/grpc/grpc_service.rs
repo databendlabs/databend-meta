@@ -228,12 +228,11 @@ impl<SP: SpawnApi> MetaServiceImpl<SP> {
                     id, req, res
                 );
                 let res = res?;
-                // TODO: the MetaApiError should be converted to Status
-                RaftReply::from(res)
+                network_metrics::incr_request_result(res.is_ok());
+                let upsert_reply = res.map_err(GrpcHelper::internal_err)?;
+                RaftReply::new(&upsert_reply)
             }
         };
-
-        network_metrics::incr_request_result(reply.error.is_empty());
 
         Ok(reply)
     }

@@ -31,7 +31,6 @@ use databend_meta_types::Endpoint;
 use databend_meta_types::GrpcHelper;
 use databend_meta_types::InvalidReply;
 use databend_meta_types::LogEntry;
-use databend_meta_types::MetaAPIError;
 use databend_meta_types::Node;
 use databend_meta_types::TxnRequest;
 use databend_meta_types::UpsertKV;
@@ -64,6 +63,7 @@ use crate::message::ForwardRequest;
 use crate::message::ForwardRequestBody;
 use crate::meta_node::errors::MetaNodeStopped;
 use crate::meta_node::meta_node_status::MetaNodeStatus;
+use crate::meta_node::request_handler_error::ForwardRequestError;
 use crate::meta_service::MetaNode;
 
 pub type BoxFuture<T = ()> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
@@ -134,7 +134,7 @@ impl<SP: SpawnApi> MetaHandle<SP> {
     pub async fn handle_upsert_kv(
         &self,
         upsert: UpsertKV,
-    ) -> Result<Result<UpsertKVReply, MetaAPIError>, MetaNodeStopped> {
+    ) -> Result<Result<UpsertKVReply, ForwardRequestError>, MetaNodeStopped> {
         let histogram_label = request_histogram::label_for_upsert(&upsert);
         let log_info = format!("UpsertKV: {:?}", upsert);
         self.request(move |meta_node| {

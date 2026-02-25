@@ -109,6 +109,12 @@ pub enum Feature {
 
     /// `TxnPutRequest.match_seq`: conditional put via sequence number.
     KvTransactionPutMatchSeq,
+
+    /// Server returns errors in `RaftReply.error` (JSON-serialized `MetaAPIError`).
+    ///
+    /// Used by the `kv_api` and `forward` RPCs since the beginning.
+    /// Client reads `RaftReply.error` via `reply_to_api_result()` / `parse_raft_reply()`.
+    RaftReplyError,
 }
 
 impl Feature {
@@ -145,6 +151,7 @@ impl Feature {
             Feature::KvGetMany,
             Feature::KvTransaction,
             Feature::KvTransactionPutMatchSeq,
+            Feature::RaftReplyError,
         ]
     }
 
@@ -181,6 +188,7 @@ impl Feature {
             Feature::KvGetMany => "kv_get_many",
             Feature::KvTransaction => "kv_transaction",
             Feature::KvTransactionPutMatchSeq => "kv_transaction/put_match_seq",
+            Feature::RaftReplyError => "raft_reply/error",
         }
     }
 }

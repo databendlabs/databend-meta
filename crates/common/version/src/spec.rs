@@ -132,6 +132,7 @@ impl Spec {
             // (fake version for features already provided for a while)
             add(&mut srv, F::OperationAsIs, ver(1, 2, 163));
             add(&mut srv, F::KvApi, ver(1, 2, 163));
+            add(&mut srv, F::RaftReplyError, ver(1, 2, 163));
             add(&mut srv, F::KvApiGetKv, ver(1, 2, 163));
             add(&mut srv, F::KvApiMGetKv, ver(1, 2, 163));
             add(&mut srv, F::KvApiListKv, ver(1, 2, 163));
@@ -139,6 +140,7 @@ impl Spec {
 
             add(&mut cli, F::OperationAsIs, ver(1, 2, 163));
             add(&mut cli, F::KvApi, ver(1, 2, 163));
+            add(&mut cli, F::RaftReplyError, ver(1, 2, 163));
             add(&mut cli, F::KvApiGetKv, ver(1, 2, 163));
             add(&mut cli, F::KvApiMGetKv, ver(1, 2, 163));
             add(&mut cli, F::KvApiListKv, ver(1, 2, 163));
@@ -294,6 +296,14 @@ impl Spec {
             // 2026-02-18: since 260217.0.0
             // 🖥 server: add TxnPutRequest.match_seq for conditional put
             add(&mut srv, F::KvTransactionPutMatchSeq, ver(260217, 0, 0));
+
+            // Sever does not set this field but the field still present.
+            // And the error is set instead in Status.
+            //
+            // // 2026-02-25: since 260225.0.0
+            // // 🖥 server: no longer return errors in `RaftReply.error`;
+            // //            use gRPC `Status` instead.
+            // remove(&mut srv, F::RaftReplyError, ver(260225, 0, 0));
 
             // client not yet using these features
             add(&mut cli, F::ExportV1, Version::max());

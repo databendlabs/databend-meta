@@ -16,7 +16,6 @@ use serde::Serialize;
 
 use crate::GrpcHelper;
 use crate::LogEntry;
-use crate::MetaAPIError;
 use crate::protobuf::RaftReply;
 use crate::protobuf::RaftRequest;
 use crate::raft_types::AppendEntriesRequest;
@@ -83,30 +82,11 @@ impl tonic::IntoRequest<RaftRequest> for &VoteRequest {
 }
 
 impl RaftReply {
-    pub fn from_result<T: Serialize, E: Serialize>(r: Result<T, E>) -> Self {
-        match r {
-            Ok(x) => {
-                let data = serde_json::to_string(&x).expect("fail to serialize");
-                RaftReply {
-                    data,
-                    error: Default::default(),
-                }
-            }
-            Err(e) => {
-                let error = serde_json::to_string(&e).expect("fail to serialize");
-                RaftReply {
-                    data: Default::default(),
-                    error,
-                }
-            }
+    pub fn new<T: Serialize>(data: &T) -> Self {
+        let data = serde_json::to_string(data).expect("fail to serialize");
+        RaftReply {
+            data,
+            error: Default::default(),
         }
-    }
-}
-
-impl<T> From<Result<T, MetaAPIError>> for RaftReply
-where T: Serialize
-{
-    fn from(r: Result<T, MetaAPIError>) -> Self {
-        RaftReply::from_result(r)
     }
 }

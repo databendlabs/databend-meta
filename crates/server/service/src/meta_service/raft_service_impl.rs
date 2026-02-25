@@ -315,13 +315,14 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
         SP::trace_request(func_path!(), request, |request| async {
             let forward_req: ForwardRequest<ForwardRequestBody> = GrpcHelper::parse_req(request)?;
 
-            let res = self
+            let resp = self
                 .meta_node
                 .handle_forwardable_request(forward_req)
                 .await
-                .map(|(_ep, resp)| resp);
+                .map(|(_ep, resp)| resp)
+                .map_err(GrpcHelper::internal_err)?;
 
-            Ok(Response::new(RaftReply::from_result(res)))
+            Ok(Response::new(RaftReply::new(&resp)))
         })
         .await
     }
