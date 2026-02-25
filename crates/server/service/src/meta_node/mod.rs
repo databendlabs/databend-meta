@@ -22,3 +22,4 @@ pub mod meta_node;
 pub mod meta_node_builder;
 pub mod meta_node_status;
 pub mod meta_worker;
+pub mod request_handler_error;

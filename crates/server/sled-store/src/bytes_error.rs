@@ -15,7 +15,7 @@
 use anyerror::AnyError;
 
 /// Errors that occur when encode/decode
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("SledBytesError: {source}")]
 pub struct SledBytesError {
     #[source]

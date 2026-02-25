@@ -29,7 +29,6 @@ use databend_meta_sled_store::openraft::async_runtime::WatchReceiver;
 use databend_meta_types::AppliedState;
 use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
-use databend_meta_types::MetaDataError;
 use databend_meta_types::MetaDataReadError;
 use databend_meta_types::node::Node;
 use databend_meta_types::protobuf::KvGetManyRequest;
@@ -98,34 +97,32 @@ impl<SP: SpawnApi> Handler<ForwardRequestBody> for MetaLeader<'_, SP> {
 
             ForwardRequestBody::GetKV(req) => {
                 let sm = self.sto.get_sm_v003();
-                let res = sm.kv_api().get_kv(&req.key).await.map_err(|e| {
-                    MetaOperationError::DataError(MetaDataError::ReadError(MetaDataReadError::new(
-                        "get_kv", &req.key, &e,
-                    )))
+                let v = sm.kv_api().get_kv(&req.key).await.map_err(|e| {
+                    MetaOperationError::from(MetaDataReadError::new("get_kv", &req.key, &e))
                 })?;
-                Ok(ForwardResponse::GetKV(res))
+                Ok(ForwardResponse::GetKV(v))
             }
             ForwardRequestBody::MGetKV(req) => {
                 let sm = self.sto.get_sm_v003();
-                let res = sm.kv_api().mget_kv(&req.keys).await.map_err(|e| {
-                    MetaOperationError::DataError(MetaDataError::ReadError(MetaDataReadError::new(
-                        "mget_kv", "", &e,
-                    )))
+                let v = sm.kv_api().mget_kv(&req.keys).await.map_err(|e| {
+                    MetaOperationError::from(MetaDataReadError::new("mget_kv", "", &e))
                 })?;
-                Ok(ForwardResponse::MGetKV(res))
+                Ok(ForwardResponse::MGetKV(v))
             }
             ForwardRequestBody::ListKV(req) => {
                 let sm = self.sto.get_sm_v003();
-                let res = sm
+                let v = sm
                     .kv_api()
                     .list_kv_collect(ListOptions::unlimited(&req.prefix))
                     .await
                     .map_err(|e| {
-                        MetaOperationError::DataError(MetaDataError::ReadError(
-                            MetaDataReadError::new("list_kv_collect", &req.prefix, &e),
+                        MetaOperationError::from(MetaDataReadError::new(
+                            "list_kv_collect",
+                            &req.prefix,
+                            &e,
                         ))
                     })?;
-                Ok(ForwardResponse::ListKV(res))
+                Ok(ForwardResponse::ListKV(v))
             }
         }
     }
@@ -146,29 +143,20 @@ impl<SP: SpawnApi> Handler<MetaGrpcReadReq> for MetaLeader<'_, SP> {
 
         match req.body {
             MetaGrpcReadReq::GetKV(req) => {
-                let got = kv_api.get_kv(&req.key).await.map_err(|e| {
-                    MetaOperationError::DataError(MetaDataError::ReadError(MetaDataReadError::new(
-                        "get_kv", &req.key, &e,
-                    )))
+                let v = kv_api.get_kv(&req.key).await.map_err(|e| {
+                    MetaOperationError::from(MetaDataReadError::new("get_kv", &req.key, &e))
                 })?;
 
-                let item = StreamItem::from((req.key.clone(), got));
-                let strm = futures::stream::iter([Ok(item)]);
-
-                Ok(strm.boxed())
+                let item = StreamItem::from((req.key.clone(), v));
+                Ok(futures::stream::iter([Ok(item)]).boxed())
             }
 
             MetaGrpcReadReq::MGetKV(req) => {
-                let strm =
-                    kv_api.get_kv_stream(&req.keys).await.map_err(|e| {
-                        MetaOperationError::DataError(MetaDataError::ReadError(
-                            MetaDataReadError::new("get_kv_stream", "", &e),
-                        ))
-                    })?;
+                let strm = kv_api.get_kv_stream(&req.keys).await.map_err(|e| {
+                    MetaOperationError::from(MetaDataReadError::new("get_kv_stream", "", &e))
+                })?;
 
-                let strm = strm.map_err(|e| Status::internal(e.to_string()));
-
-                Ok(strm.boxed())
+                Ok(strm.map_err(|e| Status::internal(e.to_string())).boxed())
             }
 
             MetaGrpcReadReq::ListKV(req) => {
@@ -176,14 +164,10 @@ impl<SP: SpawnApi> Handler<MetaGrpcReadReq> for MetaLeader<'_, SP> {
                     .list_kv(ListOptions::unlimited(&req.prefix))
                     .await
                     .map_err(|e| {
-                        MetaOperationError::DataError(MetaDataError::ReadError(
-                            MetaDataReadError::new("list_kv", &req.prefix, &e),
-                        ))
+                        MetaOperationError::from(MetaDataReadError::new("list_kv", &req.prefix, &e))
                     })?;
 
-                let strm = strm.map_err(|e| Status::internal(e.to_string()));
-
-                Ok(strm.boxed())
+                Ok(strm.map_err(|e| Status::internal(e.to_string())).boxed())
             }
         }
     }
@@ -248,19 +232,18 @@ impl<'a, SP: SpawnApi> MetaLeader<'a, SP> {
         let node_id = req.node_id;
 
         if node_id == self.sto.id {
-            return Err(MetaOperationError::DataError(MetaDataError::ReadError(
-                MetaDataReadError::new(
-                    "leave",
-                    format!("can not leave id={} via itself", node_id),
-                    &AnyError::error("leave-via-self"),
-                ),
-            )));
+            return Err(MetaDataReadError::new(
+                "leave",
+                format!("can not leave id={} via itself", node_id),
+                &AnyError::error("leave-via-self"),
+            )
+            .into());
         }
 
         let can_res = self
             .can_leave(node_id)
             .await
-            .map_err(|e| MetaDataError::ReadError(MetaDataReadError::new("can_leave()", "", &e)))?;
+            .map_err(|e| MetaDataReadError::new("can_leave()", "", &e))?;
 
         if let Err(e) = can_res {
             info!("no need to leave: {}", e);

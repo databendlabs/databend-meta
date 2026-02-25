@@ -28,9 +28,9 @@ use databend_meta_runtime_api::SpawnApi;
 use databend_meta_types::AppliedState;
 use databend_meta_types::Cmd;
 use databend_meta_types::Endpoint;
+use databend_meta_types::GrpcHelper;
 use databend_meta_types::InvalidReply;
 use databend_meta_types::LogEntry;
-use databend_meta_types::MetaAPIError;
 use databend_meta_types::Node;
 use databend_meta_types::TxnRequest;
 use databend_meta_types::UpsertKV;
@@ -63,6 +63,7 @@ use crate::message::ForwardRequest;
 use crate::message::ForwardRequestBody;
 use crate::meta_node::errors::MetaNodeStopped;
 use crate::meta_node::meta_node_status::MetaNodeStatus;
+use crate::meta_node::request_handler_error::ForwardRequestError;
 use crate::meta_service::MetaNode;
 
 pub type BoxFuture<T = ()> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
@@ -133,7 +134,7 @@ impl<SP: SpawnApi> MetaHandle<SP> {
     pub async fn handle_upsert_kv(
         &self,
         upsert: UpsertKV,
-    ) -> Result<Result<UpsertKVReply, MetaAPIError>, MetaNodeStopped> {
+    ) -> Result<Result<UpsertKVReply, ForwardRequestError>, MetaNodeStopped> {
         let histogram_label = request_histogram::label_for_upsert(&upsert);
         let log_info = format!("UpsertKV: {:?}", upsert);
         self.request(move |meta_node| {
@@ -164,7 +165,7 @@ impl<SP: SpawnApi> MetaHandle<SP> {
                 Option<Endpoint>,
                 BoxStream<'static, Result<StreamItem, Status>>,
             ),
-            MetaAPIError,
+            Status,
         >,
         MetaNodeStopped,
     > {
@@ -180,6 +181,7 @@ impl<SP: SpawnApi> MetaHandle<SP> {
                         request_histogram::record(&histogram_label, total);
                     })
                     .await
+                    .map_err(GrpcHelper::internal_err)
             };
 
             Box::pin(fu)
@@ -249,34 +251,32 @@ impl<SP: SpawnApi> MetaHandle<SP> {
     pub async fn handle_transaction(
         &self,
         txn: TxnRequest,
-    ) -> Result<Result<(Option<Endpoint>, TxnReply), MetaAPIError>, MetaNodeStopped> {
+    ) -> Result<Result<(Option<Endpoint>, TxnReply), Status>, MetaNodeStopped> {
         let histogram_label = request_histogram::label_for_txn(&txn);
         self.request(move |meta_node| {
             let ent = LogEntry::new(Cmd::Transaction(txn.clone()));
             let forward_req = ForwardRequest::new(1, ForwardRequestBody::Write(ent));
 
             let fu = async move {
-                let res = meta_node
+                let (ep, forward_resp) = meta_node
                     .handle_forwardable_request(forward_req)
                     .log_elapsed_info(format!("TxnRequest: {:?}", txn))
                     .inspect_elapsed(|_output, total, _busy| {
                         request_histogram::record(&histogram_label, total);
                     })
-                    .await;
+                    .await
+                    .map_err(GrpcHelper::internal_err)?;
 
-                res.and_then(|(ep, forward_resp)| {
-                    let applied_state: AppliedState = forward_resp.try_into().map_err(|e| {
-                        MetaAPIError::from(InvalidReply::new("expect AppliedState", &e))
-                    })?;
+                let applied_state: AppliedState = forward_resp.try_into().map_err(|e| {
+                    GrpcHelper::internal_err(InvalidReply::new("expect AppliedState", &e))
+                })?;
 
-                    let kv_reply: pb::KvTransactionReply =
-                        applied_state.try_into().map_err(|e| {
-                            MetaAPIError::from(InvalidReply::new("expect KvTransactionReply", &e))
-                        })?;
-                    let txn_reply: TxnReply = kv_reply.into_txn_reply(&txn);
+                let kv_reply: pb::KvTransactionReply = applied_state.try_into().map_err(|e| {
+                    GrpcHelper::internal_err(InvalidReply::new("expect KvTransactionReply", &e))
+                })?;
+                let txn_reply: TxnReply = kv_reply.into_txn_reply(&txn);
 
-                    Ok((ep, txn_reply))
-                })
+                Ok((ep, txn_reply))
             };
 
             Box::pin(fu)
@@ -311,36 +311,6 @@ impl<SP: SpawnApi> MetaHandle<SP> {
             Ok(inner) => inner,
             Err(stopped) => Err(Status::unavailable(stopped.to_string())),
         }
-    }
-
-    pub async fn handle_write(
-        &self,
-        entry: LogEntry,
-    ) -> Result<Result<AppliedState, MetaAPIError>, MetaNodeStopped> {
-        let forward_req = ForwardRequest::new(1, ForwardRequestBody::Write(entry.clone()));
-        let histogram_label = request_histogram::label_for_write(&entry);
-
-        let res = self
-            .request(move |meta_node| {
-                let fu = async move {
-                    meta_node
-                        .handle_forwardable_request(forward_req)
-                        .log_elapsed_info(format!("WriteRequest: {:?}", entry))
-                        .inspect_elapsed(|_output, total, _busy| {
-                            request_histogram::record(&histogram_label, total);
-                        })
-                        .await
-                };
-                Box::pin(fu)
-            })
-            .await?;
-
-        let res: Result<AppliedState, MetaAPIError> = res.and_then(|(_ep, forward_resp)| {
-            forward_resp
-                .try_into()
-                .map_err(|e| MetaAPIError::from(InvalidReply::new("expect AppliedState", &e)))
-        });
-        Ok(res)
     }
 
     pub async fn handle_export(

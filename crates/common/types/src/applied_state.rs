@@ -114,10 +114,6 @@ impl AppliedState {
 
 impl From<AppliedState> for RaftReply {
     fn from(msg: AppliedState) -> Self {
-        let data = serde_json::to_string(&msg).expect("fail to serialize");
-        RaftReply {
-            data,
-            error: "".to_string(),
-        }
+        RaftReply::new(&msg)
     }
 }

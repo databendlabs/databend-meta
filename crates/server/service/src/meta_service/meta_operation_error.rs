@@ -15,34 +15,54 @@
 use databend_meta_types::MetaAPIError;
 use databend_meta_types::MetaDataError;
 use databend_meta_types::MetaDataReadError;
+use databend_meta_types::raft_types::ChangeMembershipError;
 use databend_meta_types::raft_types::ClientWriteError;
+use databend_meta_types::raft_types::Fatal;
 use databend_meta_types::raft_types::ForwardToLeader;
 use databend_meta_types::raft_types::RaftError;
+use peel_off::Peel;
 
 /// Errors raised when handling a request by raft node.
-#[derive(thiserror::Error, serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
 pub enum MetaOperationError {
     /// If a request can only be dealt by a leader, it informs the caller to forward the request to a leader it knows of.
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader),
 
     #[error(transparent)]
-    DataError(#[from] MetaDataError),
+    WriteError(#[from] Fatal),
+
+    #[error(transparent)]
+    ChangeMembershipError(#[from] ChangeMembershipError),
+
+    #[error(transparent)]
+    ReadError(#[from] MetaDataReadError),
+}
+
+impl Peel for MetaOperationError {
+    type Peeled = ForwardToLeader;
+    type Residual = MetaDataError;
+
+    fn peel(self) -> Result<MetaDataError, ForwardToLeader> {
+        match self {
+            Self::ForwardToLeader(ftl) => Err(ftl),
+            Self::WriteError(e) => Ok(MetaDataError::WriteError(e)),
+            Self::ChangeMembershipError(e) => Ok(MetaDataError::ChangeMembershipError(e)),
+            Self::ReadError(e) => Ok(MetaDataError::ReadError(e)),
+        }
+    }
 }
 
 impl From<MetaOperationError> for MetaAPIError {
     fn from(e: MetaOperationError) -> Self {
         match e {
             MetaOperationError::ForwardToLeader(e) => e.into(),
-            MetaOperationError::DataError(d) => d.into(),
+            MetaOperationError::WriteError(e) => MetaDataError::WriteError(e).into(),
+            MetaOperationError::ChangeMembershipError(e) => {
+                MetaDataError::ChangeMembershipError(e).into()
+            }
+            MetaOperationError::ReadError(e) => MetaDataError::ReadError(e).into(),
         }
-    }
-}
-
-impl From<MetaDataReadError> for MetaOperationError {
-    fn from(e: MetaDataReadError) -> Self {
-        let de = MetaDataError::from(e);
-        MetaOperationError::from(de)
     }
 }
 
@@ -53,8 +73,7 @@ impl From<RaftChangeMembershipError> for MetaOperationError {
     fn from(e: RaftChangeMembershipError) -> Self {
         match e {
             RaftChangeMembershipError::ForwardToLeader(to_leader) => to_leader.into(),
-            // TODO: change-membership-error is not a data error.
-            RaftChangeMembershipError::ChangeMembershipError(c) => Self::DataError(c.into()),
+            RaftChangeMembershipError::ChangeMembershipError(c) => Self::ChangeMembershipError(c),
         }
     }
 }
@@ -63,7 +82,7 @@ impl From<RaftError<ClientWriteError>> for MetaOperationError {
     fn from(e: RaftError<ClientWriteError>) -> Self {
         match e {
             RaftError::APIError(cli_write_err) => cli_write_err.into(),
-            RaftError::Fatal(f) => Self::DataError(MetaDataError::WriteError(f)),
+            RaftError::Fatal(f) => Self::WriteError(f),
         }
     }
 }
@@ -81,6 +100,7 @@ mod tests {
     use databend_meta_types::raft_types::Fatal;
     use databend_meta_types::raft_types::ForwardToLeader;
     use databend_meta_types::raft_types::RaftError;
+    use peel_off::Peel;
 
     use super::MetaOperationError;
 
@@ -95,7 +115,7 @@ mod tests {
         assert_eq!(api_err.name(), "ForwardToLeader");
 
         let read_err = MetaDataReadError::new("r", "m", &io::Error::other("e"));
-        let op_err = MetaOperationError::DataError(MetaDataError::ReadError(read_err));
+        let op_err = MetaOperationError::ReadError(read_err);
         let api_err: MetaAPIError = op_err.into();
         assert_eq!(api_err.name(), "DataError");
     }
@@ -126,7 +146,7 @@ mod tests {
         let op_err: MetaOperationError = cwe.into();
         assert!(matches!(
             op_err,
-            MetaOperationError::DataError(MetaDataError::ChangeMembershipError(_))
+            MetaOperationError::ChangeMembershipError(_)
         ));
     }
 
@@ -135,10 +155,7 @@ mod tests {
         let fatal = Fatal::Panicked;
         let raft_err: RaftError<ClientWriteError> = RaftError::Fatal(fatal);
         let op_err: MetaOperationError = raft_err.into();
-        assert!(matches!(
-            op_err,
-            MetaOperationError::DataError(MetaDataError::WriteError(_))
-        ));
+        assert!(matches!(op_err, MetaOperationError::WriteError(_)));
     }
 
     #[test]
@@ -151,5 +168,31 @@ mod tests {
         let raft_err: RaftError<ClientWriteError> = RaftError::APIError(cwe);
         let op_err: MetaOperationError = raft_err.into();
         assert!(matches!(op_err, MetaOperationError::ForwardToLeader(_)));
+    }
+
+    #[test]
+    fn test_split_forward_to_leader() {
+        let ftl = ForwardToLeader {
+            leader_id: Some(5),
+            leader_node: None,
+        };
+        let op_err = MetaOperationError::ForwardToLeader(ftl.clone());
+        assert_eq!(op_err.peel(), Err(ftl));
+    }
+
+    #[test]
+    fn test_split_write_error() {
+        let op_err = MetaOperationError::WriteError(Fatal::Panicked);
+        assert_eq!(
+            op_err.peel(),
+            Ok(MetaDataError::WriteError(Fatal::Panicked))
+        );
+    }
+
+    #[test]
+    fn test_split_read_error() {
+        let read_err = MetaDataReadError::new("r", "m", &io::Error::other("e"));
+        let op_err = MetaOperationError::ReadError(read_err.clone());
+        assert_eq!(op_err.peel(), Ok(MetaDataError::ReadError(read_err)));
     }
 }
