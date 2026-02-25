@@ -89,4 +89,12 @@ impl RaftReply {
             error: Default::default(),
         }
     }
+
+    pub fn err<E: Serialize>(e: &E) -> Self {
+        let error = serde_json::to_string(e).expect("fail to serialize");
+        RaftReply {
+            data: Default::default(),
+            error,
+        }
+    }
 }

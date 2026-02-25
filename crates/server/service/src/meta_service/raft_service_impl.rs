@@ -31,6 +31,7 @@ use databend_meta_raft_store::state_machine::MetaSnapshotId;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_sled_store::openraft::MessageSummary;
 use databend_meta_types::GrpcHelper;
+use databend_meta_types::MetaAPIError;
 use databend_meta_types::protobuf as pb;
 use databend_meta_types::protobuf::Empty;
 use databend_meta_types::protobuf::InstallEntryV004;
@@ -315,14 +316,21 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
         SP::trace_request(func_path!(), request, |request| async {
             let forward_req: ForwardRequest<ForwardRequestBody> = GrpcHelper::parse_req(request)?;
 
-            let resp = self
+            let res = self
                 .meta_node
                 .handle_forwardable_request(forward_req)
                 .await
-                .map(|(_ep, resp)| resp)
-                .map_err(GrpcHelper::internal_err)?;
+                .map(|(_ep, resp)| resp);
 
-            Ok(Response::new(RaftReply::new(&resp)))
+            let reply = match res {
+                Ok(resp) => RaftReply::new(&resp),
+                Err(e) => {
+                    let api_err: MetaAPIError = e.into();
+                    RaftReply::err(&api_err)
+                }
+            };
+
+            Ok(Response::new(reply))
         })
         .await
     }
