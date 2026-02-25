@@ -24,9 +24,10 @@ use databend_meta_types::AppliedState;
 use databend_meta_types::Endpoint;
 use databend_meta_types::GrpcHelper;
 use databend_meta_types::LogEntry;
-use databend_meta_types::MetaAPIError;
 use databend_meta_types::protobuf::RaftRequest;
 use databend_meta_types::raft_types::NodeId;
+
+use crate::meta_node::request_handler_error::CanNotForwardError;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, Clone, PartialEq, Eq)]
 pub struct JoinRequest {
@@ -128,7 +129,7 @@ impl<T> ForwardRequest<T> {
     /// Return a new request that will be forwarded to the leader.
     ///
     /// If the max forward number is reached, it returns an error.
-    pub fn next(&self) -> Result<Self, MetaAPIError>
+    pub fn next(&self) -> Result<Self, CanNotForwardError>
     where T: Clone {
         self.ensure_forwardable()?;
 
@@ -138,11 +139,11 @@ impl<T> ForwardRequest<T> {
         Ok(next)
     }
 
-    pub fn ensure_forwardable(&self) -> Result<(), MetaAPIError> {
+    pub fn ensure_forwardable(&self) -> Result<(), CanNotForwardError> {
         if self.can_forward() {
             Ok(())
         } else {
-            Err(MetaAPIError::CanNotForward(AnyError::error(
+            Err(CanNotForwardError(AnyError::error(
                 "max number of forward reached",
             )))
         }

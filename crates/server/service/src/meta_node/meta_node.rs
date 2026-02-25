@@ -82,6 +82,7 @@ use openraft::Config;
 use openraft::Raft;
 use openraft::ServerState;
 use openraft::SnapshotPolicy;
+use peel_off::Peel;
 use state_machine_api::UserKey;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
@@ -108,6 +109,8 @@ use crate::message::JoinRequest;
 use crate::message::LeaveRequest;
 use crate::meta_node::meta_management_error::MetaManagementError;
 use crate::meta_node::meta_node_status::MetaNodeStatus;
+use crate::meta_node::request_handler_error::CanNotForwardError;
+use crate::meta_node::request_handler_error::ForwardRequestError;
 use crate::meta_service::MetaForwarder;
 use crate::meta_service::MetaNodeBuilder;
 use crate::meta_service::RaftServiceImpl;
@@ -1267,7 +1270,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
     pub async fn handle_forwardable_request<Req>(
         &self,
         req: ForwardRequest<Req>,
-    ) -> Result<(Option<Endpoint>, Req::Reply), MetaAPIError>
+    ) -> Result<(Option<Endpoint>, Req::Reply), ForwardRequestError>
     where
         Req: RequestFor + Clone,
         for<'a> MetaLeader<'a, SP>: Handler<Req>,
@@ -1290,28 +1293,18 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 assume_leader_res.is_err()
             );
 
-            // Handle the request locally or return a ForwardToLeader error
-            let op_err = match assume_leader_res {
-                Ok(leader) => {
-                    let res = leader.handle(req.clone()).await;
-                    match res {
-                        Ok(x) => return Ok((None, x)),
-                        Err(e) => e,
-                    }
-                }
-                Err(e) => MetaOperationError::ForwardToLeader(e),
-            };
-
-            // If it needs to forward, deal with it. Otherwise, return the unhandlable error.
-            let to_leader = match op_err {
-                MetaOperationError::ForwardToLeader(err) => err,
-                MetaOperationError::DataError(d_err) => {
-                    return Err(d_err.into());
-                }
+            // Handle the request locally, or get a ForwardToLeader hint.
+            let to_leader = match assume_leader_res {
+                Ok(leader) => match leader.handle(req.clone()).await.peel() {
+                    Ok(Ok(reply)) => return Ok((None, reply)),
+                    Ok(Err(data_err)) => return Err(data_err.into()),
+                    Err(ftl) => ftl,
+                },
+                Err(ftl) => ftl,
             };
 
             let leader_id = to_leader.leader_id.ok_or_else(|| {
-                MetaAPIError::CanNotForward(AnyError::error("need to forward but no known leader"))
+                CanNotForwardError(AnyError::error("need to forward but no known leader"))
             })?;
 
             let req_cloned = req.next()?;
@@ -1355,7 +1348,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
                     n_retry -= 1;
                     if n_retry == 0 {
                         error!("no more retry for forward_to {}", leader_id);
-                        return Err(MetaAPIError::from(forward_err));
+                        return Err(forward_err.into());
                     } else {
                         tokio::time::sleep(slp).await;
                         slp = std::cmp::min(slp * 2, Duration::from_secs(1));
@@ -1363,7 +1356,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
                     }
                 }
                 ForwardRPCError::RemoteError(_) => {
-                    return Err(MetaAPIError::from(forward_err));
+                    return Err(forward_err.into());
                 }
             }
         }
@@ -1436,7 +1429,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
 
     /// Submit a write request to the known leader. Returns the response after applying the request.
     #[fastrace::trace]
-    pub async fn write(&self, req: LogEntry) -> Result<AppliedState, MetaAPIError> {
+    pub async fn write(&self, req: LogEntry) -> Result<AppliedState, ForwardRequestError> {
         debug!("{} req: {:?}", func_name!(), req);
 
         // TODO: enable returning endpoint

@@ -22,7 +22,11 @@ use crate::message::ForwardResponse;
 use crate::meta_service::forward_rpc_error::ForwardRPCError;
 use crate::meta_service::meta_operation_error::MetaOperationError;
 
-/// A handler that handles meta node request locally
+/// A handler that handles meta node request locally.
+///
+/// Returns the reply on success, or a `MetaOperationError` on failure.
+/// Callers can use the `Peel` trait to separate
+/// `ForwardToLeader` from `MetaDataError`.
 #[async_trait::async_trait]
 pub trait Handler<Req: RequestFor> {
     async fn handle(&self, req: ForwardRequest<Req>) -> Result<Req::Reply, MetaOperationError>;

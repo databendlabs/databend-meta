@@ -60,7 +60,6 @@ use futures::StreamExt;
 use futures::TryStreamExt;
 use futures::stream::TryChunksError;
 use log::debug;
-use log::error;
 use log::info;
 use prost::Message;
 use tokio_stream;
@@ -229,12 +228,11 @@ impl<SP: SpawnApi> MetaServiceImpl<SP> {
                     id, req, res
                 );
                 let res = res?;
-                // TODO: the MetaApiError should be converted to Status
-                RaftReply::from(res)
+                network_metrics::incr_request_result(res.is_ok());
+                let upsert_reply = res.map_err(GrpcHelper::internal_err)?;
+                RaftReply::new(&upsert_reply)
             }
         };
-
-        network_metrics::incr_request_result(reply.error.is_empty());
 
         Ok(reply)
     }
@@ -248,10 +246,7 @@ impl<SP: SpawnApi> MetaServiceImpl<SP> {
 
         let meta_handle = self.try_get_meta_handle()?;
 
-        let res = meta_handle
-            .handle_kv_read_v1(req.clone())
-            .await?
-            .map_err(GrpcHelper::internal_err);
+        let res = meta_handle.handle_kv_read_v1(req.clone()).await?;
 
         network_metrics::incr_request_result(res.is_ok());
         res
@@ -322,23 +317,13 @@ impl<SP: SpawnApi> MetaServiceImpl<SP> {
 
         let log_msg = format!("TxnRequest: {}", txn);
 
-        let forward_res = meta_handle
+        let res = meta_handle
             .handle_transaction(txn)
             .log_elapsed_info(log_msg)
             .await?;
 
-        let (endpoint, txn_reply) = match forward_res {
-            Ok((endpoint, txn_reply)) => (endpoint, txn_reply),
-            Err(err) => {
-                network_metrics::incr_request_result(false);
-                error!("txn request failed: {:?}", err);
-                return Err(Status::internal(err.to_string()));
-            }
-        };
-
-        network_metrics::incr_request_result(true);
-
-        Ok((endpoint, txn_reply))
+        network_metrics::incr_request_result(res.is_ok());
+        res
     }
 }
 
