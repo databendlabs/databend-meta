@@ -20,15 +20,6 @@ use databend_meta::store::RaftStore;
 use databend_meta_raft_store::leveled_store::db_exporter::DBExporter;
 use databend_meta_raft_store::state_machine::testing::snapshot_logs;
 use databend_meta_runtime_api::TokioRuntime;
-use databend_meta_sled_store::openraft::RaftLogReader;
-use databend_meta_sled_store::openraft::RaftSnapshotBuilder;
-use databend_meta_sled_store::openraft::entry::RaftEntry;
-use databend_meta_sled_store::openraft::storage::RaftLogReaderExt;
-use databend_meta_sled_store::openraft::storage::RaftLogStorage;
-use databend_meta_sled_store::openraft::storage::RaftLogStorageExt;
-use databend_meta_sled_store::openraft::storage::RaftStateMachine;
-use databend_meta_sled_store::openraft::testing::log::StoreBuilder;
-use databend_meta_sled_store::openraft::testing::log_id;
 use databend_meta_types::raft_types::Entry;
 use databend_meta_types::raft_types::Membership;
 use databend_meta_types::raft_types::StorageError;
@@ -42,6 +33,15 @@ use futures::stream;
 use log::debug;
 use log::info;
 use maplit::btreeset;
+use openraft::RaftLogReader;
+use openraft::RaftSnapshotBuilder;
+use openraft::entry::RaftEntry;
+use openraft::storage::RaftLogReaderExt;
+use openraft::storage::RaftLogStorage;
+use openraft::storage::RaftLogStorageExt;
+use openraft::storage::RaftStateMachine;
+use openraft::testing::log::StoreBuilder;
+use openraft::testing::log_id;
 use pretty_assertions::assert_eq;
 use raft_log::DumpApi;
 use test_harness::test;
@@ -75,7 +75,7 @@ impl StoreBuilder<TypeConfig, LogStore, SMStore<TokioRuntime>, MetaSrvTestContex
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
 #[fastrace::trace]
 async fn test_impl_raft_storage() -> anyhow::Result<()> {
-    databend_meta_sled_store::openraft::testing::log::Suite::test_all(MetaStoreBuilder {}).await?;
+    openraft::testing::log::Suite::test_all(MetaStoreBuilder {}).await?;
 
     Ok(())
 }

@@ -17,14 +17,14 @@ use std::sync::Arc;
 use databend_meta::meta_service::MetaNode;
 use databend_meta::meta_service::meta_leader::MetaLeader;
 use databend_meta_runtime_api::TokioRuntime;
-use databend_meta_sled_store::openraft::async_runtime::WatchReceiver;
-use databend_meta_sled_store::openraft::error::RaftError;
 use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::raft_types::ClientWriteError;
 use databend_meta_types::raft_types::ForwardToLeader;
 use maplit::btreeset;
+use openraft::async_runtime::WatchReceiver;
+use openraft::error::RaftError;
 use test_harness::test;
 
 use crate::testing::meta_service_test_harness;
