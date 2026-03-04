@@ -1,0 +1,60 @@
+// Copyright 2021 Datafuse Labs
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Protobuf types for raft log entry payloads.
+//
+// These messages are the wire format for `Cmd` variants carried inside
+// `LogPayload` (defined in meta.proto).  They are used by the typed
+// `AppendV001` streaming RPC to transport log entries between raft peers.
+//
+// Native Rust counterparts live in `crate::log_entry` and `crate::cmd`;
+// conversions are in `crate::log_entry::convert`.
+
+syntax = "proto3";
+
+package meta;
+
+// Network address of a meta-service node.
+message Endpoint {
+  string addr = 1;
+  uint32 port = 2;
+}
+
+// A meta-service cluster node.
+message Node {
+  string name = 1;
+  Endpoint endpoint = 2;
+  // Advertised gRPC address, if different from endpoint.
+  optional string grpc_api_advertise_address = 3;
+}
+
+// Add a node to the cluster (Cmd::AddNode).
+message CmdAddNode {
+  uint64 node_id = 1;
+  Node node = 2;
+  // If true, overwrite an existing node with the same node_id.
+  bool overriding = 3;
+}
+
+// Remove a node from the cluster (Cmd::RemoveNode).
+message CmdRemoveNode {
+  uint64 node_id = 1;
+}
+
+// Toggle a state-machine feature flag (Cmd::SetFeature).
+// Must be enabled/disabled consistently across all nodes.
+message CmdSetFeature {
+  string feature = 1;
+  bool enable = 2;
+}
