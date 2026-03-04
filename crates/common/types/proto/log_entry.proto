@@ -25,17 +25,11 @@ syntax = "proto3";
 
 package meta;
 
-// Network address of a meta-service node.
-message Endpoint {
-  string addr = 1;
-  uint32 port = 2;
-}
-
 // A meta-service cluster node.
 message Node {
   string name = 1;
-  Endpoint endpoint = 2;
-  // Advertised gRPC address, if different from endpoint.
+  string addr = 4;
+  uint32 port = 5;
   optional string grpc_api_advertise_address = 3;
 }
 

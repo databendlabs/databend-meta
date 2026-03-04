@@ -28,30 +28,14 @@ use crate::node::Node;
 use crate::protobuf as pb;
 use crate::raft_types;
 
-// === Endpoint conversions ===
-
-impl From<Endpoint> for pb::Endpoint {
-    fn from(e: Endpoint) -> Self {
-        pb::Endpoint {
-            addr: e.addr().to_string(),
-            port: e.port() as u32,
-        }
-    }
-}
-
-impl From<pb::Endpoint> for Endpoint {
-    fn from(e: pb::Endpoint) -> Self {
-        Endpoint::new(e.addr, e.port as u16)
-    }
-}
-
 // === Node conversions ===
 
 impl From<Node> for pb::Node {
     fn from(n: Node) -> Self {
         pb::Node {
             name: n.name,
-            endpoint: Some(n.endpoint.into()),
+            addr: n.endpoint.addr().to_string(),
+            port: n.endpoint.port() as u32,
             grpc_api_advertise_address: n.grpc_api_advertise_address,
         }
     }
@@ -59,7 +43,7 @@ impl From<Node> for pb::Node {
 
 impl From<pb::Node> for Node {
     fn from(n: pb::Node) -> Self {
-        Node::new(n.name, n.endpoint.map(Endpoint::from).unwrap_or_default())
+        Node::new(n.name, Endpoint::new(n.addr, n.port as u16))
             .with_grpc_advertise_address(n.grpc_api_advertise_address)
     }
 }
@@ -413,14 +397,6 @@ mod tests {
             openraft::EntryPayload::Normal(entry),
         );
         let _ = pb::LogEntry::from(raft_entry);
-    }
-
-    #[test]
-    fn test_endpoint_round_trip() {
-        let e = Endpoint::new("10.0.0.1", 9191);
-        let pb_e: pb::Endpoint = e.clone().into();
-        let back: Endpoint = pb_e.into();
-        assert_eq!(e, back);
     }
 
     #[test]

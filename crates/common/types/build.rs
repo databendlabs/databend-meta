@@ -182,7 +182,6 @@ fn build_proto() {
         .type_attribute("VoteRequest", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("VoteResponse", "#[derive(Eq, deepsize::DeepSizeOf)]")
         // log_entry.proto types
-        .type_attribute("Endpoint", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("Node", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("CmdAddNode", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("CmdRemoveNode", "#[derive(Eq, deepsize::DeepSizeOf)]")
