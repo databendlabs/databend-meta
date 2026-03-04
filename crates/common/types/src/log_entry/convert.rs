@@ -189,12 +189,10 @@ impl TryFrom<pb::LogEntry> for raft_types::Entry {
 
 impl From<raft_types::AppendEntriesRequest> for pb::AppendRequest {
     fn from(req: raft_types::AppendEntriesRequest) -> Self {
-        let entries: Vec<pb::LogEntry> = req.entries.into_iter().map(pb::LogEntry::from).collect();
-
         pb::AppendRequest {
             vote: Some(pb::Vote::from(req.vote)),
             prev_log_id: req.prev_log_id.map(pb::LogId::from),
-            entries,
+            entries: req.entries.into_iter().map(pb::LogEntry::from).collect(),
             leader_commit: req.leader_commit.map(pb::LogId::from),
         }
     }
@@ -408,12 +406,7 @@ mod tests {
             .with_grpc_advertise_address(Some("grpc.example.com:443"));
         let pb_n: pb::Node = n.clone().into();
         let back: Node = pb_n.into();
-        assert_eq!(n.name, back.name);
-        assert_eq!(n.endpoint, back.endpoint);
-        assert_eq!(
-            n.grpc_api_advertise_address,
-            back.grpc_api_advertise_address
-        );
+        assert_eq!(n, back);
     }
 
     #[test]

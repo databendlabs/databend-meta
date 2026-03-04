@@ -250,7 +250,7 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
 #[fastrace::trace]
 async fn test_raft_service_install_snapshot_v004() -> anyhow::Result<()> {
-    // Transmit snapshot in one-piece in a stream via API install_snapshot_v003.
+    // Transmit snapshot in one-piece in a stream via API install_snapshot_v004.
 
     let (_nlog, mut tcs) = start_meta_node_cluster(btreeset![0], btreeset![]).await?;
     let tc0 = tcs.remove(0);
@@ -267,14 +267,12 @@ async fn test_raft_service_install_snapshot_v004() -> anyhow::Result<()> {
     let writer = ss_store.new_writer()?;
 
     let db = {
-        // build an empty snapshot
         let strm = futures::stream::iter([]);
         let mut sys_data = SysData::default();
         *sys_data.last_applied_mut() = Some(last_log_id);
-        let db = writer
+        writer
             .write_kv_stream(strm, snapshot_id.clone(), sys_data)
-            .await?;
-        db
+            .await?
     };
 
     let mut sys_data = db.sys_data().clone();

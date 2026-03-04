@@ -189,7 +189,7 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
             }
 
             if let Some(c) = entry.commit {
-                commit = Some(c.clone());
+                commit = Some(c);
                 break;
             }
         }
@@ -548,11 +548,10 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
 
 /// Get remote address from tonic request.
 fn remote_addr<T>(request: &Request<T>) -> String {
-    if let Some(addr) = request.remote_addr() {
-        addr.to_string()
-    } else {
-        "unknown address".to_string()
-    }
+    request
+        .remote_addr()
+        .map(|a| a.to_string())
+        .unwrap_or_else(|| "unknown address".to_string())
 }
 
 /// Create a function that increases metric value of inflight snapshot receiving.
