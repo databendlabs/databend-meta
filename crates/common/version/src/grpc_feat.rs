@@ -14,12 +14,14 @@
 
 use std::fmt;
 
+use crate::feature_span::FeatureSet;
+
 /// A named capability in the meta-service protocol.
 ///
-/// Each variant represents a feature whose lifetime is tracked in [`crate::Spec`]
+/// Each variant represents a feature whose lifetime is tracked in [`crate::GrpcSpec`]
 /// for version compatibility calculation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Feature {
+pub enum GrpcFeature {
     /// Unary `kv_api()` RPC for key-value operations.
     KvApi,
 
@@ -117,83 +119,89 @@ pub enum Feature {
     RaftReplyError,
 }
 
-impl Feature {
+impl GrpcFeature {
     /// Returns all feature variants.
-    pub const fn all() -> &'static [Feature] {
+    pub const fn all() -> &'static [GrpcFeature] {
         &[
-            Feature::KvApi,
-            Feature::KvApiGetKv,
-            Feature::KvApiMGetKv,
-            Feature::KvApiListKv,
-            Feature::KvReadV1,
-            Feature::Transaction,
-            Feature::TransactionReplyError,
-            Feature::TransactionPutWithTtl,
-            Feature::TransactionPrevValue,
-            Feature::TransactionConditionKeysPrefix,
-            Feature::TransactionOperations,
-            Feature::OperationAsIs,
-            Feature::Export,
-            Feature::ExportV1,
-            Feature::Watch,
-            Feature::WatchInitialFlush,
-            Feature::WatchResponseIsInit,
-            Feature::MemberList,
-            Feature::GetClusterStatus,
-            Feature::GetClientInfo,
-            Feature::PutResponseCurrent,
-            Feature::FetchAddU64,
-            Feature::ExpireInMillis,
-            Feature::PutSequential,
-            Feature::ProposedAtMs,
-            Feature::FetchIncreaseU64,
-            Feature::KvList,
-            Feature::KvGetMany,
-            Feature::KvTransaction,
-            Feature::KvTransactionPutMatchSeq,
-            Feature::RaftReplyError,
+            GrpcFeature::KvApi,
+            GrpcFeature::KvApiGetKv,
+            GrpcFeature::KvApiMGetKv,
+            GrpcFeature::KvApiListKv,
+            GrpcFeature::KvReadV1,
+            GrpcFeature::Transaction,
+            GrpcFeature::TransactionReplyError,
+            GrpcFeature::TransactionPutWithTtl,
+            GrpcFeature::TransactionPrevValue,
+            GrpcFeature::TransactionConditionKeysPrefix,
+            GrpcFeature::TransactionOperations,
+            GrpcFeature::OperationAsIs,
+            GrpcFeature::Export,
+            GrpcFeature::ExportV1,
+            GrpcFeature::Watch,
+            GrpcFeature::WatchInitialFlush,
+            GrpcFeature::WatchResponseIsInit,
+            GrpcFeature::MemberList,
+            GrpcFeature::GetClusterStatus,
+            GrpcFeature::GetClientInfo,
+            GrpcFeature::PutResponseCurrent,
+            GrpcFeature::FetchAddU64,
+            GrpcFeature::ExpireInMillis,
+            GrpcFeature::PutSequential,
+            GrpcFeature::ProposedAtMs,
+            GrpcFeature::FetchIncreaseU64,
+            GrpcFeature::KvList,
+            GrpcFeature::KvGetMany,
+            GrpcFeature::KvTransaction,
+            GrpcFeature::KvTransactionPutMatchSeq,
+            GrpcFeature::RaftReplyError,
         ]
     }
 
     /// Returns the string identifier for this feature.
     pub const fn as_str(&self) -> &'static str {
         match self {
-            Feature::KvApi => "kv_api",
-            Feature::KvApiGetKv => "kv_api/get_kv",
-            Feature::KvApiMGetKv => "kv_api/mget_kv",
-            Feature::KvApiListKv => "kv_api/list_kv",
-            Feature::KvReadV1 => "kv_read_v1",
-            Feature::Transaction => "transaction",
-            Feature::TransactionReplyError => "transaction/reply_error",
-            Feature::TransactionPutWithTtl => "transaction/put_with_ttl",
-            Feature::TransactionPrevValue => "transaction/prev_value",
-            Feature::TransactionConditionKeysPrefix => "transaction/condition_keys_prefix",
-            Feature::TransactionOperations => "transaction/operations",
-            Feature::OperationAsIs => "operation/as_is",
-            Feature::Export => "export",
-            Feature::ExportV1 => "export_v1",
-            Feature::Watch => "watch",
-            Feature::WatchInitialFlush => "watch/initial_flush",
-            Feature::WatchResponseIsInit => "watch/init_flag",
-            Feature::MemberList => "member_list",
-            Feature::GetClusterStatus => "get_cluster_status",
-            Feature::GetClientInfo => "get_client_info",
-            Feature::PutResponseCurrent => "put_response/current",
-            Feature::FetchAddU64 => "fetch_add_u64",
-            Feature::ExpireInMillis => "expire_in_millis",
-            Feature::PutSequential => "put_sequential",
-            Feature::ProposedAtMs => "proposed_at_ms",
-            Feature::FetchIncreaseU64 => "fetch_increase_u64",
-            Feature::KvList => "kv_list",
-            Feature::KvGetMany => "kv_get_many",
-            Feature::KvTransaction => "kv_transaction",
-            Feature::KvTransactionPutMatchSeq => "kv_transaction/put_match_seq",
-            Feature::RaftReplyError => "raft_reply/error",
+            GrpcFeature::KvApi => "kv_api",
+            GrpcFeature::KvApiGetKv => "kv_api/get_kv",
+            GrpcFeature::KvApiMGetKv => "kv_api/mget_kv",
+            GrpcFeature::KvApiListKv => "kv_api/list_kv",
+            GrpcFeature::KvReadV1 => "kv_read_v1",
+            GrpcFeature::Transaction => "transaction",
+            GrpcFeature::TransactionReplyError => "transaction/reply_error",
+            GrpcFeature::TransactionPutWithTtl => "transaction/put_with_ttl",
+            GrpcFeature::TransactionPrevValue => "transaction/prev_value",
+            GrpcFeature::TransactionConditionKeysPrefix => "transaction/condition_keys_prefix",
+            GrpcFeature::TransactionOperations => "transaction/operations",
+            GrpcFeature::OperationAsIs => "operation/as_is",
+            GrpcFeature::Export => "export",
+            GrpcFeature::ExportV1 => "export_v1",
+            GrpcFeature::Watch => "watch",
+            GrpcFeature::WatchInitialFlush => "watch/initial_flush",
+            GrpcFeature::WatchResponseIsInit => "watch/init_flag",
+            GrpcFeature::MemberList => "member_list",
+            GrpcFeature::GetClusterStatus => "get_cluster_status",
+            GrpcFeature::GetClientInfo => "get_client_info",
+            GrpcFeature::PutResponseCurrent => "put_response/current",
+            GrpcFeature::FetchAddU64 => "fetch_add_u64",
+            GrpcFeature::ExpireInMillis => "expire_in_millis",
+            GrpcFeature::PutSequential => "put_sequential",
+            GrpcFeature::ProposedAtMs => "proposed_at_ms",
+            GrpcFeature::FetchIncreaseU64 => "fetch_increase_u64",
+            GrpcFeature::KvList => "kv_list",
+            GrpcFeature::KvGetMany => "kv_get_many",
+            GrpcFeature::KvTransaction => "kv_transaction",
+            GrpcFeature::KvTransactionPutMatchSeq => "kv_transaction/put_match_seq",
+            GrpcFeature::RaftReplyError => "raft_reply/error",
         }
     }
 }
 
-impl fmt::Display for Feature {
+impl FeatureSet for GrpcFeature {
+    fn all() -> &'static [Self] {
+        GrpcFeature::all()
+    }
+}
+
+impl fmt::Display for GrpcFeature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
