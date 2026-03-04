@@ -91,7 +91,6 @@ impl From<RaftError<ClientWriteError>> for MetaOperationError {
 mod tests {
     use std::io;
 
-    use databend_meta_sled_store::openraft::error::EmptyMembership;
     use databend_meta_types::MetaAPIError;
     use databend_meta_types::MetaDataError;
     use databend_meta_types::MetaDataReadError;
@@ -100,6 +99,7 @@ mod tests {
     use databend_meta_types::raft_types::Fatal;
     use databend_meta_types::raft_types::ForwardToLeader;
     use databend_meta_types::raft_types::RaftError;
+    use openraft::error::EmptyMembership;
     use peel_off::Peel;
 
     use super::MetaOperationError;

@@ -17,10 +17,10 @@ use std::sync::atomic::AtomicI32;
 
 use databend_meta_raft_store::MetaStartupError;
 use databend_meta_runtime_api::SpawnApi;
-use databend_meta_sled_store::openraft::Config;
 use databend_meta_types::Endpoint;
 use databend_meta_types::raft_types::NodeId;
 use log::info;
+use openraft::Config;
 use tokio::sync::Mutex;
 use tokio::sync::watch;
 use watcher::dispatch::Dispatcher;

@@ -20,7 +20,7 @@ use databend_meta::message::ForwardRequestBody;
 use databend_meta::message::JoinRequest;
 use databend_meta::meta_service::MetaNode;
 use databend_meta_runtime_api::TokioRuntime;
-use databend_meta_sled_store::openraft::ServerState;
+use openraft::ServerState;
 use pretty_assertions::assert_eq;
 use test_harness::test;
 use tokio::time::sleep;

@@ -24,8 +24,6 @@ use databend_meta_kvapi::KVApi;
 use databend_meta_kvapi::KvApiExt;
 use databend_meta_kvapi::ListOptions;
 use databend_meta_runtime_api::SpawnApi;
-use databend_meta_sled_store::openraft::ChangeMembers;
-use databend_meta_sled_store::openraft::async_runtime::WatchReceiver;
 use databend_meta_types::AppliedState;
 use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
@@ -44,6 +42,8 @@ use log::debug;
 use log::info;
 use maplit::btreemap;
 use maplit::btreeset;
+use openraft::ChangeMembers;
+use openraft::async_runtime::WatchReceiver;
 use tonic::Status;
 use tonic::codegen::BoxStream;
 

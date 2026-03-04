@@ -20,13 +20,13 @@ use databend_meta::meta_node::meta_worker::MetaWorker;
 use databend_meta::meta_service::MetaNode;
 use databend_meta_runtime_api::RuntimeApi;
 use databend_meta_runtime_api::TokioRuntime;
-use databend_meta_sled_store::openraft::async_runtime::watch::WatchReceiver;
 use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::raft_types::new_log_id;
 use databend_meta_version::version;
 use log::info;
+use openraft::async_runtime::watch::WatchReceiver;
 use test_harness::test;
 
 use crate::testing::meta_service_test_harness;

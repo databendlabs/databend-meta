@@ -20,12 +20,12 @@ use std::time::Duration;
 
 use databend_meta::meta_service::MetaNode;
 use databend_meta_runtime_api::TokioRuntime;
-use databend_meta_sled_store::openraft::ServerState;
 use databend_meta_types::AppliedState;
 use databend_meta_types::node::Node;
 use databend_meta_types::raft_types::NodeId;
 use log::info;
 use maplit::btreeset;
+use openraft::ServerState;
 
 use crate::tests::service::MetaSrvTestContext;
 

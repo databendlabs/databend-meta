@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use databend_meta_sled_store::openraft;
 use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
 use databend_meta_types::UpsertKV;
@@ -20,6 +19,7 @@ use databend_meta_types::raft_types::Entry;
 use databend_meta_types::raft_types::EntryPayload;
 use databend_meta_types::raft_types::new_log_id;
 use maplit::btreeset;
+use openraft;
 use openraft::Membership;
 use openraft::entry::RaftEntry;
 
