@@ -160,7 +160,10 @@ impl TryFrom<pb::LogEntry> for raft_types::Entry {
                 let native_cmd = match cmd {
                     pb::log_entry::Cmd::AddNode(c) => Cmd::AddNode {
                         node_id: c.node_id,
-                        node: c.node.map(Node::from).unwrap_or_default(),
+                        node: c
+                            .node
+                            .map(Node::from)
+                            .ok_or_else(|| "CmdAddNode missing node".to_string())?,
                         overriding: c.overriding,
                     },
                     pb::log_entry::Cmd::RemoveNode(c) => Cmd::RemoveNode { node_id: c.node_id },

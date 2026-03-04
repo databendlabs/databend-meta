@@ -490,7 +490,7 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
             .map(move |r| match r {
                 Ok(pb_req) => raft_types::AppendEntriesRequest::try_from(pb_req)
                     .map_err(|e| Status::invalid_argument(e.to_string())),
-                Err(e) => Err(Status::internal(e.to_string())),
+                Err(e) => Err(e),
             })
             .take_while(move |r| {
                 if let Err(e) = r {
