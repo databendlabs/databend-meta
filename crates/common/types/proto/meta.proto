@@ -18,6 +18,7 @@ package meta;
 
 import "raft.proto";
 import "request.proto";
+import "log_entry.proto";
 
 message Empty {}
 
@@ -286,6 +287,61 @@ message KvTransactionReply {
   repeated TxnOpResponse responses = 2;
 }
 
+// Raft log payload for transport.
+// Deprecated variants (Transaction, UpsertKV) are excluded.
+message LogPayload {
+  // Leader clock time (ms since epoch) when this log entry was proposed.
+  optional uint64 proposed_at_ms = 1;
+
+  oneof cmd {
+    CmdAddNode add_node = 10;
+    CmdRemoveNode remove_node = 11;
+    CmdSetFeature set_feature = 12;
+    KvTransactionRequest kv_transaction = 15;
+  }
+}
+
+// Raft log entry for transport.
+//
+// Payload semantics:
+// - Both `normal` and `membership` absent → Blank entry
+// - Only `normal` present → Normal(LogEntry)
+// - Only `membership` present → Membership
+// - Both present → reserved for future use; currently asserted during conversion
+message LogEntry {
+  LogId log_id = 1;
+
+  optional LogPayload normal = 11;
+  optional Membership membership = 12;
+}
+
+// AppendEntries request with typed protobuf fields.
+message AppendRequest {
+  Vote vote = 1;
+  optional LogId prev_log_id = 2;
+  repeated LogEntry entries = 3;
+  optional LogId leader_commit = 4;
+}
+
+// AppendEntries response with typed protobuf fields.
+// Following openraft's grpc example design:
+// - rejected_by present → HigherVote(vote)
+// - conflict_log_id present → Conflict
+// - last_log_id present → last matching log_id from this batch
+message AppendResponse {
+  // If present, the follower rejected due to having a higher vote.
+  // All other fields are only valid when this is absent.
+  optional Vote rejected_by = 1;
+
+  // If present, the prev_log_id conflicts with the follower's log.
+  optional LogId conflict_log_id = 2;
+
+  // The last log_id that matches the leader after handling this request.
+  // Always set on success; it is one of the log IDs present in this batch request.
+  // absent + no conflict → no entries were in the request (heartbeat)
+  optional LogId last_log_id = 3;
+}
+
 message ClusterStatus {
   uint64 id = 1;
   string binary_version = 2;
@@ -417,6 +473,8 @@ service RaftService {
   rpc Vote(RaftRequest) returns (RaftReply);
 
   rpc VoteV001(VoteRequest) returns (VoteResponse);
+
+  rpc AppendV001(stream AppendRequest) returns (stream AppendResponse);
 
   rpc TransferLeader(TransferLeaderRequest) returns (Empty);
 }

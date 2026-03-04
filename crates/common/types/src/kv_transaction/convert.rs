@@ -160,6 +160,155 @@ impl From<pb::TxnOp> for Operation {
     }
 }
 
+// === Native → Proto: Transaction → KvTransactionRequest ===
+
+impl From<Transaction> for pb::KvTransactionRequest {
+    fn from(txn: Transaction) -> Self {
+        pb::KvTransactionRequest {
+            branches: txn
+                .branches
+                .into_iter()
+                .map(pb::ConditionalOperation::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<Branch> for pb::ConditionalOperation {
+    fn from(b: Branch) -> Self {
+        let predicate = if b.predicate.is_always_true() {
+            None
+        } else {
+            Some(pb::BooleanExpression::from(b.predicate))
+        };
+        pb::ConditionalOperation {
+            predicate,
+            operations: b.operations.into_iter().map(pb::TxnOp::from).collect(),
+        }
+    }
+}
+
+impl From<Predicate> for pb::BooleanExpression {
+    fn from(p: Predicate) -> Self {
+        match p {
+            Predicate::And(children) => {
+                let (sub_expressions, conditions) = split_children(children);
+                pb::BooleanExpression {
+                    operator: CombiningOperator::And as i32,
+                    sub_expressions,
+                    conditions,
+                }
+            }
+            Predicate::Or(children) => {
+                let (sub_expressions, conditions) = split_children(children);
+                pb::BooleanExpression {
+                    operator: CombiningOperator::Or as i32,
+                    sub_expressions,
+                    conditions,
+                }
+            }
+            Predicate::Leaf(cond) => pb::BooleanExpression {
+                operator: CombiningOperator::And as i32,
+                sub_expressions: vec![],
+                conditions: vec![pb::TxnCondition::from(cond)],
+            },
+        }
+    }
+}
+
+fn split_children(children: Vec<Predicate>) -> (Vec<pb::BooleanExpression>, Vec<pb::TxnCondition>) {
+    let mut sub_expressions = vec![];
+    let mut conditions = vec![];
+    for child in children {
+        match child {
+            Predicate::Leaf(c) => conditions.push(pb::TxnCondition::from(c)),
+            other => sub_expressions.push(pb::BooleanExpression::from(other)),
+        }
+    }
+    (sub_expressions, conditions)
+}
+
+impl From<Condition> for pb::TxnCondition {
+    fn from(c: Condition) -> Self {
+        let (target, expected) = match c.target {
+            Operand::Seq(s) => (
+                Some(crate::txn_condition::Target::Seq(s)),
+                c.op.to_condition_result(),
+            ),
+            Operand::Value(v) => (
+                Some(crate::txn_condition::Target::Value(v)),
+                c.op.to_condition_result(),
+            ),
+            Operand::KeysWithPrefix(n) => (
+                Some(crate::txn_condition::Target::KeysWithPrefix(n)),
+                c.op.to_condition_result(),
+            ),
+        };
+        pb::TxnCondition {
+            key: c.key,
+            target,
+            expected,
+        }
+    }
+}
+
+impl CompareOperator {
+    fn to_condition_result(self) -> i32 {
+        use crate::ConditionResult;
+
+        match self {
+            CompareOperator::Eq => ConditionResult::Eq as i32,
+            CompareOperator::Ne => ConditionResult::Ne as i32,
+            CompareOperator::Lt => ConditionResult::Lt as i32,
+            CompareOperator::Le => ConditionResult::Le as i32,
+            CompareOperator::Gt => ConditionResult::Gt as i32,
+            CompareOperator::Ge => ConditionResult::Ge as i32,
+        }
+    }
+}
+
+impl From<Operation> for pb::TxnOp {
+    fn from(op: Operation) -> Self {
+        use crate::txn_op;
+
+        let request = match op {
+            Operation::Get(g) => Some(txn_op::Request::Get(pb::TxnGetRequest { key: g.key })),
+            Operation::Put(p) => Some(txn_op::Request::Put(pb::TxnPutRequest {
+                key: p.target.key,
+                value: p.payload.value,
+                expire_at: p.payload.expire_at_ms,
+                ttl_ms: p.payload.ttl_ms,
+                match_seq: p.target.match_seq,
+            })),
+            Operation::Delete(d) => Some(txn_op::Request::Delete(pb::TxnDeleteRequest {
+                key: d.target.key,
+                match_seq: d.target.match_seq,
+            })),
+            Operation::DeleteByPrefix(d) => Some(txn_op::Request::DeleteByPrefix(
+                pb::TxnDeleteByPrefixRequest { prefix: d.prefix },
+            )),
+            Operation::FetchIncreaseU64(f) => {
+                Some(txn_op::Request::FetchIncreaseU64(pb::FetchIncreaseU64 {
+                    key: f.target.key,
+                    match_seq: f.target.match_seq,
+                    delta: f.delta,
+                    max_value: f.floor,
+                }))
+            }
+            Operation::PutSequential(p) => {
+                Some(txn_op::Request::PutSequential(pb::PutSequential {
+                    prefix: p.prefix,
+                    sequence_key: p.sequence_key,
+                    value: p.payload.value,
+                    expires_at_ms: p.payload.expire_at_ms,
+                    ttl_ms: p.payload.ttl_ms,
+                }))
+            }
+        };
+        pb::TxnOp { request }
+    }
+}
+
 // === Old API: TxnRequest → Transaction (for raft log backward compat) ===
 
 impl From<&pb::TxnRequest> for Transaction {

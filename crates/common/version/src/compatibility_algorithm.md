@@ -78,7 +78,7 @@ A feature represents a specific capability in the protocol. Examples:
 | `WatchInitialFlush` | Watch stream flushes existing keys at start |
 | `ExportV1` | Enhanced export API with configurable chunk size |
 
-See [`features.rs`](spec.rs) for the complete feature list and their definitions.
+See [`grpc_feat.rs`](grpc_feat.rs) for the complete feature list and their definitions.
 
 ### Feature Lifecycle
 
@@ -232,33 +232,33 @@ println!("Minimum compatible client: {:?}", min_client);
 
 To add a new feature to the system:
 
-1. Add a variant to the `Feature` enum in [`features.rs`](spec.rs)
-2. Add the feature to `Feature::all()` and implement `as_str()`
-3. Add server and client lifetimes in `Spec::new()` using `server_adds()` / `client_adds()`
+1. Add a variant to the `GrpcFeature` enum in [`grpc_feat.rs`](grpc_feat.rs)
+2. Add the feature to `GrpcFeature::all()` and implement `as_str()`
+3. Add server and client lifetimes in `GrpcSpec::new()` using `add()` / `remove()`
 
 Example: Adding a hypothetical `BatchDelete` feature:
 
 ```rust
-// In Feature enum:
-pub enum Feature {
+// In GrpcFeature enum:
+pub enum GrpcFeature {
     // ... existing features ...
     BatchDelete,
 }
 
-// In Feature::all():
+// In GrpcFeature::all():
 &[
     // ... existing features ...
-    Feature::BatchDelete,
+    GrpcFeature::BatchDelete,
 ]
 
-// In Feature::as_str():
-Feature::BatchDelete => "batch_delete",
+// In GrpcFeature::as_str():
+GrpcFeature::BatchDelete => "batch_delete",
 
-// In Spec::new():
+// In GrpcSpec::new():
 // Server provides it from 1.2.900
-chs.server_adds(F::BatchDelete, ver(1, 2, 900));
+add(&mut srv, F::BatchDelete, ver(1, 2, 900));
 // Client requires it from 1.2.910 (after testing)
-chs.client_adds(F::BatchDelete, ver(1, 2, 910));
+add(&mut cli, F::BatchDelete, ver(1, 2, 910));
 ```
 
 ### Deprecating a Feature
@@ -284,7 +284,7 @@ chs.server_removes(F::OldApi, ver(1, 2, 850));
 ## Implementation Notes
 
 - The current version is obtained from `CARGO_PKG_VERSION` at compile time
-- Both methods iterate over all features defined in `Feature::all()`
+- Both methods iterate over all features defined in `GrpcFeature::all()`
 - Features where the client uses `Version::max()` as `since` are "not yet used" and don't affect calculations
 - Features where the server uses `Version::max()` as `until` are "still provided" and don't affect client minimum
 - Version `(0, 0, 0)` is used as the initial minimum; no real version should be this low
@@ -349,7 +349,8 @@ If MIN_CLIENT_VERSION is outdated, old clients may:
 
 ## Related Files
 
-- [`features.rs`](spec.rs) - Feature definitions and compatibility methods
+- [`grpc_feat.rs`](grpc_feat.rs) - gRPC feature definitions
+- [`grpc_spec.rs`](grpc_spec.rs) - gRPC feature history and compatibility methods
 - [`changes.md`](./changes.md) - Changelog of feature additions and removals
 - [`lib.rs`](./lib.rs) - Version constants `MIN_CLIENT_VERSION` and `MIN_SERVER_VERSION`
 - [`grpc_client.rs`](../../client/src/grpc_client.rs) - Handshake implementation
