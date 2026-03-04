@@ -46,3 +46,20 @@ message VoteResponse {
   bool vote_granted = 2;
   LogId last_log_id = 3;
 }
+
+// Raft membership configuration.
+// Node type is EmptyNode (no node metadata in membership).
+message Membership {
+  // Joint consensus configs: each inner list is one voter set.
+  // Single-element = uniform config; multi-element = joint consensus.
+  repeated VoterGroup configs = 1;
+
+  // All known node IDs (voters + learners).
+  // Nodes in this list but not in any config are learners.
+  repeated uint64 nodes = 2;
+}
+
+// Helper: a list of node IDs (proto3 cannot nest repeated in repeated).
+message VoterGroup {
+  repeated uint64 node_ids = 1;
+}

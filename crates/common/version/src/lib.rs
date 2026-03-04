@@ -20,7 +20,7 @@
 //! source of truth for version compatibility checks during handshake.
 //!
 //! These values are hardcoded because Rust cannot compute them at const
-//! initialization time. The corresponding functions in [`spec::Spec`]
+//! initialization time. The corresponding functions in [`grpc_spec::GrpcSpec`]
 //! (`min_compatible_client_version()` and `min_compatible_server_version()`)
 //! exist to verify these values are correct - unit tests assert they match.
 //!
@@ -31,14 +31,20 @@
 //!
 //! See [Compatibility Algorithm](./compatibility_algorithm.md) for details.
 
-mod feat;
 mod feature_span;
-mod spec;
+mod grpc_feat;
+mod grpc_spec;
+mod raft_feat;
+mod raft_spec;
 mod version;
 
-pub use self::feat::Feature;
+pub use self::feature_span::FeatureSet;
 pub use self::feature_span::FeatureSpan;
-pub use self::spec::Spec;
+pub use self::feature_span::FeatureSpec;
+pub use self::grpc_feat::GrpcFeature;
+pub use self::grpc_spec::GrpcSpec;
+pub use self::raft_feat::RaftFeature;
+pub use self::raft_spec::RaftSpec;
 pub use self::version::Version;
 
 pub mod changelog {
@@ -59,13 +65,26 @@ pub static MIN_SERVER_VERSION: Version = Version::new(260217, 0, 0);
 #[cfg(not(feature = "txn-put-match-seq"))]
 pub static MIN_SERVER_VERSION: Version = Version::new(1, 2, 869);
 
+/// Minimum compatible raft-server version (node receiving raft RPCs).
+///
+/// See [module documentation](self) for details.
+pub static MIN_RAFT_SERVER_VERSION: Version = Version::new(1, 2, 547);
+
+/// Minimum compatible raft-client version (node sending raft RPCs).
+///
+/// See [module documentation](self) for details.
+pub static MIN_RAFT_CLIENT_VERSION: Version = Version::new(0, 0, 0);
+
 use std::sync::LazyLock;
 
 /// The version string of this build.
 const VERSION_STR: &str = env!("CARGO_PKG_VERSION");
 
 /// Current version and feature compatibility spec.
-static SPEC: LazyLock<Spec> = LazyLock::new(Spec::load);
+static SPEC: LazyLock<GrpcSpec> = LazyLock::new(GrpcSpec::load);
+
+/// Raft inter-node version and feature compatibility spec.
+static RAFT_SPEC: LazyLock<RaftSpec> = LazyLock::new(RaftSpec::load);
 
 /// Returns the version string (e.g., "260205.0.0").
 pub fn version_str() -> &'static str {
@@ -78,8 +97,13 @@ pub fn version() -> &'static Version {
 }
 
 /// Returns the full version and feature compatibility spec.
-pub fn spec() -> &'static Spec {
+pub fn spec() -> &'static GrpcSpec {
     &SPEC
+}
+
+/// Returns the raft inter-node version and feature compatibility spec.
+pub fn raft_spec() -> &'static RaftSpec {
+    &RAFT_SPEC
 }
 
 #[cfg(test)]
@@ -134,6 +158,26 @@ mod tests {
             "MIN_SERVER_VERSION",
             &MIN_SERVER_VERSION,
             spec.min_compatible_server_version(),
+        );
+    }
+
+    #[test]
+    fn test_min_raft_server_version_matches_computed() {
+        let spec = raft_spec();
+        assert_version_eq(
+            "MIN_RAFT_SERVER_VERSION",
+            &MIN_RAFT_SERVER_VERSION,
+            spec.min_compatible_server_version(),
+        );
+    }
+
+    #[test]
+    fn test_min_raft_client_version_matches_computed() {
+        let spec = raft_spec();
+        assert_version_eq(
+            "MIN_RAFT_CLIENT_VERSION",
+            &MIN_RAFT_CLIENT_VERSION,
+            spec.min_compatible_client_version(),
         );
     }
 }

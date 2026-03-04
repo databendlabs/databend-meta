@@ -42,6 +42,7 @@ use databend_meta_types::protobuf::SnapshotChunkRequestV003;
 use databend_meta_types::protobuf::SnapshotResponseV003;
 use databend_meta_types::protobuf::StreamItem;
 use databend_meta_types::protobuf::raft_service_server::RaftService;
+use databend_meta_types::raft_types;
 use databend_meta_types::raft_types::AppendEntriesRequest;
 use databend_meta_types::raft_types::Snapshot;
 use databend_meta_types::raft_types::SnapshotMeta;
@@ -52,6 +53,7 @@ use databend_meta_types::snapshot_db::DB;
 use databend_meta_types::sys_data::SysData;
 use fastrace::func_name;
 use fastrace::func_path;
+use futures::StreamExt;
 use futures::TryStreamExt;
 use log::error;
 use log::info;
@@ -187,7 +189,7 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
             }
 
             if let Some(c) = entry.commit {
-                commit = Some(c.clone());
+                commit = Some(c);
                 break;
             }
         }
@@ -470,6 +472,45 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
         .await
     }
 
+    type AppendV001Stream = BoxStream<pb::AppendResponse>;
+
+    async fn append_v001(
+        &self,
+        request: Request<Streaming<pb::AppendRequest>>,
+    ) -> Result<Response<Self::AppendV001Stream>, Status> {
+        let remote_addr = remote_addr(&request);
+        info!("RaftServiceImpl::append_v001: from:{remote_addr}");
+
+        let input = request.into_inner();
+
+        // Convert pb stream → native AppendEntriesRequest stream.
+        // On receive or conversion error, log and terminate the input stream.
+        let addr = remote_addr.clone();
+        let input_stream = input
+            .map(move |r| match r {
+                Ok(pb_req) => raft_types::AppendEntriesRequest::try_from(pb_req)
+                    .map_err(|e| Status::invalid_argument(e.to_string())),
+                Err(e) => Err(e),
+            })
+            .take_while(move |r| {
+                if let Err(e) = r {
+                    warn!("append_v001: from:{} input error: {}", addr, e);
+                }
+                futures::future::ready(r.is_ok())
+            })
+            .map(|r| r.unwrap());
+
+        let raft = &self.meta_node.raft;
+        let output = raft.stream_append(input_stream);
+
+        let output_stream = output.map(|result| match result {
+            Ok(stream_result) => Ok(pb::AppendResponse::from(stream_result)),
+            Err(fatal) => Err(Status::internal(fatal.to_string())),
+        });
+
+        Ok(Response::new(Box::pin(output_stream)))
+    }
+
     async fn transfer_leader(
         &self,
         request: Request<pb::TransferLeaderRequest>,
@@ -507,11 +548,10 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
 
 /// Get remote address from tonic request.
 fn remote_addr<T>(request: &Request<T>) -> String {
-    if let Some(addr) = request.remote_addr() {
-        addr.to_string()
-    } else {
-        "unknown address".to_string()
-    }
+    request
+        .remote_addr()
+        .map(|a| a.to_string())
+        .unwrap_or_else(|| "unknown address".to_string())
 }
 
 /// Create a function that increases metric value of inflight snapshot receiving.
