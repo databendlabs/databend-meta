@@ -287,32 +287,25 @@ message KvTransactionReply {
   repeated TxnOpResponse responses = 2;
 }
 
-// Raft log payload for transport.
-// Deprecated variants (Transaction, UpsertKV) are excluded.
-message LogPayload {
+// Raft log entry for transport.
+//
+// Payload semantics:
+// - `cmd` absent → Blank entry
+// - `cmd` is Membership → Membership entry
+// - Any other `cmd` → Normal(LogEntry)
+message LogEntry {
+  LogId log_id = 1;
+
   // Leader clock time (ms since epoch) when this log entry was proposed.
-  optional uint64 proposed_at_ms = 1;
+  optional uint64 proposed_at_ms = 2;
 
   oneof cmd {
     CmdAddNode add_node = 10;
     CmdRemoveNode remove_node = 11;
     CmdSetFeature set_feature = 12;
     KvTransactionRequest kv_transaction = 15;
+    Membership membership = 21;
   }
-}
-
-// Raft log entry for transport.
-//
-// Payload semantics:
-// - Both `normal` and `membership` absent → Blank entry
-// - Only `normal` present → Normal(LogEntry)
-// - Only `membership` present → Membership
-// - Both present → reserved for future use; currently asserted during conversion
-message LogEntry {
-  LogId log_id = 1;
-
-  optional LogPayload normal = 11;
-  optional Membership membership = 12;
 }
 
 // AppendEntries request with typed protobuf fields.

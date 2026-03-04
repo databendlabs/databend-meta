@@ -31,7 +31,7 @@ pub enum RaftFeature {
     /// Typed protobuf vote RPC.
     VoteV001,
 
-    /// Typed streaming append RPC with `LogPayload` entries.
+    /// Typed streaming append RPC with `LogEntry` entries.
     AppendV001,
 
     /// Binary chunk snapshot transfer.

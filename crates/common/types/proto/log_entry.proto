@@ -15,7 +15,7 @@
 // Protobuf types for raft log entry payloads.
 //
 // These messages are the wire format for `Cmd` variants carried inside
-// `LogPayload` (defined in meta.proto).  They are used by the typed
+// `LogEntry` (defined in meta.proto).  They are used by the typed
 // `AppendV001` streaming RPC to transport log entries between raft peers.
 //
 // Native Rust counterparts live in `crate::log_entry` and `crate::cmd`;

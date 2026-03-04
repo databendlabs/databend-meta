@@ -187,10 +187,8 @@ fn build_proto() {
         .type_attribute("CmdAddNode", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("CmdRemoveNode", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("CmdSetFeature", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        .type_attribute("LogPayload", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        .type_attribute("LogPayload.cmd", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        // raft.proto entry types
         .type_attribute("LogEntry", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("LogEntry.cmd", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("Membership", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("VoterGroup", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("AppendRequest", "#[derive(Eq, deepsize::DeepSizeOf)]")

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //! Bidirectional conversions between native types and protobuf transport types
-//! for LogPayload, LogEntry, AppendEntries request/response, and supporting types.
+//! for LogEntry, AppendEntries request/response, and supporting types.
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -64,77 +64,6 @@ impl From<pb::Node> for Node {
     }
 }
 
-// === LogEntry ↔ pb::LogPayload ===
-
-impl From<LogEntry> for pb::LogPayload {
-    fn from(entry: LogEntry) -> Self {
-        let cmd = match entry.cmd {
-            Cmd::AddNode {
-                node_id,
-                node,
-                overriding,
-            } => Some(pb::log_payload::Cmd::AddNode(pb::CmdAddNode {
-                node_id,
-                node: Some(node.into()),
-                overriding,
-            })),
-            Cmd::RemoveNode { node_id } => {
-                Some(pb::log_payload::Cmd::RemoveNode(pb::CmdRemoveNode {
-                    node_id,
-                }))
-            }
-            Cmd::SetFeature { feature, enable } => {
-                Some(pb::log_payload::Cmd::SetFeature(pb::CmdSetFeature {
-                    feature,
-                    enable,
-                }))
-            }
-            Cmd::KvTransaction(txn) => Some(pb::log_payload::Cmd::KvTransaction(txn.into())),
-            Cmd::UpsertKV(_) => {
-                panic!(
-                    "UpsertKV is a legacy variant and cannot be converted to protobuf LogPayload"
-                )
-            }
-            Cmd::Transaction(_) => {
-                panic!(
-                    "Transaction is a legacy variant and cannot be converted to protobuf LogPayload"
-                )
-            }
-        };
-
-        pb::LogPayload {
-            proposed_at_ms: entry.time_ms,
-            cmd,
-        }
-    }
-}
-
-impl TryFrom<pb::LogPayload> for LogEntry {
-    type Error = &'static str;
-
-    fn try_from(payload: pb::LogPayload) -> Result<Self, Self::Error> {
-        let cmd = match payload.cmd {
-            Some(pb::log_payload::Cmd::AddNode(c)) => Cmd::AddNode {
-                node_id: c.node_id,
-                node: c.node.map(Node::from).unwrap_or_default(),
-                overriding: c.overriding,
-            },
-            Some(pb::log_payload::Cmd::RemoveNode(c)) => Cmd::RemoveNode { node_id: c.node_id },
-            Some(pb::log_payload::Cmd::SetFeature(c)) => Cmd::SetFeature {
-                feature: c.feature,
-                enable: c.enable,
-            },
-            Some(pb::log_payload::Cmd::KvTransaction(req)) => Cmd::KvTransaction(req.into()),
-            None => return Err("LogPayload has no cmd"),
-        };
-
-        Ok(LogEntry {
-            time_ms: payload.proposed_at_ms,
-            cmd,
-        })
-    }
-}
-
 // === Membership conversions ===
 
 impl From<raft_types::Membership> for pb::Membership {
@@ -182,18 +111,48 @@ impl From<raft_types::Entry> for pb::LogEntry {
         match entry.payload {
             EntryPayload::Blank => pb::LogEntry {
                 log_id,
-                normal: None,
-                membership: None,
+                proposed_at_ms: None,
+                cmd: None,
             },
-            EntryPayload::Normal(log_entry) => pb::LogEntry {
-                log_id,
-                normal: Some(pb::LogPayload::from(log_entry)),
-                membership: None,
-            },
+            EntryPayload::Normal(log_entry) => {
+                let cmd = match log_entry.cmd {
+                    Cmd::AddNode {
+                        node_id,
+                        node,
+                        overriding,
+                    } => pb::log_entry::Cmd::AddNode(pb::CmdAddNode {
+                        node_id,
+                        node: Some(node.into()),
+                        overriding,
+                    }),
+                    Cmd::RemoveNode { node_id } => {
+                        pb::log_entry::Cmd::RemoveNode(pb::CmdRemoveNode { node_id })
+                    }
+                    Cmd::SetFeature { feature, enable } => {
+                        pb::log_entry::Cmd::SetFeature(pb::CmdSetFeature { feature, enable })
+                    }
+                    Cmd::KvTransaction(txn) => pb::log_entry::Cmd::KvTransaction(txn.into()),
+                    Cmd::UpsertKV(_) => {
+                        panic!(
+                            "UpsertKV is a legacy variant and cannot be converted to protobuf LogEntry"
+                        )
+                    }
+                    Cmd::Transaction(_) => {
+                        panic!(
+                            "Transaction is a legacy variant and cannot be converted to protobuf LogEntry"
+                        )
+                    }
+                };
+                pb::LogEntry {
+                    log_id,
+                    proposed_at_ms: log_entry.time_ms,
+                    cmd: Some(cmd),
+                }
+            }
             EntryPayload::Membership(m) => pb::LogEntry {
                 log_id,
-                normal: None,
-                membership: Some(pb::Membership::from(m)),
+                proposed_at_ms: None,
+                cmd: Some(pb::log_entry::Cmd::Membership(pb::Membership::from(m))),
             },
         }
     }
@@ -208,21 +167,30 @@ impl TryFrom<pb::LogEntry> for raft_types::Entry {
             .map(raft_types::LogId::from)
             .ok_or_else(|| "LogEntry missing log_id".to_string())?;
 
-        let payload = match (entry.normal, entry.membership) {
-            (None, None) => EntryPayload::Blank,
-            (Some(p), None) => {
-                let log_entry = LogEntry::try_from(p).map_err(|e| e.to_string())?;
-                EntryPayload::Normal(log_entry)
+        let payload = match entry.cmd {
+            None => EntryPayload::Blank,
+            Some(pb::log_entry::Cmd::Membership(m)) => {
+                EntryPayload::Membership(raft_types::Membership::try_from(m)?)
             }
-            (None, Some(m)) => {
-                let membership = raft_types::Membership::try_from(m)?;
-                EntryPayload::Membership(membership)
-            }
-            (Some(_), Some(_)) => {
-                return Err(
-                    "LogEntry has both normal and membership set (reserved for future use)"
-                        .to_string(),
-                );
+            Some(cmd) => {
+                let native_cmd = match cmd {
+                    pb::log_entry::Cmd::AddNode(c) => Cmd::AddNode {
+                        node_id: c.node_id,
+                        node: c.node.map(Node::from).unwrap_or_default(),
+                        overriding: c.overriding,
+                    },
+                    pb::log_entry::Cmd::RemoveNode(c) => Cmd::RemoveNode { node_id: c.node_id },
+                    pb::log_entry::Cmd::SetFeature(c) => Cmd::SetFeature {
+                        feature: c.feature,
+                        enable: c.enable,
+                    },
+                    pb::log_entry::Cmd::KvTransaction(req) => Cmd::KvTransaction(req.into()),
+                    pb::log_entry::Cmd::Membership(_) => unreachable!(),
+                };
+                EntryPayload::Normal(LogEntry {
+                    time_ms: entry.proposed_at_ms,
+                    cmd: native_cmd,
+                })
             }
         };
 
@@ -371,9 +339,16 @@ mod tests {
     use crate::raft_types;
 
     fn round_trip_log_entry(entry: LogEntry) {
-        let pb_payload = pb::LogPayload::from(entry.clone());
-        let back = LogEntry::try_from(pb_payload).unwrap();
-        assert_eq!(entry, back);
+        let raft_entry = raft_types::Entry::new(
+            raft_types::new_log_id(1, 0, 1),
+            openraft::EntryPayload::Normal(entry.clone()),
+        );
+        let pb_entry = pb::LogEntry::from(raft_entry);
+        let back = raft_types::Entry::try_from(pb_entry).unwrap();
+        match back.payload {
+            openraft::EntryPayload::Normal(back_entry) => assert_eq!(entry, back_entry),
+            _ => panic!("expected Normal payload"),
+        }
     }
 
     #[test]
@@ -420,7 +395,11 @@ mod tests {
         use crate::UpsertKV;
 
         let entry = LogEntry::new(Cmd::UpsertKV(UpsertKV::insert("k", b"v")));
-        let _ = pb::LogPayload::from(entry);
+        let raft_entry = raft_types::Entry::new(
+            raft_types::new_log_id(1, 0, 1),
+            openraft::EntryPayload::Normal(entry),
+        );
+        let _ = pb::LogEntry::from(raft_entry);
     }
 
     #[test]
@@ -429,7 +408,11 @@ mod tests {
         use crate::TxnRequest;
 
         let entry = LogEntry::new(Cmd::Transaction(TxnRequest::default()));
-        let _ = pb::LogPayload::from(entry);
+        let raft_entry = raft_types::Entry::new(
+            raft_types::new_log_id(1, 0, 1),
+            openraft::EntryPayload::Normal(entry),
+        );
+        let _ = pb::LogEntry::from(raft_entry);
     }
 
     #[test]
@@ -486,8 +469,7 @@ mod tests {
     fn test_entry_blank_round_trip() {
         let entry = make_entry(1, 0, 10, openraft::EntryPayload::Blank);
         let pb_entry = pb::LogEntry::from(entry.clone());
-        assert!(pb_entry.normal.is_none());
-        assert!(pb_entry.membership.is_none());
+        assert!(pb_entry.cmd.is_none());
         let back = raft_types::Entry::try_from(pb_entry).unwrap();
         assert_eq!(entry, back);
     }
@@ -497,8 +479,10 @@ mod tests {
         let log_entry = LogEntry::new(Cmd::RemoveNode { node_id: 5 });
         let entry = make_entry(2, 1, 20, openraft::EntryPayload::Normal(log_entry));
         let pb_entry = pb::LogEntry::from(entry.clone());
-        assert!(pb_entry.normal.is_some());
-        assert!(pb_entry.membership.is_none());
+        assert!(matches!(
+            pb_entry.cmd,
+            Some(pb::log_entry::Cmd::RemoveNode(_))
+        ));
         let back = raft_types::Entry::try_from(pb_entry).unwrap();
         assert_eq!(entry, back);
     }
@@ -516,8 +500,10 @@ mod tests {
         let m = raft_types::Membership::new(configs, nodes).unwrap();
         let entry = make_entry(3, 0, 30, openraft::EntryPayload::Membership(m));
         let pb_entry = pb::LogEntry::from(entry.clone());
-        assert!(pb_entry.normal.is_none());
-        assert!(pb_entry.membership.is_some());
+        assert!(matches!(
+            pb_entry.cmd,
+            Some(pb::log_entry::Cmd::Membership(_))
+        ));
         let back = raft_types::Entry::try_from(pb_entry).unwrap();
         assert_eq!(entry, back);
     }

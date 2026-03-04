@@ -439,14 +439,11 @@ async fn test_raft_service_append_v001() -> anyhow::Result<()> {
                 node_id: 1,
                 index: 4,
             }),
-            normal: Some(pb::LogPayload {
-                proposed_at_ms: None,
-                cmd: Some(pb::log_payload::Cmd::SetFeature(pb::CmdSetFeature {
-                    feature: "test-feature".to_string(),
-                    enable: true,
-                })),
-            }),
-            membership: None,
+            proposed_at_ms: None,
+            cmd: Some(pb::log_entry::Cmd::SetFeature(pb::CmdSetFeature {
+                feature: "test-feature".to_string(),
+                enable: true,
+            })),
         };
 
         let append_req = pb::AppendRequest {
@@ -531,14 +528,11 @@ async fn test_raft_service_append_v001_multi_item_stream() -> anyhow::Result<()>
 
     let make_entry = |index: u64, key: &str| pb::LogEntry {
         log_id: Some(make_log_id(index)),
-        normal: Some(pb::LogPayload {
-            proposed_at_ms: None,
-            cmd: Some(pb::log_payload::Cmd::SetFeature(pb::CmdSetFeature {
-                feature: key.to_string(),
-                enable: true,
-            })),
-        }),
-        membership: None,
+        proposed_at_ms: None,
+        cmd: Some(pb::log_entry::Cmd::SetFeature(pb::CmdSetFeature {
+            feature: key.to_string(),
+            enable: true,
+        })),
     };
 
     // After startup: log indexes 1..=3 (term=1, node=0)
