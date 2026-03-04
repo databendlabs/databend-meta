@@ -31,6 +31,7 @@ fn build_proto() {
         &Path::new(&proto_dir).join(Path::new("raft.proto")),
         &Path::new(&proto_dir).join(Path::new("meta.proto")),
         &Path::new(&proto_dir).join(Path::new("request.proto")),
+        &Path::new(&proto_dir).join(Path::new("log_entry.proto")),
     ];
 
     for proto in protos.iter() {
@@ -174,6 +175,23 @@ fn build_proto() {
             "PutSequential",
             "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
+        // raft.proto base types (needed for DeepSizeOf on new types)
+        .type_attribute("Vote", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("LogId", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("LeaderId", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("VoteRequest", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("VoteResponse", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        // log_entry.proto types
+        .type_attribute("Node", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("CmdAddNode", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("CmdRemoveNode", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("CmdSetFeature", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("LogEntry", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("LogEntry.cmd", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("Membership", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("VoterGroup", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("AppendRequest", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("AppendResponse", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .compile_protos_with_config(config, &protos, &[&proto_dir])
         .unwrap();
 }

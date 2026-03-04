@@ -85,6 +85,8 @@ pub type Unreachable = openraft::error::Unreachable<TypeConfig>;
 
 pub type AppendEntriesRequest = openraft::raft::AppendEntriesRequest<TypeConfig>;
 pub type AppendEntriesResponse = openraft::raft::AppendEntriesResponse<TypeConfig>;
+pub type StreamAppendResult = openraft::raft::StreamAppendResult<TypeConfig>;
+pub type StreamAppendError = openraft::raft::StreamAppendError<TypeConfig>;
 pub type InstallSnapshotRequest = openraft::raft::InstallSnapshotRequest<TypeConfig>;
 pub type InstallSnapshotResponse = openraft::raft::InstallSnapshotResponse<TypeConfig>;
 pub type SnapshotResponse = openraft::raft::SnapshotResponse<TypeConfig>;

@@ -39,6 +39,7 @@ use databend_meta_types::raft_types::SnapshotResponse;
 use databend_meta_types::raft_types::StoredMembership;
 use databend_meta_types::raft_types::Vote;
 use databend_meta_types::sys_data::SysData;
+use futures::StreamExt;
 use futures::TryStreamExt;
 use futures::stream;
 use itertools::Itertools;
@@ -249,7 +250,7 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
 #[fastrace::trace]
 async fn test_raft_service_install_snapshot_v004() -> anyhow::Result<()> {
-    // Transmit snapshot in one-piece in a stream via API install_snapshot_v003.
+    // Transmit snapshot in one-piece in a stream via API install_snapshot_v004.
 
     let (_nlog, mut tcs) = start_meta_node_cluster(btreeset![0], btreeset![]).await?;
     let tc0 = tcs.remove(0);
@@ -266,14 +267,12 @@ async fn test_raft_service_install_snapshot_v004() -> anyhow::Result<()> {
     let writer = ss_store.new_writer()?;
 
     let db = {
-        // build an empty snapshot
         let strm = futures::stream::iter([]);
         let mut sys_data = SysData::default();
         *sys_data.last_applied_mut() = Some(last_log_id);
-        let db = writer
+        writer
             .write_kv_stream(strm, snapshot_id.clone(), sys_data)
-            .await?;
-        db
+            .await?
     };
 
     let mut sys_data = db.sys_data().clone();
@@ -360,6 +359,222 @@ async fn test_raft_service_install_snapshot_v004() -> anyhow::Result<()> {
         .unwrap_err();
 
     assert_eq!(err.code(), tonic::Code::InvalidArgument);
+
+    Ok(())
+}
+
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_raft_service_append_v001() -> anyhow::Result<()> {
+    // Test the AppendV001 bidirectional streaming gRPC endpoint.
+    //
+    // Start a single-node leader (node 0, term 1, committed vote) with 3
+    // initial log entries. To test `stream_append` we must act as a leader
+    // sending to a follower: use a higher vote (term=2) to make the node
+    // step down, then it processes appends as a follower.
+    //
+    // Test cases:
+    // 1. Heartbeat (no entries) — expect success with last_log_id = prev_log_id
+    // 2. Append with entries  — expect success with last_log_id = last appended
+    // 3. Stale vote request   — expect rejected_by with the node's current vote
+
+    let (_nlog, mut tcs) = start_meta_node_cluster(btreeset![0], btreeset![]).await?;
+    let tc0 = tcs.remove(0);
+    let mut client0 = tc0.raft_client().await?;
+
+    // Use a higher vote from a different node to make the leader step down.
+    // node_id=1 ensures node 0 recognizes it's following another leader.
+    let higher_vote = pb::Vote {
+        term: 2,
+        node_id: 1,
+        committed: true,
+    };
+
+    // After startup, the leader has log entries at indexes 1..=3 (term=1, node=0).
+    let prev_log_id_3 = pb::LogId {
+        term: 1,
+        node_id: 0,
+        index: 3,
+    };
+
+    info!("--- heartbeat: no entries, should succeed");
+    {
+        let heartbeat = pb::AppendRequest {
+            vote: Some(higher_vote),
+            prev_log_id: Some(prev_log_id_3),
+            entries: vec![],
+            leader_commit: Some(prev_log_id_3),
+        };
+
+        let resp = client0.append_v001(stream::iter(vec![heartbeat])).await?;
+        let mut output = resp.into_inner();
+
+        let first = output.next().await;
+        assert!(
+            first.is_some(),
+            "should receive at least one response for heartbeat"
+        );
+        let first = first.unwrap()?;
+
+        // Heartbeat success: returns the matching prev_log_id as last_log_id
+        assert_eq!(first, pb::AppendResponse {
+            rejected_by: None,
+            conflict_log_id: None,
+            last_log_id: Some(prev_log_id_3),
+        });
+
+        // Stream should end after processing the single request
+        let next = output.next().await;
+        assert!(next.is_none(), "stream should end after single request");
+    }
+
+    info!("--- append with entries: should succeed and return last_log_id");
+    {
+        // Build a log entry at index 4 with a SetFeature command
+        let entry = pb::LogEntry {
+            log_id: Some(pb::LogId {
+                term: 2,
+                node_id: 1,
+                index: 4,
+            }),
+            proposed_at_ms: None,
+            cmd: Some(pb::log_entry::Cmd::SetFeature(pb::CmdSetFeature {
+                feature: "test-feature".to_string(),
+                enable: true,
+            })),
+        };
+
+        let append_req = pb::AppendRequest {
+            vote: Some(higher_vote),
+            prev_log_id: Some(prev_log_id_3),
+            entries: vec![entry],
+            leader_commit: Some(prev_log_id_3),
+        };
+
+        let resp = client0.append_v001(stream::iter(vec![append_req])).await?;
+        let mut output = resp.into_inner();
+
+        let first = output.next().await.unwrap()?;
+
+        // Success with entries: last_log_id points to the last appended entry
+        assert_eq!(first, pb::AppendResponse {
+            rejected_by: None,
+            conflict_log_id: None,
+            last_log_id: Some(pb::LogId {
+                term: 2,
+                node_id: 1,
+                index: 4,
+            }),
+        });
+    }
+
+    info!("--- stale vote: should be rejected with higher vote");
+    {
+        let stale_vote = pb::Vote {
+            term: 1,
+            node_id: 0,
+            committed: false,
+        };
+
+        let stale_req = pb::AppendRequest {
+            vote: Some(stale_vote),
+            prev_log_id: None,
+            entries: vec![],
+            leader_commit: None,
+        };
+
+        let resp = client0.append_v001(stream::iter(vec![stale_req])).await?;
+        let mut output = resp.into_inner();
+
+        let first = output.next().await.unwrap()?;
+
+        // Rejected: the node's current vote (term=2) is returned
+        assert_eq!(first, pb::AppendResponse {
+            rejected_by: Some(higher_vote),
+            conflict_log_id: None,
+            last_log_id: None,
+        });
+    }
+
+    Ok(())
+}
+
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_raft_service_append_v001_multi_item_stream() -> anyhow::Result<()> {
+    // Test AppendV001 with a single stream containing multiple requests,
+    // each carrying multiple log entries. Verifies that:
+    // - All requests in one stream produce corresponding responses
+    // - Each response's `last_log_id` reflects the last entry of that batch
+    // - `prev_log_id` chaining across requests works correctly
+
+    let (_nlog, mut tcs) = start_meta_node_cluster(btreeset![0], btreeset![]).await?;
+    let tc0 = tcs.remove(0);
+    let mut client0 = tc0.raft_client().await?;
+
+    let vote = pb::Vote {
+        term: 2,
+        node_id: 1,
+        committed: true,
+    };
+
+    let make_log_id = |index: u64| pb::LogId {
+        term: 2,
+        node_id: 1,
+        index,
+    };
+
+    let make_entry = |index: u64, key: &str| pb::LogEntry {
+        log_id: Some(make_log_id(index)),
+        proposed_at_ms: None,
+        cmd: Some(pb::log_entry::Cmd::SetFeature(pb::CmdSetFeature {
+            feature: key.to_string(),
+            enable: true,
+        })),
+    };
+
+    // After startup: log indexes 1..=3 (term=1, node=0)
+    let prev_3 = pb::LogId {
+        term: 1,
+        node_id: 0,
+        index: 3,
+    };
+
+    // Request 1: prev=3, entries at 4,5
+    let req1 = pb::AppendRequest {
+        vote: Some(vote),
+        prev_log_id: Some(prev_3),
+        entries: vec![make_entry(4, "feat-a"), make_entry(5, "feat-b")],
+        leader_commit: Some(prev_3),
+    };
+
+    // Request 2: prev=5, entries at 6,7,8
+    let req2 = pb::AppendRequest {
+        vote: Some(vote),
+        prev_log_id: Some(make_log_id(5)),
+        entries: vec![
+            make_entry(6, "feat-c"),
+            make_entry(7, "feat-d"),
+            make_entry(8, "feat-e"),
+        ],
+        leader_commit: Some(make_log_id(5)),
+    };
+
+    let resp = client0.append_v001(stream::iter(vec![req1, req2])).await?;
+    let results: Vec<pb::AppendResponse> = resp.into_inner().try_collect().await?;
+
+    assert_eq!(results, vec![
+        pb::AppendResponse {
+            rejected_by: None,
+            conflict_log_id: None,
+            last_log_id: Some(make_log_id(5)),
+        },
+        pb::AppendResponse {
+            rejected_by: None,
+            conflict_log_id: None,
+            last_log_id: Some(make_log_id(8)),
+        },
+    ]);
 
     Ok(())
 }

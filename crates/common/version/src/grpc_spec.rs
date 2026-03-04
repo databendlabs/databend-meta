@@ -31,96 +31,36 @@
 //! # Example
 //!
 //! ```
-//! use databend_meta_version::Spec;
+//! use databend_meta_version::GrpcSpec;
 //!
-//! let spec = Spec::load();
+//! let spec = GrpcSpec::load();
 //! let min_server = spec.min_compatible_server_version();
 //! let min_client = spec.min_compatible_client_version();
 //! ```
 
 use std::collections::BTreeMap;
 
-use crate::feat::Feature;
-use crate::feature_span::FeatureSpan;
+use crate::feature_span::FeatureSpec;
+use crate::feature_span::add;
+use crate::feature_span::parse_pkg_version;
+use crate::feature_span::remove;
+use crate::grpc_feat::GrpcFeature;
 use crate::version::Version;
 
-/// Parses `CARGO_PKG_VERSION` into a [`Version`].
-fn parse_pkg_version() -> Version {
-    let s = env!("CARGO_PKG_VERSION");
-    let s = s.strip_prefix('v').unwrap_or(s);
-    let sv = semver::Version::parse(s)
-        .unwrap_or_else(|e| panic!("Invalid CARGO_PKG_VERSION: {:?}: {}", s, e));
-    Version::from(sv)
-}
+/// Type alias for client-server feature spec.
+pub type GrpcSpec = FeatureSpec<GrpcFeature>;
 
-/// Record that a feature was added at `version`.
-fn add(features: &mut BTreeMap<Feature, FeatureSpan>, feature: Feature, version: Version) {
-    let span = features
-        .entry(feature)
-        .or_insert_with(|| FeatureSpan::new(feature, Version::min()));
-
-    debug_assert!(span.since == Version::min());
-    debug_assert!(span.until == Version::max());
-
-    span.since = version;
-}
-
-/// Record that a feature was removed at `version`.
-fn remove(features: &mut BTreeMap<Feature, FeatureSpan>, feature: Feature, version: Version) {
-    let span = features
-        .entry(feature)
-        .or_insert_with(|| FeatureSpan::new(feature, Version::min()));
-
-    debug_assert!(span.since != Version::min());
-    debug_assert!(span.until == Version::max());
-
-    span.until = version;
-}
-
-/// Version and feature information for compatibility calculation.
-///
-/// Contains the current build version and the full history of when features
-/// were added or removed on both server and client sides. Used to calculate
-/// minimum compatible versions.
-pub struct Spec {
-    /// The build version this instance was created for.
-    version: Version,
-
-    /// When each feature was added/removed on the server side.
-    server_features: BTreeMap<Feature, FeatureSpan>,
-
-    /// When each feature was added/removed on the client side.
-    client_features: BTreeMap<Feature, FeatureSpan>,
-}
-
-impl Spec {
+impl GrpcSpec {
     /// Creates a new instance with all feature history for the current build version.
     pub fn load() -> Self {
         Self::new(parse_pkg_version())
     }
 
-    /// Returns the build version this instance was created for.
-    pub fn version(&self) -> &Version {
-        &self.version
-    }
-
-    /// Returns the server-side feature spans.
-    pub fn server_features(&self) -> &BTreeMap<Feature, FeatureSpan> {
-        &self.server_features
-    }
-
-    /// Returns the client-side feature spans.
-    pub fn client_features(&self) -> &BTreeMap<Feature, FeatureSpan> {
-        &self.client_features
-    }
-}
-
-impl Spec {
     fn new(version: Version) -> Self {
         let mut srv = BTreeMap::new();
         let mut cli = BTreeMap::new();
 
-        type F = Feature;
+        type F = GrpcFeature;
 
         const fn ver(major: u64, minor: u64, patch: u64) -> Version {
             Version::new(major, minor, patch)
@@ -319,64 +259,7 @@ impl Spec {
             add(&mut cli, F::KvTransactionPutMatchSeq, Version::max());
         }
 
-        Self::assert_all_features(&srv);
-        Self::assert_all_features(&cli);
-
-        Spec {
-            version,
-            server_features: srv,
-            client_features: cli,
-        }
-    }
-
-    fn assert_all_features(features: &BTreeMap<Feature, FeatureSpan>) {
-        for feature in Feature::all() {
-            assert!(
-                features.contains_key(feature),
-                "Missing feature: {:?}",
-                feature
-            );
-        }
-    }
-
-    /// Minimum server version that can serve this client.
-    ///
-    /// Returns `max(server.since)` across all features the client requires
-    /// at `self.version`.
-    pub fn min_compatible_server_version(&self) -> Version {
-        let mut min_server = Version::min();
-
-        for feature in Feature::all() {
-            let client_lt = self.client_features.get(feature).unwrap();
-            let server_lt = self.server_features.get(feature).unwrap();
-
-            // If client requires this feature at current version
-            if client_lt.is_active_at(self.version) {
-                min_server = min_server.max(server_lt.since);
-            }
-        }
-
-        min_server
-    }
-
-    /// Minimum client version that can connect to this server.
-    ///
-    /// Returns `max(client.until)` across all features the server has
-    /// removed at `self.version`.
-    pub fn min_compatible_client_version(&self) -> Version {
-        let mut min_client = Version::min();
-
-        for feature in Feature::all() {
-            let client_lt = self.client_features.get(feature).unwrap();
-            let server_lt = self.server_features.get(feature).unwrap();
-
-            // If server removed this feature at current version
-            if !server_lt.is_active_at(self.version) {
-                min_client = min_client.max(client_lt.until);
-            }
-        }
-
-        min_client
+        FeatureSpec::build(version, srv, cli)
     }
 }
 
@@ -386,15 +269,15 @@ mod tests {
 
     #[test]
     fn test_changes_includes_all_features() {
-        let spec = Spec::load();
+        let spec = GrpcSpec::load();
 
-        Spec::assert_all_features(&spec.server_features);
-        Spec::assert_all_features(&spec.client_features);
+        GrpcSpec::assert_all_features(spec.server_features());
+        GrpcSpec::assert_all_features(spec.client_features());
     }
 
     #[test]
     fn test_min_compatible_server_version() {
-        let spec = Spec::load();
+        let spec = GrpcSpec::load();
         let min_server = spec.min_compatible_server_version();
 
         #[cfg(feature = "txn-put-match-seq")]
@@ -406,7 +289,7 @@ mod tests {
 
     #[test]
     fn test_min_compatible_client_version() {
-        let spec = Spec::load();
+        let spec = GrpcSpec::load();
         let min_client = spec.min_compatible_client_version();
 
         assert_eq!(min_client, Version::new(1, 2, 676));
