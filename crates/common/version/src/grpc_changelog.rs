@@ -66,6 +66,19 @@ pub fn grpc_changelog() -> BTreeMap<Version, GrpcVersionCompat> {
         min_server: ver(1, 2, 869),
     });
 
+    // 260304.0.0: no compatibility change
+    #[cfg(feature = "txn-put-match-seq")]
+    m.insert(ver(260304, 0, 0), GrpcVersionCompat {
+        min_client: ver(1, 2, 676),
+        min_server: ver(260217, 0, 0),
+    });
+
+    #[cfg(not(feature = "txn-put-match-seq"))]
+    m.insert(ver(260304, 0, 0), GrpcVersionCompat {
+        min_client: ver(1, 2, 676),
+        min_server: ver(1, 2, 869),
+    });
+
     m
 }
 
@@ -74,6 +87,18 @@ mod tests {
     use super::*;
     use crate::MIN_CLIENT_VERSION;
     use crate::MIN_SERVER_VERSION;
+
+    #[test]
+    fn test_grpc_changelog_contains_current_version() {
+        let changelog = grpc_changelog();
+        let current = *crate::version();
+
+        assert!(
+            changelog.contains_key(&current),
+            "changelog must contain an entry for the current version {}",
+            current
+        );
+    }
 
     #[test]
     fn test_grpc_changelog_last_entry_matches_current() {
