@@ -32,6 +32,7 @@
 //! See [Compatibility Algorithm](./compatibility_algorithm.md) for details.
 
 mod feature_span;
+mod grpc_changelog;
 mod grpc_feat;
 mod grpc_spec;
 mod raft_feat;
@@ -41,6 +42,8 @@ mod version;
 pub use self::feature_span::FeatureSet;
 pub use self::feature_span::FeatureSpan;
 pub use self::feature_span::FeatureSpec;
+pub use self::grpc_changelog::GrpcVersionCompat;
+pub use self::grpc_changelog::grpc_changelog;
 pub use self::grpc_feat::GrpcFeature;
 pub use self::grpc_spec::GrpcSpec;
 pub use self::raft_feat::RaftFeature;
