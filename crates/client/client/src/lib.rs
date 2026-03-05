@@ -20,6 +20,9 @@ extern crate core;
 
 pub extern crate databend_meta_kvapi as kvapi;
 pub extern crate databend_meta_kvapi_test_suite as kvapi_test_suite;
+pub extern crate databend_meta_runtime_api as runtime_api;
+pub extern crate databend_meta_types as types;
+pub extern crate databend_meta_version as version;
 
 mod channel_manager;
 mod client_conf;

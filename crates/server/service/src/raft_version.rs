@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub use databend_meta_version::MIN_CLIENT_VERSION;
 use feature_set::FeatureSet;
 use semver::Version;
 
