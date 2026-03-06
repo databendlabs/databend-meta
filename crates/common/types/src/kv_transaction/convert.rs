@@ -359,9 +359,9 @@ impl pb::KvTransactionReply {
 
         let (success, execution_path) = match self.executed_branch {
             None => {
-                // Should not happen: the condition/if_then branch is always
-                // present and Predicate::and([]) is vacuously true,
-                // so at least that branch always matches.
+                // No branch matched. This happens when the condition
+                // predicate evaluates to false and there is no else_then
+                // fallback. Map to "else" for backward compatibility.
                 (false, "else".to_string())
             }
             Some(i) => {
