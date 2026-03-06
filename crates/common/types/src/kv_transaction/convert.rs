@@ -315,17 +315,18 @@ impl From<&pb::TxnRequest> for Transaction {
     fn from(req: &pb::TxnRequest) -> Self {
         let mut branches: Vec<Branch> = req.operations.iter().cloned().map(Branch::from).collect();
 
-        if !req.condition.is_empty() || !req.if_then.is_empty() {
-            branches.push(Branch {
-                predicate: Predicate::and(
-                    req.condition
-                        .iter()
-                        .cloned()
-                        .map(|c| Predicate::Leaf(Condition::from(c))),
-                ),
-                operations: req.if_then.iter().cloned().map(Operation::from).collect(),
-            });
-        }
+        // Always add the condition/if_then branch.
+        // When both are empty, Predicate::and([]) is vacuously true,
+        // preserving the legacy behavior where an empty TxnRequest succeeds.
+        branches.push(Branch {
+            predicate: Predicate::and(
+                req.condition
+                    .iter()
+                    .cloned()
+                    .map(|c| Predicate::Leaf(Condition::from(c))),
+            ),
+            operations: req.if_then.iter().cloned().map(Operation::from).collect(),
+        });
 
         if !req.else_then.is_empty() {
             branches.push(Branch {
@@ -345,33 +346,29 @@ impl pb::KvTransactionReply {
     ///
     /// The old `TxnRequest` maps to branches as follows:
     /// - branches\[0..n\] from `operations[]`
-    /// - branches\[n\] from `condition/if_then` (if present)
-    /// - branches\[n + has_if\] from `else_then` (if present)
+    /// - branches\[n\] from `condition/if_then` (always present)
+    /// - branches\[n + 1\] from `else_then` (if present)
     ///
     /// `success` and `execution_path` are derived from which branch executed:
     /// - operations\[i\] → `success=true`, `execution_path="operation:i"`
     /// - if_then → `success=true`, `execution_path="then"`
     /// - else_then → `success=false`, `execution_path="else"`
-    /// - no match → `success=false`, `execution_path=""`
+    /// - no match → `success=false`, `execution_path="else"`
     pub fn into_txn_reply(self, original_req: &pb::TxnRequest) -> pb::TxnReply {
         let n_operations = original_req.operations.len();
-        let has_if = !original_req.condition.is_empty() || !original_req.if_then.is_empty();
 
         let (success, execution_path) = match self.executed_branch {
             None => {
-                if has_if {
-                    // Old evaluator always fell through to "else" when condition didn't match,
-                    // even when else_then was empty.
-                    (false, "else".to_string())
-                } else {
-                    (false, String::new())
-                }
+                // Should not happen: the condition/if_then branch is always
+                // present and Predicate::and([]) is vacuously true,
+                // so at least that branch always matches.
+                (false, "else".to_string())
             }
             Some(i) => {
                 let i = i as usize;
                 if i < n_operations {
                     (true, format!("operation:{}", i))
-                } else if has_if && i == n_operations {
+                } else if i == n_operations {
                     (true, "then".to_string())
                 } else {
                     (false, "else".to_string())
@@ -554,7 +551,7 @@ mod tests {
         assert_eq!(txn.branches.len(), 1);
         assert!(!txn.branches[0].predicate.is_always_true());
 
-        // operations[] style
+        // operations[] style: 2 from push_branch + 1 from always-present condition/if_then
         let req = TxnRequest::default()
             .push_branch(
                 Some(pb::BooleanExpression::from_conditions_and([
@@ -564,9 +561,10 @@ mod tests {
             )
             .push_branch(None, [TxnOp::get("k")]);
         let txn = Transaction::from(&req);
-        assert_eq!(txn.branches.len(), 2);
+        assert_eq!(txn.branches.len(), 3);
         assert!(!txn.branches[0].predicate.is_always_true());
         assert!(txn.branches[1].predicate.is_always_true());
+        assert!(txn.branches[2].predicate.is_always_true());
     }
 
     #[test]
@@ -595,7 +593,7 @@ mod tests {
         assert!(!r.success);
         assert_eq!(r.execution_path, "else");
 
-        // No match — with conditions, falls through to "else" for backward compat
+        // No match — falls through to "else" for backward compat
         let r = reply(None);
         assert!(!r.success);
         assert_eq!(r.execution_path, "else");
@@ -616,6 +614,26 @@ mod tests {
         .into_txn_reply(&req);
         assert!(r.success);
         assert_eq!(r.execution_path, "operation:0");
+    }
+
+    #[test]
+    fn test_empty_txn_request_succeeds() {
+        let req = TxnRequest::default();
+
+        // Empty TxnRequest converts to a Transaction with one always-true branch
+        let txn = Transaction::from(&req);
+        assert_eq!(txn.branches.len(), 1);
+        assert!(txn.branches[0].predicate.is_always_true());
+        assert!(txn.branches[0].operations.is_empty());
+
+        // The always-true branch matches (executed_branch=0), mapping to "then" → success=true
+        let r = pb::KvTransactionReply {
+            executed_branch: Some(0),
+            responses: vec![],
+        }
+        .into_txn_reply(&req);
+        assert!(r.success);
+        assert_eq!(r.execution_path, "then");
     }
 
     #[test]
