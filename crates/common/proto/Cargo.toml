@@ -1,5 +1,5 @@
 [package]
-name = "databend-meta-types"
+name = "databend-meta-proto"
 version = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }
@@ -9,35 +9,29 @@ edition = { workspace = true }
 [dependencies]
 anyerror = { workspace = true }
 databend-meta-base = { workspace = true }
-databend-meta-proto = { workspace = true }
 deepsize = { workspace = true }
 derive_more = { workspace = true }
+# Only used for trait definitions (RaftTypeConfig, RaftVote, RaftLeaderId)
 display-more = { workspace = true }
-futures-util = { workspace = true }
-log = { workspace = true }
 map-api = { workspace = true }
 num-derive = { workspace = true }
 num-traits = { workspace = true }
-num_cpus = { workspace = true }
 openraft = { workspace = true }
-pretty_assertions = { workspace = true }
 prost = { workspace = true }
-rotbl = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 state-machine-api = { workspace = true }
-thiserror = { workspace = true }
 tonic = { workspace = true }
 
-[features]
-txn-put-match-seq = ["databend-meta-proto/txn-put-match-seq"]
+[build-dependencies]
+prost-build = { workspace = true }
+tonic-build = { workspace = true }
 
-[dev-dependencies]
-anyhow = { workspace = true }
-tempfile = { workspace = true }
+[features]
+txn-put-match-seq = []
 
 [package.metadata.cargo-machete]
-ignored = ["num-derive", "prost", "databend-meta-proto"]
+ignored = ["deepsize", "num-derive", "num-traits", "prost"]
 
 [lints]
 workspace = true

@@ -14,7 +14,8 @@
 
 use std::fmt;
 
-use crate::SeqV;
+use state_machine_api::SeqV;
+
 use crate::protobuf as pb;
 
 impl pb::FetchIncreaseU64Response {

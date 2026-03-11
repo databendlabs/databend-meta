@@ -339,51 +339,6 @@ impl From<&pb::TxnRequest> for Transaction {
     }
 }
 
-// === Response conversion: KvTransactionReply → TxnReply ===
-
-impl pb::KvTransactionReply {
-    /// Convert to `TxnReply` given the original `TxnRequest` that produced this reply.
-    ///
-    /// The old `TxnRequest` maps to branches as follows:
-    /// - branches\[0..n\] from `operations[]`
-    /// - branches\[n\] from `condition/if_then` (always present)
-    /// - branches\[n + 1\] from `else_then` (if present)
-    ///
-    /// `success` and `execution_path` are derived from which branch executed:
-    /// - operations\[i\] → `success=true`, `execution_path="operation:i"`
-    /// - if_then → `success=true`, `execution_path="then"`
-    /// - else_then → `success=false`, `execution_path="else"`
-    /// - no match → `success=false`, `execution_path="else"`
-    pub fn into_txn_reply(self, original_req: &pb::TxnRequest) -> pb::TxnReply {
-        let n_operations = original_req.operations.len();
-
-        let (success, execution_path) = match self.executed_branch {
-            None => {
-                // No branch matched. This happens when the condition
-                // predicate evaluates to false and there is no else_then
-                // fallback. Map to "else" for backward compatibility.
-                (false, "else".to_string())
-            }
-            Some(i) => {
-                let i = i as usize;
-                if i < n_operations {
-                    (true, format!("operation:{}", i))
-                } else if i == n_operations {
-                    (true, "then".to_string())
-                } else {
-                    (false, "else".to_string())
-                }
-            }
-        };
-
-        pb::TxnReply {
-            success,
-            responses: self.responses,
-            execution_path,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
