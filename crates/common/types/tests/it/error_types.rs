@@ -107,7 +107,7 @@ mod test_meta_network_errors {
     #[test]
     fn test_incomplete_stream_into_invalid_reply() {
         let e = IncompleteStream::new(10, 5);
-        let reply: InvalidReply = e.into();
+        let reply = InvalidReply::new("Invalid reply", &e);
         let s = reply.to_string();
         assert!(s.contains("Invalid reply"), "{}", s);
     }

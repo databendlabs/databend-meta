@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt;
 use std::fmt::Display;
 use std::io;
 
 use anyerror::AnyError;
+use databend_meta_base::InvalidReply;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
@@ -120,49 +120,6 @@ impl InvalidArgument {
     }
 }
 
-#[derive(thiserror::Error, serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct InvalidReply {
-    msg: String,
-    #[source]
-    source: AnyError,
-}
-
-impl InvalidReply {
-    pub fn new(msg: impl Display, source: &(impl std::error::Error + 'static)) -> Self {
-        Self {
-            msg: msg.to_string(),
-            source: AnyError::new(source).with_type(None::<String>),
-        }
-    }
-
-    pub fn add_context(mut self, context: impl Display) -> Self {
-        self.msg = format!("{}: {}", self.msg, context);
-        self
-    }
-}
-
-impl Display for InvalidReply {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "InvalidReply: ")?;
-        if !self.msg.is_empty() {
-            write!(f, "{}; ", self.msg)?;
-        }
-        write!(f, "source:({})", self.source)
-    }
-}
-
-impl From<InvalidReply> for io::Error {
-    fn from(e: InvalidReply) -> Self {
-        io::Error::new(io::ErrorKind::InvalidData, e)
-    }
-}
-
-impl From<errors::IncompleteStream> for InvalidReply {
-    fn from(e: errors::IncompleteStream) -> Self {
-        Self::new("Invalid reply", &e)
-    }
-}
-
 impl From<std::net::AddrParseError> for MetaNetworkError {
     fn from(error: std::net::AddrParseError) -> Self {
         MetaNetworkError::BadAddressFormat(AnyError::new(&error))
@@ -204,7 +161,7 @@ impl From<tonic::transport::Error> for MetaNetworkError {
 
 impl From<errors::IncompleteStream> for MetaNetworkError {
     fn from(e: errors::IncompleteStream) -> Self {
-        MetaNetworkError::InvalidReply(InvalidReply::from(e))
+        MetaNetworkError::InvalidReply(InvalidReply::new("Invalid reply", &e))
     }
 }
 

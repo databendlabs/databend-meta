@@ -98,11 +98,11 @@ async fn test_meta_store_purge_cache() -> anyhow::Result<()> {
         sto.log()
             .clone()
             .blocking_append([
-                Entry::new_blank(log_id(1, 2, 1)),
-                Entry::new_blank(log_id(1, 2, 2)),
-                Entry::new_blank(log_id(1, 2, 3)),
-                Entry::new_blank(log_id(1, 2, 4)),
-                Entry::new_blank(log_id(1, 2, 5)),
+                Entry::new_blank(log_id::<TypeConfig>(1, 2, 1)),
+                Entry::new_blank(log_id::<TypeConfig>(1, 2, 2)),
+                Entry::new_blank(log_id::<TypeConfig>(1, 2, 3)),
+                Entry::new_blank(log_id::<TypeConfig>(1, 2, 4)),
+                Entry::new_blank(log_id::<TypeConfig>(1, 2, 5)),
             ])
             .await?;
 
@@ -132,7 +132,10 @@ ChunkId(00_000_000_000_000_000_200)
         // When purging up to index=4, all entries in the last open chunk will still be cached.
         // All previous entries are purge, although the cache is not full.
 
-        sto.log().clone().purge(log_id(1, 2, 4)).await?;
+        sto.log()
+            .clone()
+            .purge(log_id::<TypeConfig>(1, 2, 4))
+            .await?;
 
         let r = sto.log().read().await;
         let got = r.dump().write_to_string()?;
@@ -169,18 +172,18 @@ async fn test_meta_store_restart() -> anyhow::Result<()> {
 
         sto.log()
             .clone()
-            .blocking_append([Entry::new_blank(log_id(1, 2, 1))])
+            .blocking_append([Entry::new_blank(log_id::<TypeConfig>(1, 2, 1))])
             .await?;
 
         sto.log()
             .clone()
-            .save_committed(Some(log_id(1, 2, 2)))
+            .save_committed(Some(log_id::<TypeConfig>(1, 2, 2)))
             .await?;
 
         sto.state_machine()
             .clone()
             .apply(stream::iter([Ok((
-                Entry::new_blank(log_id(1, 2, 2)),
+                Entry::new_blank(log_id::<TypeConfig>(1, 2, 2)),
                 None,
             ))]))
             .await?;
@@ -192,9 +195,12 @@ async fn test_meta_store_restart() -> anyhow::Result<()> {
         assert_eq!(id, sto.id);
         assert_eq!(Some(Vote::new(10, 5)), sto.log().clone().read_vote().await?);
 
-        assert_eq!(log_id(1, 2, 1), sto.log().clone().get_log_id(1).await?);
         assert_eq!(
-            Some(log_id(1, 2, 2)),
+            log_id::<TypeConfig>(1, 2, 1),
+            sto.log().clone().get_log_id(1).await?
+        );
+        assert_eq!(
+            Some(log_id::<TypeConfig>(1, 2, 2)),
             sto.log().clone().read_committed().await?
         );
         assert_eq!(
@@ -351,14 +357,14 @@ async fn test_meta_store_install_snapshot() -> anyhow::Result<()> {
 
             assert_eq!(
                 StoredMembership::new(
-                    Some(log_id(1, 0, 5)),
+                    Some(log_id::<TypeConfig>(1, 0, 5)),
                     Membership::new_with_defaults(vec![btreeset! {4,5,6}], [])
                 ),
                 mem
             );
 
             let last_applied = *sto.get_sm_v003().sys_data().last_applied_ref();
-            assert_eq!(Some(log_id(1, 0, 9)), last_applied);
+            assert_eq!(Some(log_id::<TypeConfig>(1, 0, 9)), last_applied);
         }
 
         info!("--- check snapshot");

@@ -147,5 +147,5 @@ pub mod meta_raft_errors;
 
 mod incomplete_stream;
 
+pub use databend_meta_base::InvalidReply;
 pub use incomplete_stream::IncompleteStream;
-pub use meta_network_errors::InvalidReply;

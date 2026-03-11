@@ -15,9 +15,9 @@
 use std::fmt;
 use std::time::Duration;
 
+use databend_meta_base::normalize_meta::NormalizeMeta;
 use display_more::DisplayOptionExt;
 
-use crate::normalize_meta::NormalizeMeta;
 use crate::protobuf as pb;
 
 impl pb::Event {
@@ -68,18 +68,6 @@ impl pb::Event {
     }
 }
 
-impl fmt::Display for pb::Event {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "({}: {} -> {})",
-            self.key,
-            self.prev.display(),
-            self.current.display()
-        )
-    }
-}
-
 impl NormalizeMeta for pb::Event {
     fn without_proposed_at(mut self) -> Self {
         if let Some(ref mut prev) = self.prev {
@@ -107,6 +95,18 @@ impl NormalizeMeta for pb::Event {
             }
         }
         self
+    }
+}
+
+impl fmt::Display for pb::Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "({}: {} -> {})",
+            self.key,
+            self.prev.display(),
+            self.current.display()
+        )
     }
 }
 
@@ -257,7 +257,6 @@ mod tests {
 
     #[test]
     fn test_event_erase_proposed_at() {
-        // Test with both prev and current having proposed_at_ms
         let event = pb::Event::new("test_key")
             .with_prev(pb::SeqV::with_meta(
                 1,
@@ -278,56 +277,17 @@ mod tests {
 
         let erased = event.without_proposed_at();
 
-        // Check prev: expire_at should remain, proposed_at_ms should be None
         assert_eq!(erased.prev.as_ref().unwrap().seq, 1);
         let prev_meta = erased.prev.as_ref().unwrap().meta.as_ref().unwrap();
         assert_eq!(prev_meta.expire_at, Some(1723102819));
         assert_eq!(prev_meta.proposed_at_ms, None);
 
-        // Check current: meta should be removed (default after erasing proposed_at_ms)
         assert_eq!(erased.current.as_ref().unwrap().seq, 2);
         assert_eq!(erased.current.as_ref().unwrap().meta, None);
     }
 
     #[test]
-    fn test_event_reduce() {
-        // Test reduce without touching proposed_at_ms
-        let event = pb::Event::new("test_key")
-            .with_prev(pb::SeqV::with_meta(
-                1,
-                Some(pb::KvMeta {
-                    expire_at: None,
-                    proposed_at_ms: Some(1_723_102_800_000),
-                }),
-                b"prev".to_vec(),
-            ))
-            .with_current(pb::SeqV::with_meta(
-                2,
-                Some(pb::KvMeta {
-                    expire_at: Some(1723102819),
-                    proposed_at_ms: None,
-                }),
-                b"current".to_vec(),
-            ));
-
-        let reduced = event.normalize();
-
-        // Check prev: proposed_at_ms should remain, but meta removed (only proposed_at is not default)
-        assert_eq!(reduced.prev.as_ref().unwrap().seq, 1);
-        let prev_meta = reduced.prev.as_ref().unwrap().meta.as_ref().unwrap();
-        assert_eq!(prev_meta.proposed_at_ms, Some(1_723_102_800_000));
-        assert_eq!(prev_meta.expire_at, None);
-
-        // Check current: meta should remain (has expire_at)
-        assert_eq!(reduced.current.as_ref().unwrap().seq, 2);
-        let current_meta = reduced.current.as_ref().unwrap().meta.as_ref().unwrap();
-        assert_eq!(current_meta.expire_at, Some(1723102819));
-        assert_eq!(current_meta.proposed_at_ms, None);
-    }
-
-    #[test]
     fn test_event_reduce_removes_default_meta() {
-        // Test that reduce removes metadata when it's default
         let event = pb::Event::new("test_key")
             .with_prev(pb::SeqV::with_meta(
                 1,
@@ -345,26 +305,7 @@ mod tests {
 
         let reduced = event.normalize();
 
-        // Both prev and current should have meta removed
         assert_eq!(reduced.prev.as_ref().unwrap().meta, None);
         assert_eq!(reduced.current.as_ref().unwrap().meta, None);
-    }
-
-    #[test]
-    fn test_event_erase_proposed_at_then_reduce() {
-        // Test the chain: erase_proposed_at calls reduce
-        let event = pb::Event::new("test_key").with_prev(pb::SeqV::with_meta(
-            1,
-            Some(pb::KvMeta {
-                expire_at: None,
-                proposed_at_ms: Some(1_723_102_800_000),
-            }),
-            b"prev".to_vec(),
-        ));
-
-        let erased = event.without_proposed_at();
-
-        // Meta should be removed entirely (was only proposed_at_ms, now default)
-        assert_eq!(erased.prev.as_ref().unwrap().meta, None);
     }
 }

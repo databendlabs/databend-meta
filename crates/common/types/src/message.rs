@@ -12,15 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use serde::Serialize;
-
 use crate::GrpcHelper;
 use crate::LogEntry;
-use crate::protobuf::RaftReply;
 use crate::protobuf::RaftRequest;
-use crate::raft_types::AppendEntriesRequest;
-use crate::raft_types::InstallSnapshotRequest;
-use crate::raft_types::VoteRequest;
 
 impl tonic::IntoRequest<RaftRequest> for LogEntry {
     fn into_request(self) -> tonic::Request<RaftRequest> {
@@ -36,65 +30,5 @@ impl TryFrom<RaftRequest> for LogEntry {
         let req: LogEntry = serde_json::from_str(&mes.data)
             .map_err(|e| tonic::Status::invalid_argument(e.to_string()))?;
         Ok(req)
-    }
-}
-
-impl tonic::IntoRequest<RaftRequest> for AppendEntriesRequest {
-    fn into_request(self) -> tonic::Request<RaftRequest> {
-        let mes = GrpcHelper::encode_raft_request(&self).expect("fail to serialize");
-        tonic::Request::new(mes)
-    }
-}
-
-impl tonic::IntoRequest<RaftRequest> for &AppendEntriesRequest {
-    fn into_request(self) -> tonic::Request<RaftRequest> {
-        let mes = GrpcHelper::encode_raft_request(self).expect("fail to serialize");
-        tonic::Request::new(mes)
-    }
-}
-
-impl tonic::IntoRequest<RaftRequest> for InstallSnapshotRequest {
-    fn into_request(self) -> tonic::Request<RaftRequest> {
-        let mes = GrpcHelper::encode_raft_request(&self).expect("fail to serialize");
-        tonic::Request::new(mes)
-    }
-}
-
-impl tonic::IntoRequest<RaftRequest> for &InstallSnapshotRequest {
-    fn into_request(self) -> tonic::Request<RaftRequest> {
-        let mes = GrpcHelper::encode_raft_request(self).expect("fail to serialize");
-        tonic::Request::new(mes)
-    }
-}
-
-impl tonic::IntoRequest<RaftRequest> for VoteRequest {
-    fn into_request(self) -> tonic::Request<RaftRequest> {
-        let mes = GrpcHelper::encode_raft_request(&self).expect("fail to serialize");
-        tonic::Request::new(mes)
-    }
-}
-
-impl tonic::IntoRequest<RaftRequest> for &VoteRequest {
-    fn into_request(self) -> tonic::Request<RaftRequest> {
-        let mes = GrpcHelper::encode_raft_request(self).expect("fail to serialize");
-        tonic::Request::new(mes)
-    }
-}
-
-impl RaftReply {
-    pub fn new<T: Serialize>(data: &T) -> Self {
-        let data = serde_json::to_string(data).expect("fail to serialize");
-        RaftReply {
-            data,
-            error: Default::default(),
-        }
-    }
-
-    pub fn err<E: Serialize>(e: &E) -> Self {
-        let error = serde_json::to_string(e).expect("fail to serialize");
-        RaftReply {
-            data: Default::default(),
-            error,
-        }
     }
 }

@@ -19,45 +19,39 @@
 //! This crate defines data types used in meta data storage service.
 
 mod applied_state;
-mod change;
 mod cluster;
-mod endpoint;
 mod grpc_helper;
 mod log_entry;
 mod message;
-mod operation;
-mod seq_num;
-mod time;
-mod with;
-
-mod proto_display;
-mod proto_ext;
 
 pub mod cmd;
 pub mod errors;
 pub mod kv_transaction;
-pub mod node;
-pub mod normalize_meta;
 pub mod raft_types;
 pub mod snapshot_db;
 pub mod sys_data;
+
+// Re-export foundational types from base crate
 // reexport
-
 pub use anyerror;
-
-// ProtoBuf generated files.
-#[allow(clippy::all)]
-pub mod protobuf {
-    tonic::include_proto!("meta");
-
-    pub const FILE_DESCRIPTOR_SET: &[u8] = tonic::include_file_descriptor_set!("meta_descriptor");
-}
-
 pub use applied_state::AppliedState;
-pub use change::Change;
 pub use cluster::NodeInfo;
 pub use cluster::NodeType;
-pub use endpoint::Endpoint;
+pub use databend_meta_base::Change;
+pub use databend_meta_base::Endpoint;
+pub use databend_meta_base::InvalidReply;
+pub use databend_meta_base::MetaId;
+pub use databend_meta_base::Node;
+pub use databend_meta_base::Operation;
+pub use databend_meta_base::SeqNum;
+pub use databend_meta_base::With;
+pub use databend_meta_base::node;
+pub use databend_meta_base::normalize_meta;
+pub use databend_meta_base::time;
+pub use databend_meta_base::time::Interval;
+pub use databend_meta_base::time::Time;
+pub use databend_meta_proto::TxnReplyExt;
+pub use databend_meta_proto::protobuf;
 pub use errors::meta_api_errors::MetaAPIError;
 pub use errors::meta_api_errors::MetaDataError;
 pub use errors::meta_api_errors::MetaDataReadError;
@@ -66,7 +60,6 @@ pub use errors::meta_errors::MetaError;
 pub use errors::meta_handshake_errors::MetaHandshakeError;
 pub use errors::meta_network_errors::ConnectionError;
 pub use errors::meta_network_errors::InvalidArgument;
-pub use errors::meta_network_errors::InvalidReply;
 pub use errors::meta_network_errors::MetaNetworkError;
 pub use errors::meta_network_errors::MetaNetworkResult;
 pub use log_entry::LogEntry;
@@ -76,12 +69,16 @@ pub mod match_seq {
     pub use map_api::match_seq::MatchSeqExt;
     pub use map_api::match_seq::errors::ConflictSeq;
 }
+pub use databend_meta_base::MetaSpec;
+pub use databend_meta_base::UpsertKV;
+pub use databend_meta_proto::TxnRequestExt;
+pub use log_entry::PbAppendRequestExt;
+pub use log_entry::PbAppendResponseExt;
+pub use log_entry::PbLogEntryExt;
+pub use log_entry::PbMembershipExt;
 pub use match_seq::ConflictSeq;
 pub use match_seq::MatchSeq;
 pub use match_seq::MatchSeqExt;
-pub use node::Node;
-pub use operation::MetaId;
-pub use operation::Operation;
 pub use protobuf::TxnCondition;
 pub use protobuf::TxnDeleteByPrefixRequest;
 pub use protobuf::TxnDeleteByPrefixResponse;
@@ -99,14 +96,8 @@ pub use protobuf::txn_condition;
 pub use protobuf::txn_condition::ConditionResult;
 pub use protobuf::txn_op;
 pub use protobuf::txn_op_response;
-pub use seq_num::SeqNum;
 pub use state_machine_api::SeqV;
-pub use time::Interval;
-pub use time::Time;
-pub use with::With;
 
 pub use crate::cmd::Cmd;
 pub use crate::cmd::CmdContext;
-pub use crate::cmd::MetaSpec;
-pub use crate::cmd::UpsertKV;
 pub use crate::grpc_helper::GrpcHelper;
