@@ -15,13 +15,13 @@
 use std::fmt;
 
 use anyerror::AnyError;
+use databend_meta_base::Change;
+use databend_meta_base::InvalidReply;
 use display_more::DisplaySliceExt;
 use map_api::SeqV;
 
-use crate::Change;
-use crate::InvalidReply;
 use crate::protobuf as pb;
-use crate::txn_op_response;
+use crate::protobuf::txn_op_response;
 
 impl pb::TxnReply {
     pub fn new(execution_path: impl ToString) -> Self {

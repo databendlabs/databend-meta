@@ -14,14 +14,14 @@
 
 use std::fmt;
 
+use databend_meta_base::Operation;
+use databend_meta_base::UpsertKV;
+use databend_meta_base::flexible_timestamp::flexible_timestamp_to_duration;
 use display_more::DisplaySliceExt;
 use map_api::match_seq::MatchSeq;
 
-use crate::ConditionResult;
-use crate::Operation;
-use crate::UpsertKV;
 use crate::protobuf as pb;
-use crate::time::flexible_timestamp_to_duration;
+use crate::protobuf::txn_condition::ConditionResult;
 
 impl pb::TxnRequest {
     /// Build a transaction request from an upsert operation.
@@ -81,7 +81,7 @@ impl pb::TxnRequest {
     pub fn push_branch(
         mut self,
         expr: Option<pb::BooleanExpression>,
-        ops: impl IntoIterator<Item = crate::TxnOp>,
+        ops: impl IntoIterator<Item = pb::TxnOp>,
     ) -> Self {
         self.operations
             .push(pb::ConditionalOperation::new(expr, ops));
@@ -93,8 +93,8 @@ impl pb::TxnRequest {
     /// It is just like a `if (condition) { then; return; }` block.
     pub fn push_if_then(
         mut self,
-        conditions: impl IntoIterator<Item = crate::TxnCondition>,
-        ops: impl IntoIterator<Item = crate::TxnOp>,
+        conditions: impl IntoIterator<Item = pb::TxnCondition>,
+        ops: impl IntoIterator<Item = pb::TxnOp>,
     ) -> Self {
         assert!(self.condition.is_empty());
         assert!(self.if_then.is_empty());
@@ -103,7 +103,7 @@ impl pb::TxnRequest {
         self
     }
 
-    pub fn new(conditions: Vec<crate::TxnCondition>, ops: Vec<crate::TxnOp>) -> Self {
+    pub fn new(conditions: Vec<pb::TxnCondition>, ops: Vec<pb::TxnOp>) -> Self {
         Self {
             operations: vec![],
             condition: conditions,
@@ -113,14 +113,14 @@ impl pb::TxnRequest {
     }
 
     /// Adds operations to execute when the conditions are not met.
-    pub fn with_else(mut self, ops: Vec<crate::TxnOp>) -> Self {
+    pub fn with_else(mut self, ops: Vec<pb::TxnOp>) -> Self {
         self.else_then = ops;
         self
     }
 
     /// Creates a transaction request that performs the specified operations
     /// unconditionally.
-    pub fn unconditional(ops: Vec<crate::TxnOp>) -> Self {
+    pub fn unconditional(ops: Vec<pb::TxnOp>) -> Self {
         Self {
             operations: vec![],
             condition: vec![],
@@ -148,9 +148,10 @@ impl fmt::Display for pb::TxnRequest {
 
 #[cfg(test)]
 mod tests {
+    use databend_meta_base::MetaSpec;
+    use databend_meta_base::time::Interval;
+
     use super::*;
-    use crate::Interval;
-    use crate::MetaSpec;
 
     #[test]
     fn test_display_txn_request() {
@@ -166,7 +167,7 @@ mod tests {
             ],
         };
 
-        let req = crate::TxnRequest {
+        let req = pb::TxnRequest {
             operations: vec![op],
             condition: vec![
                 pb::TxnCondition::eq_seq("k1", 1),

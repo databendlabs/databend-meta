@@ -14,8 +14,8 @@
 
 mod event_ext;
 
-use crate::Change;
-use crate::SeqV;
+use state_machine_api::SeqV;
+
 use crate::protobuf as pb;
 use crate::protobuf::WatchRequest;
 use crate::protobuf::WatchResponse;
@@ -100,7 +100,7 @@ impl WatchResponse {
         }
     }
 
-    pub fn new(change: &Change<Vec<u8>, String>) -> Option<Self> {
+    pub fn new(change: &databend_meta_base::Change<Vec<u8>, String>) -> Option<WatchResponse> {
         let ev = pb::Event {
             key: change.ident.clone()?,
             prev: change.prev.clone().map(pb::SeqV::from),

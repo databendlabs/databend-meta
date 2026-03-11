@@ -9,6 +9,7 @@ edition = "2024"
 resolver = "2"
 members = [
     "crates/common/base",
+    "crates/common/proto",
     "crates/common/types",
     "crates/common/runtime-api",
     "crates/common/version",
@@ -31,6 +32,7 @@ databend-meta-client = { path = "crates/client/client" }
 databend-meta-kvapi = { path = "crates/client/kvapi" }
 databend-meta-kvapi-test-suite = { path = "crates/client/kvapi-test-suite" }
 databend-meta-kvapi-tests = { path = "crates/client/kvapi-tests" }
+databend-meta-proto = { path = "crates/common/proto" }
 databend-meta-raft-store = { path = "crates/server/raft-store" }
 databend-meta-runtime-api = { path = "crates/common/runtime-api" }
 databend-meta-sled-store = { path = "crates/server/sled-store" }
