@@ -41,7 +41,7 @@ databend-meta-version = { path = "crates/common/version" }
 # External dependencies from databendlabs forks
 databend-base = "0.2.10"
 map-api = "0.4.2"
-openraft = { version = "=0.10.0-alpha.14", features = ["serde", "tracing-log"] }
+openraft = { version = "=0.10.0-alpha.17", features = ["serde", "tracing-log"] }
 sled = { version = "0.34", default-features = false }
 state-machine-api = "0.3.4"
 

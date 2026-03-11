@@ -18,8 +18,8 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use openraft::EntryPayload;
 use openraft::entry::RaftEntry;
+use raft_types::EntryPayload;
 
 use crate::Cmd;
 use crate::Endpoint;
@@ -326,12 +326,12 @@ mod tests {
     fn round_trip_log_entry(entry: LogEntry) {
         let raft_entry = raft_types::Entry::new(
             raft_types::new_log_id(1, 0, 1),
-            openraft::EntryPayload::Normal(entry.clone()),
+            raft_types::EntryPayload::Normal(entry.clone()),
         );
         let pb_entry = pb::LogEntry::from(raft_entry);
         let back = raft_types::Entry::try_from(pb_entry).unwrap();
         match back.payload {
-            openraft::EntryPayload::Normal(back_entry) => assert_eq!(entry, back_entry),
+            raft_types::EntryPayload::Normal(back_entry) => assert_eq!(entry, back_entry),
             _ => panic!("expected Normal payload"),
         }
     }
@@ -382,7 +382,7 @@ mod tests {
         let entry = LogEntry::new(Cmd::UpsertKV(UpsertKV::insert("k", b"v")));
         let raft_entry = raft_types::Entry::new(
             raft_types::new_log_id(1, 0, 1),
-            openraft::EntryPayload::Normal(entry),
+            raft_types::EntryPayload::Normal(entry),
         );
         let _ = pb::LogEntry::from(raft_entry);
     }
@@ -395,7 +395,7 @@ mod tests {
         let entry = LogEntry::new(Cmd::Transaction(TxnRequest::default()));
         let raft_entry = raft_types::Entry::new(
             raft_types::new_log_id(1, 0, 1),
-            openraft::EntryPayload::Normal(entry),
+            raft_types::EntryPayload::Normal(entry),
         );
         let _ = pb::LogEntry::from(raft_entry);
     }
@@ -432,14 +432,14 @@ mod tests {
         term: u64,
         node_id: u64,
         index: u64,
-        payload: openraft::EntryPayload<raft_types::TypeConfig>,
+        payload: raft_types::EntryPayload,
     ) -> raft_types::Entry {
         raft_types::Entry::new(raft_types::new_log_id(term, node_id, index), payload)
     }
 
     #[test]
     fn test_entry_blank_round_trip() {
-        let entry = make_entry(1, 0, 10, openraft::EntryPayload::Blank);
+        let entry = make_entry(1, 0, 10, raft_types::EntryPayload::Blank);
         let pb_entry = pb::LogEntry::from(entry.clone());
         assert!(pb_entry.cmd.is_none());
         let back = raft_types::Entry::try_from(pb_entry).unwrap();
@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn test_entry_normal_round_trip() {
         let log_entry = LogEntry::new(Cmd::RemoveNode { node_id: 5 });
-        let entry = make_entry(2, 1, 20, openraft::EntryPayload::Normal(log_entry));
+        let entry = make_entry(2, 1, 20, raft_types::EntryPayload::Normal(log_entry));
         let pb_entry = pb::LogEntry::from(entry.clone());
         assert!(matches!(
             pb_entry.cmd,
@@ -470,7 +470,7 @@ mod tests {
             .map(|id| (id, openraft::EmptyNode::default()))
             .collect();
         let m = raft_types::Membership::new(configs, nodes).unwrap();
-        let entry = make_entry(3, 0, 30, openraft::EntryPayload::Membership(m));
+        let entry = make_entry(3, 0, 30, raft_types::EntryPayload::Membership(m));
         let pb_entry = pb::LogEntry::from(entry.clone());
         assert!(matches!(
             pb_entry.cmd,
@@ -496,12 +496,12 @@ mod tests {
             vote: raft_types::Vote::new(5, 1),
             prev_log_id: Some(raft_types::new_log_id(4, 1, 99)),
             entries: vec![
-                make_entry(5, 1, 100, openraft::EntryPayload::Blank),
+                make_entry(5, 1, 100, raft_types::EntryPayload::Blank),
                 make_entry(
                     5,
                     1,
                     101,
-                    openraft::EntryPayload::Normal(LogEntry::new(Cmd::RemoveNode { node_id: 3 })),
+                    raft_types::EntryPayload::Normal(LogEntry::new(Cmd::RemoveNode { node_id: 3 })),
                 ),
             ],
             leader_commit: Some(raft_types::new_log_id(5, 1, 100)),
