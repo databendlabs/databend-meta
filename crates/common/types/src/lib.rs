@@ -24,27 +24,17 @@ mod grpc_helper;
 mod log_entry;
 mod message;
 
-mod proto_display;
-mod proto_ext;
-
 pub mod cmd;
 pub mod errors;
 pub mod kv_transaction;
 pub mod raft_types;
+
 pub mod snapshot_db;
 pub mod sys_data;
+
+// Re-export foundational types from base crate
 // reexport
-
 pub use anyerror;
-
-// ProtoBuf generated files.
-#[allow(clippy::all)]
-pub mod protobuf {
-    tonic::include_proto!("meta");
-
-    pub const FILE_DESCRIPTOR_SET: &[u8] = tonic::include_file_descriptor_set!("meta_descriptor");
-}
-
 pub use applied_state::AppliedState;
 pub use cluster::NodeInfo;
 pub use cluster::NodeType;
@@ -63,6 +53,7 @@ pub use databend_meta_base::normalize_meta;
 pub use databend_meta_base::time;
 pub use databend_meta_base::time::Interval;
 pub use databend_meta_base::time::Time;
+pub use databend_meta_proto::protobuf;
 pub use errors::meta_api_errors::MetaAPIError;
 pub use errors::meta_api_errors::MetaDataError;
 pub use errors::meta_api_errors::MetaDataReadError;
@@ -80,6 +71,9 @@ pub mod match_seq {
     pub use map_api::match_seq::MatchSeqExt;
     pub use map_api::match_seq::errors::ConflictSeq;
 }
+pub use log_entry::PbAppendRequestExt;
+pub use log_entry::PbAppendResponseExt;
+pub use log_entry::PbLogEntryExt;
 pub use match_seq::ConflictSeq;
 pub use match_seq::MatchSeq;
 pub use match_seq::MatchSeqExt;

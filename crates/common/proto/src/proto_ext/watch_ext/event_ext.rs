@@ -15,9 +15,9 @@
 use std::fmt;
 use std::time::Duration;
 
+use databend_meta_base::normalize_meta::NormalizeMeta;
 use display_more::DisplayOptionExt;
 
-use crate::normalize_meta::NormalizeMeta;
 use crate::protobuf as pb;
 
 impl pb::Event {

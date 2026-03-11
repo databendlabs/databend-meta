@@ -18,6 +18,9 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::time::Duration;
 
+pub use convert::PbAppendRequestExt;
+pub use convert::PbAppendResponseExt;
+pub use convert::PbLogEntryExt;
 use display_more::DisplayUnixTimeStampExt;
 use serde::Deserialize;
 use serde::Serialize;

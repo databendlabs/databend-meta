@@ -15,11 +15,11 @@
 use std::fmt;
 use std::time::Duration;
 
+use databend_meta_base::flexible_timestamp::flexible_timestamp_to_duration;
 use display_more::DisplayUnixTimeStampExt;
 
 use crate::protobuf::KvMeta;
 use crate::protobuf::SeqV;
-use crate::time::flexible_timestamp_to_duration;
 
 impl fmt::Display for KvMeta {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

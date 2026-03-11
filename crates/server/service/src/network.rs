@@ -636,7 +636,7 @@ impl<SP: SpawnApi> Network<SP> {
                     "Missing vote in response",
                 )))
             })?;
-            let vote = Vote::from(proto_vote);
+            let vote = proto_vote.into();
             SnapshotResponse { vote }
         };
 
@@ -714,7 +714,7 @@ impl<SP: SpawnApi> Network<SP> {
             let snapshot_response = grpc_response.into_inner();
             let vote = snapshot_response
                 .to_vote()
-                .map_err(|e| StreamingError::Network(e))?;
+                .map_err(|e| StreamingError::Network(NetworkError::new(&e)))?;
 
             SnapshotResponse { vote }
         };

@@ -12,5 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod log_id_ext;
-mod vote_ext;
+use serde::Serialize;
+
+use crate::protobuf as pb;
+
+impl pb::RaftReply {
+    pub fn new<T: Serialize>(data: &T) -> Self {
+        let data = serde_json::to_string(data).expect("fail to serialize");
+        pb::RaftReply {
+            data,
+            error: Default::default(),
+        }
+    }
+
+    pub fn err<E: Serialize>(e: &E) -> Self {
+        let error = serde_json::to_string(e).expect("fail to serialize");
+        pb::RaftReply {
+            data: Default::default(),
+            error,
+        }
+    }
+}
