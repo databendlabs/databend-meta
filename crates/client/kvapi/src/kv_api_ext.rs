@@ -15,7 +15,9 @@
 use async_trait::async_trait;
 use databend_meta_types::Change;
 use databend_meta_types::SeqV;
+use databend_meta_types::TxnReplyExt;
 use databend_meta_types::TxnRequest;
+use databend_meta_types::TxnRequestExt;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::errors;
 use futures_util::StreamExt;
