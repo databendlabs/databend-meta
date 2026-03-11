@@ -59,11 +59,7 @@ pub trait StateMachineApiExt: StateMachineApi<SysData> {
         upsert_kv: &UpsertKV,
         cmd_ctx: &CmdContext,
     ) -> Result<(SeqMarked<MetaValue>, SeqMarked<MetaValue>), io::Error> {
-        let kv_meta = upsert_kv
-            .value_meta
-            .clone()
-            .unwrap_or_default()
-            .to_kv_meta(cmd_ctx);
+        let kv_meta = cmd_ctx.resolve_meta_spec(&upsert_kv.value_meta.clone().unwrap_or_default());
 
         let prev = self
             .user_map()
