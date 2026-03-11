@@ -16,13 +16,17 @@ use anyerror::AnyError;
 
 use crate::protobuf::SnapshotChunkRequestV003;
 use crate::protobuf::SnapshotResponseV003;
-use crate::raft_types::NetworkError;
-use crate::raft_types::SnapshotMeta;
-use crate::raft_types::Vote;
+
+type NodeId = u64;
+type MembershipNode = openraft::EmptyNode;
+type Term = u64;
+type LeaderId = openraft::impls::leader_id_adv::LeaderId<Term, NodeId>;
+type CommittedLeaderId = openraft::vote::leader_id_adv::CommittedLeaderId<Term, NodeId>;
+type Vote = openraft::Vote<LeaderId>;
+type SnapshotMeta = openraft::SnapshotMeta<CommittedLeaderId, NodeId, MembershipNode>;
 
 impl SnapshotChunkRequestV003 {
-    /// Build the last chunk of a snapshot stream, which contains vote and snapshot meta, without data.
-    pub fn new_end_chunk(vote: Vote, snapshot_meta: SnapshotMeta) -> Self {
+    pub fn new_end_chunk(vote: Vote, snapshot_meta: SnapshotMeta) -> SnapshotChunkRequestV003 {
         let meta = ("rotbl::v001".to_string(), vote, snapshot_meta);
         let rpc_meta = serde_json::to_string(&meta).unwrap();
 
@@ -32,8 +36,7 @@ impl SnapshotChunkRequestV003 {
         }
     }
 
-    /// Build a chunk item with data.
-    pub fn new_chunk(chunk: Vec<u8>) -> Self {
+    pub fn new_chunk(chunk: Vec<u8>) -> SnapshotChunkRequestV003 {
         SnapshotChunkRequestV003 {
             rpc_meta: None,
             chunk,
@@ -42,17 +45,15 @@ impl SnapshotChunkRequestV003 {
 }
 
 impl SnapshotResponseV003 {
-    pub fn new(vote: Vote) -> Self {
-        Self {
+    pub fn new_with_vote(vote: Vote) -> SnapshotResponseV003 {
+        SnapshotResponseV003 {
             vote: serde_json::to_string(&vote).unwrap(),
         }
     }
 
-    pub fn to_vote(&self) -> Result<Vote, NetworkError> {
+    pub fn to_vote(&self) -> Result<Vote, AnyError> {
         serde_json::from_str(&self.vote).map_err(|e| {
-            NetworkError::new(
-                &AnyError::new(&e).add_context(|| "when decoding vote from SnapshotResponseV003"),
-            )
+            AnyError::new(&e).add_context(|| "when decoding vote from SnapshotResponseV003")
         })
     }
 }

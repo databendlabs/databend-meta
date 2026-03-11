@@ -20,6 +20,7 @@ use databend_meta_types::UpsertKV;
 use databend_meta_types::node::Node;
 use databend_meta_types::raft_types::Membership;
 use databend_meta_types::raft_types::StoredMembership;
+use databend_meta_types::raft_types::TypeConfig;
 use futures_util::TryStreamExt;
 use map_api::mvcc;
 use map_api::mvcc::ScopedSeqBoundedGet;
@@ -49,11 +50,11 @@ async fn test_leveled_query_with_db() -> anyhow::Result<()> {
     assert_eq!(
         lm.last_membership(),
         StoredMembership::new(
-            Some(log_id(3, 3, 3)),
+            Some(log_id::<TypeConfig>(3, 3, 3)),
             Membership::new_with_defaults(vec![], [])
         )
     );
-    assert_eq!(lm.last_applied(), Some(log_id(3, 3, 3)));
+    assert_eq!(lm.last_applied(), Some(log_id::<TypeConfig>(3, 3, 3)));
     assert_eq!(
         lm.nodes(),
         btreemap! {3=>Node::new("3", Endpoint::new("3", 3))}
@@ -151,11 +152,11 @@ async fn test_compact() -> anyhow::Result<()> {
     assert_eq!(
         db.last_membership_ref(),
         &StoredMembership::new(
-            Some(log_id(3, 3, 3)),
+            Some(log_id::<TypeConfig>(3, 3, 3)),
             Membership::new_with_defaults(vec![], [])
         )
     );
-    assert_eq!(db.last_applied_ref(), &Some(log_id(3, 3, 3)));
+    assert_eq!(db.last_applied_ref(), &Some(log_id::<TypeConfig>(3, 3, 3)));
     assert_eq!(
         db.nodes_ref(),
         &btreemap! {3=>Node::new("3", Endpoint::new("3", 3))}
@@ -265,11 +266,14 @@ async fn test_compact_output_3_level() -> anyhow::Result<()> {
     assert_eq!(
         sys_data.last_membership_ref(),
         &StoredMembership::new(
-            Some(log_id(3, 3, 3)),
+            Some(log_id::<TypeConfig>(3, 3, 3)),
             Membership::new_with_defaults(vec![], [])
         )
     );
-    assert_eq!(sys_data.last_applied_ref(), &Some(log_id(3, 3, 3)));
+    assert_eq!(
+        sys_data.last_applied_ref(),
+        &Some(log_id::<TypeConfig>(3, 3, 3))
+    );
     assert_eq!(
         sys_data.nodes_ref(),
         &btreemap! {3=>Node::new("3", Endpoint::new("3", 3))}
@@ -299,10 +303,10 @@ async fn build_3_levels() -> anyhow::Result<(LeveledMap, impl Drop)> {
 
     lm.with_sys_data(|sd| {
         *sd.last_membership_mut() = StoredMembership::new(
-            Some(log_id(1, 1, 1)),
+            Some(log_id::<TypeConfig>(1, 1, 1)),
             Membership::new_with_defaults(vec![], []),
         );
-        *sd.last_applied_mut() = Some(log_id(1, 1, 1));
+        *sd.last_applied_mut() = Some(log_id::<TypeConfig>(1, 1, 1));
         *sd.nodes_mut() = btreemap! {1=>Node::new("1", Endpoint::new("1", 1))};
     });
     let mut view = lm.to_view();
@@ -317,10 +321,10 @@ async fn build_3_levels() -> anyhow::Result<(LeveledMap, impl Drop)> {
     lm.freeze_writable_without_permit();
     lm.with_sys_data(|sd| {
         *sd.last_membership_mut() = StoredMembership::new(
-            Some(log_id(2, 2, 2)),
+            Some(log_id::<TypeConfig>(2, 2, 2)),
             Membership::new_with_defaults(vec![], []),
         );
-        *sd.last_applied_mut() = Some(log_id(2, 2, 2));
+        *sd.last_applied_mut() = Some(log_id::<TypeConfig>(2, 2, 2));
         *sd.nodes_mut() = btreemap! {2=>Node::new("2", Endpoint::new("2", 2))};
     });
     let mut view = lm.to_view();
@@ -335,10 +339,10 @@ async fn build_3_levels() -> anyhow::Result<(LeveledMap, impl Drop)> {
 
     lm.with_sys_data(|sd| {
         *sd.last_membership_mut() = StoredMembership::new(
-            Some(log_id(3, 3, 3)),
+            Some(log_id::<TypeConfig>(3, 3, 3)),
             Membership::new_with_defaults(vec![], []),
         );
-        *sd.last_applied_mut() = Some(log_id(3, 3, 3));
+        *sd.last_applied_mut() = Some(log_id::<TypeConfig>(3, 3, 3));
         *sd.nodes_mut() = btreemap! {3=>Node::new("3", Endpoint::new("3", 3))};
     });
 

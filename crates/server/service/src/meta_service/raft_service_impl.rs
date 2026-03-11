@@ -31,6 +31,8 @@ use databend_meta_raft_store::state_machine::MetaSnapshotId;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_types::GrpcHelper;
 use databend_meta_types::MetaAPIError;
+use databend_meta_types::PbAppendRequestExt;
+use databend_meta_types::PbAppendResponseExt;
 use databend_meta_types::protobuf as pb;
 use databend_meta_types::protobuf::Empty;
 use databend_meta_types::protobuf::InstallEntryV004;
@@ -41,12 +43,10 @@ use databend_meta_types::protobuf::SnapshotChunkRequestV003;
 use databend_meta_types::protobuf::SnapshotResponseV003;
 use databend_meta_types::protobuf::StreamItem;
 use databend_meta_types::protobuf::raft_service_server::RaftService;
-use databend_meta_types::raft_types;
 use databend_meta_types::raft_types::AppendEntriesRequest;
 use databend_meta_types::raft_types::Snapshot;
 use databend_meta_types::raft_types::SnapshotMeta;
 use databend_meta_types::raft_types::TransferLeaderRequest;
-use databend_meta_types::raft_types::Vote;
 use databend_meta_types::raft_types::VoteRequest;
 use databend_meta_types::snapshot_db::DB;
 use databend_meta_types::sys_data::SysData;
@@ -137,7 +137,7 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
 
         let resp = res?;
 
-        let resp = SnapshotResponseV003::new(resp.vote);
+        let resp = SnapshotResponseV003::new_with_vote(resp.vote);
         Ok(Response::new(resp))
     }
 
@@ -204,7 +204,7 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
             Status::invalid_argument("None vote received from commit in snapshot stream")
         })?;
 
-        let req_vote = Vote::from(pb_vote);
+        let req_vote = pb_vote.into();
 
         let sys_data: SysData = serde_json::from_str(&commit.sys_data)
             .map_err(|e| Status::invalid_argument(format!("Invalid sys_data JSON: {}", e)))?;
@@ -488,7 +488,8 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
         let addr = remote_addr.clone();
         let input_stream = input
             .map(move |r| match r {
-                Ok(pb_req) => raft_types::AppendEntriesRequest::try_from(pb_req)
+                Ok(pb_req) => pb_req
+                    .try_into_raft()
                     .map_err(|e| Status::invalid_argument(e.to_string())),
                 Err(e) => Err(e),
             })
@@ -504,7 +505,7 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
         let output = raft.stream_append(input_stream);
 
         let output_stream = output.map(|result| match result {
-            Ok(stream_result) => Ok(pb::AppendResponse::from(stream_result)),
+            Ok(stream_result) => Ok(pb::AppendResponse::from_stream_result(stream_result)),
             Err(fatal) => Err(Status::internal(fatal.to_string())),
         });
 

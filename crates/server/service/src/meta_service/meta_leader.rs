@@ -66,7 +66,7 @@ use crate::store::RaftStore;
 /// It just means it believes it is the leader and have not yet perceived there is other newer leader.
 pub struct MetaLeader<'a, SP> {
     sto: &'a RaftStore<SP>,
-    raft: &'a MetaRaft,
+    raft: &'a MetaRaft<SP>,
 }
 
 #[async_trait::async_trait]

@@ -14,8 +14,8 @@
 
 mod event_ext;
 
-use crate::Change;
-use crate::SeqV;
+use state_machine_api::SeqV;
+
 use crate::protobuf as pb;
 use crate::protobuf::WatchRequest;
 use crate::protobuf::WatchResponse;
@@ -100,19 +100,6 @@ impl WatchResponse {
         }
     }
 
-    pub fn new(change: &Change<Vec<u8>, String>) -> Option<Self> {
-        let ev = pb::Event {
-            key: change.ident.clone()?,
-            prev: change.prev.clone().map(pb::SeqV::from),
-            current: change.result.clone().map(pb::SeqV::from),
-        };
-
-        Some(WatchResponse {
-            event: Some(ev),
-            is_initialization: false,
-        })
-    }
-
     /// Check if the response is an empty indicator just to indicating initialization completion.
     pub fn is_initialization_complete_flag(&self) -> bool {
         !self.is_initialization && self.event.is_none()
@@ -125,6 +112,21 @@ impl WatchResponse {
         let current = ev.current.map(SeqV::from);
 
         Some((key, prev, current))
+    }
+
+    pub fn new_from_change(
+        change: &databend_meta_base::Change<Vec<u8>, String>,
+    ) -> Option<WatchResponse> {
+        let ev = pb::Event {
+            key: change.ident.clone()?,
+            prev: change.prev.clone().map(pb::SeqV::from),
+            current: change.result.clone().map(pb::SeqV::from),
+        };
+
+        Some(WatchResponse {
+            event: Some(ev),
+            is_initialization: false,
+        })
     }
 }
 
