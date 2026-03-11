@@ -63,6 +63,7 @@ mod tests {
 
     use databend_meta_types::raft_types::Membership;
     use databend_meta_types::raft_types::StoredMembership;
+    use databend_meta_types::raft_types::TypeConfig;
     use futures_util::TryStreamExt;
     use map_api::mvcc::ScopedSeqBoundedRange;
     use openraft::testing::log_id;
@@ -111,11 +112,11 @@ mod tests {
         assert_eq!(
             d.last_membership(),
             StoredMembership::new(
-                Some(log_id(3, 3, 3)),
+                Some(log_id::<TypeConfig>(3, 3, 3)),
                 Membership::new_with_defaults(vec![], [])
             )
         );
-        assert_eq!(d.last_applied(), Some(log_id(3, 3, 3)));
+        assert_eq!(d.last_applied(), Some(log_id::<TypeConfig>(3, 3, 3)));
 
         let strm = d.range(UserKey::default().., u64::MAX).await?;
         let got = strm.try_collect::<Vec<_>>().await?;
