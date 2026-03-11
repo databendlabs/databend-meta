@@ -142,7 +142,7 @@ impl fmt::Display for BooleanExpression {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TxnCondition;
+    use crate::protobuf::TxnCondition;
 
     #[test]
     fn test_bool_expression() {

@@ -45,8 +45,8 @@ impl fmt::Display for pb::ConditionalOperation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TxnCondition;
-    use crate::TxnOp;
+    use crate::protobuf::TxnCondition;
+    use crate::protobuf::TxnOp;
 
     #[test]
     fn test_new_with_predicate_and_operations() {

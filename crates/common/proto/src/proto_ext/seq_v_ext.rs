@@ -138,6 +138,34 @@ impl MatchSeqExt<pb::SeqV> for MatchSeq {
 mod tests {
     use super::*;
 
+    /// `KVMeta` is stored in raft log via JSON serialization.
+    /// This test ensures backward-compatible deserialization from known JSON formats.
+    #[test]
+    fn test_kv_meta_serde_compat() {
+        // expire_at only
+        let got: KVMeta = serde_json::from_str(r#"{"expire_at":1723102819}"#).unwrap();
+        assert_eq!(got.expire_at, Some(1723102819));
+        assert_eq!(got.proposed_at_ms, None);
+
+        // both fields
+        let got: KVMeta =
+            serde_json::from_str(r#"{"expire_at":1723102819,"proposed_at_ms":1723102800000}"#)
+                .unwrap();
+        assert_eq!(got.expire_at, Some(1723102819));
+        assert_eq!(got.proposed_at_ms, Some(1723102800000));
+
+        // unknown fields are ignored (forward compatibility)
+        let got: KVMeta =
+            serde_json::from_str(r#"{"expire_at":1723102819,"ttl":{"millis":100}}"#).unwrap();
+        assert_eq!(got.expire_at, Some(1723102819));
+        assert_eq!(got.proposed_at_ms, None);
+
+        // empty object
+        let got: KVMeta = serde_json::from_str(r#"{}"#).unwrap();
+        assert_eq!(got.expire_at, None);
+        assert_eq!(got.proposed_at_ms, None);
+    }
+
     #[test]
     fn test_close_to() {
         let e1 = pb::SeqV::with_meta(
