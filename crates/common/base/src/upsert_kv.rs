@@ -16,13 +16,13 @@ use std::fmt;
 use std::time::Duration;
 
 use display_more::DisplayOptionExt;
+use map_api::match_seq::MatchSeq;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::MetaSpec;
 use crate::Operation;
 use crate::With;
-use crate::match_seq::MatchSeq;
 
 /// Update or insert a general purpose kv store
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, deepsize::DeepSizeOf)]
