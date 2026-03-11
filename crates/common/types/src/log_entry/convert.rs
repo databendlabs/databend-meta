@@ -18,40 +18,23 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
+use openraft::EntryPayload;
 use openraft::entry::RaftEntry;
-use raft_types::EntryPayload;
 
 use crate::Cmd;
-use crate::Endpoint;
 use crate::LogEntry;
-use crate::node::Node;
 use crate::protobuf as pb;
 use crate::raft_types;
 
-// === Node conversions ===
+// === Membership conversions (extension traits) ===
 
-impl From<Node> for pb::Node {
-    fn from(n: Node) -> Self {
-        pb::Node {
-            name: n.name,
-            addr: n.endpoint.addr().to_string(),
-            port: n.endpoint.port() as u32,
-            grpc_api_advertise_address: n.grpc_api_advertise_address,
-        }
-    }
+pub trait PbMembershipExt {
+    fn from_raft(m: raft_types::Membership) -> pb::Membership;
+    fn try_into_raft(self) -> Result<raft_types::Membership, String>;
 }
 
-impl From<pb::Node> for Node {
-    fn from(n: pb::Node) -> Self {
-        Node::new(n.name, Endpoint::new(n.addr, n.port as u16))
-            .with_grpc_advertise_address(n.grpc_api_advertise_address)
-    }
-}
-
-// === Membership conversions ===
-
-impl From<raft_types::Membership> for pb::Membership {
-    fn from(m: raft_types::Membership) -> Self {
+impl PbMembershipExt for pb::Membership {
+    fn from_raft(m: raft_types::Membership) -> pb::Membership {
         let configs = m
             .get_joint_config()
             .iter()
@@ -64,19 +47,15 @@ impl From<raft_types::Membership> for pb::Membership {
 
         pb::Membership { configs, nodes }
     }
-}
 
-impl TryFrom<pb::Membership> for raft_types::Membership {
-    type Error = String;
-
-    fn try_from(m: pb::Membership) -> Result<Self, Self::Error> {
-        let configs: Vec<BTreeSet<u64>> = m
+    fn try_into_raft(self) -> Result<raft_types::Membership, String> {
+        let configs: Vec<BTreeSet<u64>> = self
             .configs
             .into_iter()
             .map(|g| g.node_ids.into_iter().collect())
             .collect();
 
-        let nodes: BTreeMap<u64, openraft::EmptyNode> = m
+        let nodes: BTreeMap<u64, openraft::EmptyNode> = self
             .nodes
             .into_iter()
             .map(|id| (id, openraft::EmptyNode::default()))
@@ -86,10 +65,15 @@ impl TryFrom<pb::Membership> for raft_types::Membership {
     }
 }
 
-// === Entry ↔ pb::LogEntry ===
+// === Entry ↔ pb::LogEntry (extension traits) ===
 
-impl From<raft_types::Entry> for pb::LogEntry {
-    fn from(entry: raft_types::Entry) -> Self {
+pub trait PbLogEntryExt {
+    fn from_raft(entry: raft_types::Entry) -> pb::LogEntry;
+    fn try_into_raft(self) -> Result<raft_types::Entry, String>;
+}
+
+impl PbLogEntryExt for pb::LogEntry {
+    fn from_raft(entry: raft_types::Entry) -> pb::LogEntry {
         let log_id = Some(pb::LogId::from(entry.log_id));
 
         match entry.payload {
@@ -106,7 +90,7 @@ impl From<raft_types::Entry> for pb::LogEntry {
                         overriding,
                     } => pb::log_entry::Cmd::AddNode(pb::CmdAddNode {
                         node_id,
-                        node: Some(node.into()),
+                        node: Some(pb::Node::from(node)),
                         overriding,
                     }),
                     Cmd::RemoveNode { node_id } => {
@@ -136,33 +120,27 @@ impl From<raft_types::Entry> for pb::LogEntry {
             EntryPayload::Membership(m) => pb::LogEntry {
                 log_id,
                 proposed_at_ms: None,
-                cmd: Some(pb::log_entry::Cmd::Membership(pb::Membership::from(m))),
+                cmd: Some(pb::log_entry::Cmd::Membership(pb::Membership::from_raft(m))),
             },
         }
     }
-}
 
-impl TryFrom<pb::LogEntry> for raft_types::Entry {
-    type Error = String;
-
-    fn try_from(entry: pb::LogEntry) -> Result<Self, Self::Error> {
-        let log_id = entry
+    fn try_into_raft(self) -> Result<raft_types::Entry, String> {
+        let log_id = self
             .log_id
-            .map(raft_types::LogId::from)
+            .map(Into::into)
             .ok_or_else(|| "LogEntry missing log_id".to_string())?;
 
-        let payload = match entry.cmd {
+        let payload = match self.cmd {
             None => EntryPayload::Blank,
-            Some(pb::log_entry::Cmd::Membership(m)) => {
-                EntryPayload::Membership(raft_types::Membership::try_from(m)?)
-            }
+            Some(pb::log_entry::Cmd::Membership(m)) => EntryPayload::Membership(m.try_into_raft()?),
             Some(cmd) => {
                 let native_cmd = match cmd {
                     pb::log_entry::Cmd::AddNode(c) => Cmd::AddNode {
                         node_id: c.node_id,
                         node: c
                             .node
-                            .map(Node::from)
+                            .map(databend_meta_base::Node::from)
                             .ok_or_else(|| "CmdAddNode missing node".to_string())?,
                         overriding: c.overriding,
                     },
@@ -175,7 +153,7 @@ impl TryFrom<pb::LogEntry> for raft_types::Entry {
                     pb::log_entry::Cmd::Membership(_) => unreachable!(),
                 };
                 EntryPayload::Normal(LogEntry {
-                    time_ms: entry.proposed_at_ms,
+                    time_ms: self.proposed_at_ms,
                     cmd: native_cmd,
                 })
             }
@@ -185,47 +163,59 @@ impl TryFrom<pb::LogEntry> for raft_types::Entry {
     }
 }
 
-// === AppendEntriesRequest ↔ pb::AppendRequest ===
+// === AppendEntriesRequest ↔ pb::AppendRequest (extension traits) ===
 
-impl From<raft_types::AppendEntriesRequest> for pb::AppendRequest {
-    fn from(req: raft_types::AppendEntriesRequest) -> Self {
+pub trait PbAppendRequestExt {
+    fn from_raft(req: raft_types::AppendEntriesRequest) -> pb::AppendRequest;
+    fn try_into_raft(self) -> Result<raft_types::AppendEntriesRequest, String>;
+}
+
+impl PbAppendRequestExt for pb::AppendRequest {
+    fn from_raft(req: raft_types::AppendEntriesRequest) -> pb::AppendRequest {
         pb::AppendRequest {
             vote: Some(pb::Vote::from(req.vote)),
             prev_log_id: req.prev_log_id.map(pb::LogId::from),
-            entries: req.entries.into_iter().map(pb::LogEntry::from).collect(),
+            entries: req
+                .entries
+                .into_iter()
+                .map(pb::LogEntry::from_raft)
+                .collect(),
             leader_commit: req.leader_commit.map(pb::LogId::from),
         }
     }
-}
 
-impl TryFrom<pb::AppendRequest> for raft_types::AppendEntriesRequest {
-    type Error = String;
-
-    fn try_from(req: pb::AppendRequest) -> Result<Self, Self::Error> {
-        let vote = req
+    fn try_into_raft(self) -> Result<raft_types::AppendEntriesRequest, String> {
+        let vote = self
             .vote
-            .map(raft_types::Vote::from)
+            .map(Into::into)
             .ok_or_else(|| "AppendRequest missing vote".to_string())?;
 
-        let entries: Result<Vec<raft_types::Entry>, _> = req
+        let entries: Result<Vec<raft_types::Entry>, _> = self
             .entries
             .into_iter()
-            .map(raft_types::Entry::try_from)
+            .map(pb::LogEntry::try_into_raft)
             .collect();
 
         Ok(raft_types::AppendEntriesRequest {
             vote,
-            prev_log_id: req.prev_log_id.map(raft_types::LogId::from),
+            prev_log_id: self.prev_log_id.map(Into::into),
             entries: entries?,
-            leader_commit: req.leader_commit.map(raft_types::LogId::from),
+            leader_commit: self.leader_commit.map(Into::into),
         })
     }
 }
 
-// === AppendEntriesResponse ↔ pb::AppendResponse ===
+// === AppendEntriesResponse ↔ pb::AppendResponse (extension traits) ===
 
-impl From<raft_types::AppendEntriesResponse> for pb::AppendResponse {
-    fn from(resp: raft_types::AppendEntriesResponse) -> Self {
+pub trait PbAppendResponseExt {
+    fn from_raft_response(resp: raft_types::AppendEntriesResponse) -> pb::AppendResponse;
+    fn into_raft_response(self) -> raft_types::AppendEntriesResponse;
+    fn from_stream_result(r: raft_types::StreamAppendResult) -> pb::AppendResponse;
+    fn into_stream_result(self) -> raft_types::StreamAppendResult;
+}
+
+impl PbAppendResponseExt for pb::AppendResponse {
+    fn from_raft_response(resp: raft_types::AppendEntriesResponse) -> pb::AppendResponse {
         match resp {
             raft_types::AppendEntriesResponse::Success => pb::AppendResponse {
                 rejected_by: None,
@@ -253,29 +243,23 @@ impl From<raft_types::AppendEntriesResponse> for pb::AppendResponse {
             },
         }
     }
-}
 
-impl From<pb::AppendResponse> for raft_types::AppendEntriesResponse {
-    fn from(resp: pb::AppendResponse) -> Self {
-        if let Some(vote) = resp.rejected_by {
+    fn into_raft_response(self) -> raft_types::AppendEntriesResponse {
+        if let Some(vote) = self.rejected_by {
             return raft_types::AppendEntriesResponse::HigherVote(vote.into());
         }
 
-        if resp.conflict_log_id.is_some() {
+        if self.conflict_log_id.is_some() {
             return raft_types::AppendEntriesResponse::Conflict;
         }
 
-        match resp.last_log_id {
+        match self.last_log_id {
             Some(log_id) => raft_types::AppendEntriesResponse::PartialSuccess(Some(log_id.into())),
             None => raft_types::AppendEntriesResponse::Success,
         }
     }
-}
 
-// === StreamAppendResult ↔ pb::AppendResponse ===
-
-impl From<raft_types::StreamAppendResult> for pb::AppendResponse {
-    fn from(r: raft_types::StreamAppendResult) -> Self {
+    fn from_stream_result(r: raft_types::StreamAppendResult) -> pb::AppendResponse {
         match r {
             Ok(log_id) => pb::AppendResponse {
                 rejected_by: None,
@@ -294,17 +278,15 @@ impl From<raft_types::StreamAppendResult> for pb::AppendResponse {
             },
         }
     }
-}
 
-impl From<pb::AppendResponse> for raft_types::StreamAppendResult {
-    fn from(value: pb::AppendResponse) -> Self {
-        if let Some(vote) = value.rejected_by {
+    fn into_stream_result(self) -> raft_types::StreamAppendResult {
+        if let Some(vote) = self.rejected_by {
             return Err(raft_types::StreamAppendError::HigherVote(vote.into()));
         }
-        if let Some(log_id) = value.conflict_log_id {
+        if let Some(log_id) = self.conflict_log_id {
             return Err(raft_types::StreamAppendError::Conflict(log_id.into()));
         }
-        Ok(value.last_log_id.map(raft_types::LogId::from))
+        Ok(self.last_log_id.map(Into::into))
     }
 }
 
@@ -312,6 +294,7 @@ impl From<pb::AppendResponse> for raft_types::StreamAppendResult {
 mod tests {
     use openraft::entry::RaftEntry;
 
+    use super::*;
     use crate::Cmd;
     use crate::Endpoint;
     use crate::LogEntry;
@@ -326,12 +309,12 @@ mod tests {
     fn round_trip_log_entry(entry: LogEntry) {
         let raft_entry = raft_types::Entry::new(
             raft_types::new_log_id(1, 0, 1),
-            raft_types::EntryPayload::Normal(entry.clone()),
+            openraft::EntryPayload::Normal(entry.clone()),
         );
-        let pb_entry = pb::LogEntry::from(raft_entry);
-        let back = raft_types::Entry::try_from(pb_entry).unwrap();
+        let pb_entry = pb::LogEntry::from_raft(raft_entry);
+        let back = pb_entry.try_into_raft().unwrap();
         match back.payload {
-            raft_types::EntryPayload::Normal(back_entry) => assert_eq!(entry, back_entry),
+            openraft::EntryPayload::Normal(back_entry) => assert_eq!(entry, back_entry),
             _ => panic!("expected Normal payload"),
         }
     }
@@ -382,9 +365,9 @@ mod tests {
         let entry = LogEntry::new(Cmd::UpsertKV(UpsertKV::insert("k", b"v")));
         let raft_entry = raft_types::Entry::new(
             raft_types::new_log_id(1, 0, 1),
-            raft_types::EntryPayload::Normal(entry),
+            openraft::EntryPayload::Normal(entry),
         );
-        let _ = pb::LogEntry::from(raft_entry);
+        let _ = pb::LogEntry::from_raft(raft_entry);
     }
 
     #[test]
@@ -395,17 +378,17 @@ mod tests {
         let entry = LogEntry::new(Cmd::Transaction(TxnRequest::default()));
         let raft_entry = raft_types::Entry::new(
             raft_types::new_log_id(1, 0, 1),
-            raft_types::EntryPayload::Normal(entry),
+            openraft::EntryPayload::Normal(entry),
         );
-        let _ = pb::LogEntry::from(raft_entry);
+        let _ = pb::LogEntry::from_raft(raft_entry);
     }
 
     #[test]
     fn test_node_round_trip() {
         let n = Node::new("node1", Endpoint::new("10.0.0.1", 9191))
             .with_grpc_advertise_address(Some("grpc.example.com:443"));
-        let pb_n: pb::Node = n.clone().into();
-        let back: Node = pb_n.into();
+        let pb_n = pb::Node::from(n.clone());
+        let back = Node::from(pb_n);
         assert_eq!(n, back);
     }
 
@@ -420,8 +403,8 @@ mod tests {
             .map(|id| (id, openraft::EmptyNode::default()))
             .collect();
         let m = raft_types::Membership::new(configs.clone(), nodes.clone()).unwrap();
-        let pb_m = pb::Membership::from(m);
-        let back = raft_types::Membership::try_from(pb_m).unwrap();
+        let pb_m = pb::Membership::from_raft(m);
+        let back = pb_m.try_into_raft().unwrap();
 
         assert_eq!(back.get_joint_config(), &configs);
         let back_node_ids: BTreeSet<u64> = back.nodes().map(|(id, _)| *id).collect();
@@ -440,9 +423,9 @@ mod tests {
     #[test]
     fn test_entry_blank_round_trip() {
         let entry = make_entry(1, 0, 10, raft_types::EntryPayload::Blank);
-        let pb_entry = pb::LogEntry::from(entry.clone());
+        let pb_entry = pb::LogEntry::from_raft(entry.clone());
         assert!(pb_entry.cmd.is_none());
-        let back = raft_types::Entry::try_from(pb_entry).unwrap();
+        let back = pb_entry.try_into_raft().unwrap();
         assert_eq!(entry, back);
     }
 
@@ -450,12 +433,12 @@ mod tests {
     fn test_entry_normal_round_trip() {
         let log_entry = LogEntry::new(Cmd::RemoveNode { node_id: 5 });
         let entry = make_entry(2, 1, 20, raft_types::EntryPayload::Normal(log_entry));
-        let pb_entry = pb::LogEntry::from(entry.clone());
+        let pb_entry = pb::LogEntry::from_raft(entry.clone());
         assert!(matches!(
             pb_entry.cmd,
             Some(pb::log_entry::Cmd::RemoveNode(_))
         ));
-        let back = raft_types::Entry::try_from(pb_entry).unwrap();
+        let back = pb_entry.try_into_raft().unwrap();
         assert_eq!(entry, back);
     }
 
@@ -471,12 +454,12 @@ mod tests {
             .collect();
         let m = raft_types::Membership::new(configs, nodes).unwrap();
         let entry = make_entry(3, 0, 30, raft_types::EntryPayload::Membership(m));
-        let pb_entry = pb::LogEntry::from(entry.clone());
+        let pb_entry = pb::LogEntry::from_raft(entry.clone());
         assert!(matches!(
             pb_entry.cmd,
             Some(pb::log_entry::Cmd::Membership(_))
         ));
-        let back = raft_types::Entry::try_from(pb_entry).unwrap();
+        let back = pb_entry.try_into_raft().unwrap();
         assert_eq!(entry, back);
     }
 
@@ -506,8 +489,8 @@ mod tests {
             ],
             leader_commit: Some(raft_types::new_log_id(5, 1, 100)),
         };
-        let pb_req = pb::AppendRequest::from(req.clone());
-        let back = raft_types::AppendEntriesRequest::try_from(pb_req).unwrap();
+        let pb_req = pb::AppendRequest::from_raft(req.clone());
+        let back = pb_req.try_into_raft().unwrap();
         assert_append_request_eq(&req, &back);
     }
 
@@ -519,16 +502,16 @@ mod tests {
             entries: vec![],
             leader_commit: None,
         };
-        let pb_req = pb::AppendRequest::from(req.clone());
-        let back = raft_types::AppendEntriesRequest::try_from(pb_req).unwrap();
+        let pb_req = pb::AppendRequest::from_raft(req.clone());
+        let back = pb_req.try_into_raft().unwrap();
         assert_append_request_eq(&req, &back);
     }
 
     #[test]
     fn test_append_response_success() {
         let resp = raft_types::AppendEntriesResponse::Success;
-        let pb_resp = pb::AppendResponse::from(resp.clone());
-        let back = raft_types::AppendEntriesResponse::from(pb_resp);
+        let pb_resp = pb::AppendResponse::from_raft_response(resp.clone());
+        let back = pb_resp.into_raft_response();
         assert_eq!(resp, back);
     }
 
@@ -537,16 +520,16 @@ mod tests {
         let resp = raft_types::AppendEntriesResponse::PartialSuccess(Some(raft_types::new_log_id(
             5, 1, 101,
         )));
-        let pb_resp = pb::AppendResponse::from(resp.clone());
-        let back = raft_types::AppendEntriesResponse::from(pb_resp);
+        let pb_resp = pb::AppendResponse::from_raft_response(resp.clone());
+        let back = pb_resp.into_raft_response();
         assert_eq!(resp, back);
     }
 
     #[test]
     fn test_append_response_conflict() {
         let resp = raft_types::AppendEntriesResponse::Conflict;
-        let pb_resp = pb::AppendResponse::from(resp.clone());
-        let back = raft_types::AppendEntriesResponse::from(pb_resp);
+        let pb_resp = pb::AppendResponse::from_raft_response(resp.clone());
+        let back = pb_resp.into_raft_response();
         assert_eq!(resp, back);
     }
 
@@ -554,24 +537,24 @@ mod tests {
     fn test_append_response_higher_vote() {
         let resp =
             raft_types::AppendEntriesResponse::HigherVote(raft_types::Vote::new_committed(10, 2));
-        let pb_resp = pb::AppendResponse::from(resp.clone());
-        let back = raft_types::AppendEntriesResponse::from(pb_resp);
+        let pb_resp = pb::AppendResponse::from_raft_response(resp.clone());
+        let back = pb_resp.into_raft_response();
         assert_eq!(resp, back);
     }
 
     #[test]
     fn test_stream_append_result_success_with_log_id() {
         let result: raft_types::StreamAppendResult = Ok(Some(raft_types::new_log_id(5, 1, 100)));
-        let pb_resp = pb::AppendResponse::from(result.clone());
-        let back = raft_types::StreamAppendResult::from(pb_resp);
+        let pb_resp = pb::AppendResponse::from_stream_result(result.clone());
+        let back = pb_resp.into_stream_result();
         assert_eq!(result, back);
     }
 
     #[test]
     fn test_stream_append_result_success_none() {
         let result: raft_types::StreamAppendResult = Ok(None);
-        let pb_resp = pb::AppendResponse::from(result.clone());
-        let back = raft_types::StreamAppendResult::from(pb_resp);
+        let pb_resp = pb::AppendResponse::from_stream_result(result.clone());
+        let back = pb_resp.into_stream_result();
         assert_eq!(result, back);
     }
 
@@ -580,8 +563,8 @@ mod tests {
         let result: raft_types::StreamAppendResult = Err(raft_types::StreamAppendError::Conflict(
             raft_types::new_log_id(3, 2, 50),
         ));
-        let pb_resp = pb::AppendResponse::from(result.clone());
-        let back = raft_types::StreamAppendResult::from(pb_resp);
+        let pb_resp = pb::AppendResponse::from_stream_result(result.clone());
+        let back = pb_resp.into_stream_result();
         assert_eq!(result, back);
     }
 
@@ -590,8 +573,8 @@ mod tests {
         let result: raft_types::StreamAppendResult = Err(
             raft_types::StreamAppendError::HigherVote(raft_types::Vote::new_committed(10, 2)),
         );
-        let pb_resp = pb::AppendResponse::from(result.clone());
-        let back = raft_types::StreamAppendResult::from(pb_resp);
+        let pb_resp = pb::AppendResponse::from_stream_result(result.clone());
+        let back = pb_resp.into_stream_result();
         assert_eq!(result, back);
     }
 }
