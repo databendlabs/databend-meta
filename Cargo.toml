@@ -8,6 +8,7 @@ edition = "2024"
 [workspace]
 resolver = "2"
 members = [
+    "crates/common/base",
     "crates/common/types",
     "crates/common/runtime-api",
     "crates/common/version",
@@ -25,6 +26,7 @@ members = [
 [workspace.dependencies]
 # Internal crates
 databend-meta = { path = "crates/server/service" }
+databend-meta-base = { path = "crates/common/base" }
 databend-meta-client = { path = "crates/client/client" }
 databend-meta-kvapi = { path = "crates/client/kvapi" }
 databend-meta-kvapi-test-suite = { path = "crates/client/kvapi-test-suite" }

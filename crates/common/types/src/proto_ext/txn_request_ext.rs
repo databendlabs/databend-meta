@@ -51,9 +51,9 @@ impl pb::TxnRequest {
                 let mut op = pb::TxnOp::put(&upsert.key, x);
 
                 if let Some(meta_spec) = upsert.value_meta {
-                    op =
-                        op.with_expires_at(meta_spec.expire_at.map(flexible_timestamp_to_duration));
-                    op = op.with_ttl(meta_spec.ttl.map(|x| x.to_duration()));
+                    op = op
+                        .with_expires_at(meta_spec.expire_at().map(flexible_timestamp_to_duration));
+                    op = op.with_ttl(meta_spec.ttl().map(|x| x.to_duration()));
                 }
 
                 op
@@ -295,10 +295,10 @@ mod tests {
                     key: "test_key".to_string(),
                     seq: MatchSeq::Any,
                     value: Operation::Update(b"test_value".to_vec()),
-                    value_meta: Some(MetaSpec {
-                        expire_at: Some(1234567890),
-                        ttl: Some(Interval::from_secs(3600)),
-                    }),
+                    value_meta: Some(MetaSpec::new(
+                        Some(1234567890),
+                        Some(Interval::from_secs(3600)),
+                    )),
                 },
                 pb::TxnRequest {
                     operations: vec![],
@@ -322,10 +322,7 @@ mod tests {
                     key: "test_key".to_string(),
                     seq: MatchSeq::Any,
                     value: Operation::Update(b"test_value".to_vec()),
-                    value_meta: Some(MetaSpec {
-                        expire_at: None,
-                        ttl: Some(Interval::from_millis(500)),
-                    }),
+                    value_meta: Some(MetaSpec::new(None, Some(Interval::from_millis(500)))),
                 },
                 pb::TxnRequest {
                     operations: vec![],
@@ -349,10 +346,7 @@ mod tests {
                     key: "test_key".to_string(),
                     seq: MatchSeq::Any,
                     value: Operation::Update(b"test_value".to_vec()),
-                    value_meta: Some(MetaSpec {
-                        expire_at: Some(9876543210),
-                        ttl: None,
-                    }),
+                    value_meta: Some(MetaSpec::new(Some(9876543210), None)),
                 },
                 pb::TxnRequest {
                     operations: vec![],

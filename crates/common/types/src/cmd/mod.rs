@@ -14,24 +14,21 @@
 
 use std::fmt;
 
+use databend_meta_base::Node;
+use databend_meta_base::UpsertKV;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::TxnRequest;
 use crate::kv_transaction;
-use crate::node::Node;
 use crate::raft_types::NodeId;
 
 mod cmd_context;
 mod io_timing;
-mod meta_spec;
-mod upsert_kv;
 
 pub use cmd_context::CmdContext;
 pub use io_timing::IoTimer;
 pub use io_timing::IoTiming;
-pub use meta_spec::MetaSpec;
-pub use upsert_kv::UpsertKV;
 
 /// A Cmd describes what a user want to do to raft state machine
 /// and is the essential part of a raft log.

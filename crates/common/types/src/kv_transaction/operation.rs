@@ -175,16 +175,16 @@ mod tests {
     fn test_payload_to_meta_spec() {
         let p = Payload::new(b"v", Some(5000), Some(3000));
         let spec = p.to_meta_spec();
-        assert_eq!(spec.expire_at, Some(5000));
-        assert_eq!(spec.ttl, Some(Interval::from_millis(3000)));
+        assert_eq!(spec.expire_at(), Some(5000));
+        assert_eq!(spec.ttl(), Some(Interval::from_millis(3000)));
     }
 
     #[test]
     fn test_payload_to_meta_spec_none() {
         let p = Payload::just(b"v");
         let spec = p.to_meta_spec();
-        assert_eq!(spec.expire_at, None);
-        assert_eq!(spec.ttl, None);
+        assert_eq!(spec.expire_at(), None);
+        assert_eq!(spec.ttl(), None);
     }
 
     #[test]
