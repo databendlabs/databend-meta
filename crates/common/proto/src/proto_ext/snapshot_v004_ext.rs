@@ -15,17 +15,18 @@
 use anyerror::AnyError;
 
 use crate::protobuf::InstallSnapshotResponseV004;
-use crate::raft_types::NetworkError;
-use crate::raft_types::Vote;
+
+type LeaderId = openraft::impls::leader_id_adv::LeaderId<u64, u64>;
+type Vote = openraft::Vote<LeaderId>;
 
 impl InstallSnapshotResponseV004 {
-    pub fn to_vote(&self) -> Result<Vote, NetworkError> {
+    pub fn to_vote(&self) -> Result<Vote, AnyError> {
         let Some(vote) = self.vote else {
-            return Err(NetworkError::new(&AnyError::error(
+            return Err(AnyError::error(
                 "missing vote in InstallSnapshotResponseV004",
-            )));
+            ));
         };
 
-        Ok(Vote::from(vote))
+        Ok(vote.into())
     }
 }

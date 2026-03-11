@@ -15,8 +15,8 @@
 use std::fmt;
 
 use display_more::DisplayOptionExt;
+use state_machine_api::SeqV;
 
-use crate::SeqV;
 use crate::protobuf as pb;
 
 impl fmt::Display for pb::TxnPutResponse {

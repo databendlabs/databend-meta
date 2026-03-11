@@ -14,32 +14,23 @@
 
 #![allow(clippy::uninlined_format_args)]
 #![allow(clippy::collapsible_if)]
+#![allow(non_local_definitions)]
 
-//! Foundational types with minimal dependencies for the databend-meta service.
+//! Protobuf generated types and their extensions for the databend-meta service.
+//!
+//! This crate provides the wire-protocol types generated from `.proto` files,
+//! along with convenience methods and Display implementations.
 
-mod change;
-mod endpoint;
-pub mod flexible_timestamp;
-mod invalid_reply;
-mod meta_spec;
-mod operation;
-mod seq_num;
-mod upsert_kv;
-mod with;
+pub mod proto_display;
+pub mod proto_ext;
 
-pub mod node;
-pub mod normalize_meta;
-pub mod time;
+pub use proto_ext::TxnReplyExt;
+pub use proto_ext::TxnRequestExt;
 
-pub use change::Change;
-pub use endpoint::Endpoint;
-pub use invalid_reply::InvalidReply;
-pub use meta_spec::MetaSpec;
-pub use node::Node;
-pub use operation::MetaId;
-pub use operation::Operation;
-pub use seq_num::SeqNum;
-pub use time::Interval;
-pub use time::Time;
-pub use upsert_kv::UpsertKV;
-pub use with::With;
+// ProtoBuf generated files.
+#[allow(clippy::all)]
+pub mod protobuf {
+    tonic::include_proto!("meta");
+
+    pub const FILE_DESCRIPTOR_SET: &[u8] = tonic::include_file_descriptor_set!("meta_descriptor");
+}

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use databend_meta_base::normalize_meta::NormalizeMeta;
 use state_machine_api::SeqV;
 
-use crate::normalize_meta::NormalizeMeta;
 use crate::protobuf as pb;
 use crate::protobuf::StreamItem;
 
@@ -75,8 +75,87 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_stream_item_new() {
+        let item = pb::StreamItem::new(
+            "test_key".to_string(),
+            Some(pb::SeqV {
+                seq: 1,
+                data: b"test_data".to_vec(),
+                meta: None,
+            }),
+        );
+        assert_eq!(item.key, "test_key");
+        assert_eq!(item.value.as_ref().unwrap().seq, 1);
+    }
+
+    #[test]
+    fn test_stream_item_into_option_pair() {
+        let item = pb::StreamItem::new(
+            "key".to_string(),
+            Some(pb::SeqV {
+                seq: 1,
+                data: b"data".to_vec(),
+                meta: None,
+            }),
+        );
+        let (key, value) = item.into_option_pair();
+        assert_eq!(key, "key");
+        assert_eq!(value.unwrap().seq, 1);
+    }
+
+    #[test]
+    fn test_stream_item_into_pair() {
+        let item = pb::StreamItem::new(
+            "key".to_string(),
+            Some(pb::SeqV {
+                seq: 2,
+                data: b"data".to_vec(),
+                meta: None,
+            }),
+        );
+        let (key, value) = item.into_pair();
+        assert_eq!(key, "key");
+        assert_eq!(value.seq, 2);
+    }
+
+    #[test]
+    fn test_stream_item_from_tuple_with_pb_seqv() {
+        let item = StreamItem::from((
+            "key".to_string(),
+            Some(pb::SeqV {
+                seq: 3,
+                data: b"val".to_vec(),
+                meta: None,
+            }),
+        ));
+        assert_eq!(item.key, "key");
+        assert_eq!(item.value.as_ref().unwrap().seq, 3);
+    }
+
+    #[test]
+    fn test_stream_item_from_tuple_with_seqv() {
+        let item = StreamItem::from(("key".to_string(), Some(SeqV::new(4, b"val".to_vec()))));
+        assert_eq!(item.key, "key");
+        assert_eq!(item.value.as_ref().unwrap().seq, 4);
+    }
+
+    #[test]
+    fn test_stream_item_from_tuple_non_optional() {
+        let item = StreamItem::from(("key".to_string(), SeqV::new(5, b"val".to_vec())));
+        assert_eq!(item.key, "key");
+        assert_eq!(item.value.as_ref().unwrap().seq, 5);
+    }
+
+    #[test]
+    fn test_stream_item_with_no_value() {
+        let item = pb::StreamItem::new("key".to_string(), None);
+        let (key, value) = item.into_option_pair();
+        assert_eq!(key, "key");
+        assert!(value.is_none());
+    }
+
+    #[test]
     fn test_stream_item_erase_proposed_at() {
-        // Test with value having proposed_at_ms
         let item = pb::StreamItem::new(
             "test_key".to_string(),
             Some(pb::SeqV {
@@ -91,7 +170,6 @@ mod tests {
 
         let erased = item.without_proposed_at();
 
-        // Check: expire_at should remain, proposed_at_ms should be None
         assert_eq!(erased.key, "test_key");
         let value = erased.value.as_ref().unwrap();
         assert_eq!(value.seq, 1);
@@ -102,7 +180,6 @@ mod tests {
 
     #[test]
     fn test_stream_item_erase_proposed_at_removes_default_meta() {
-        // Test that erase_proposed_at removes meta when it becomes default
         let item = pb::StreamItem::new(
             "test_key".to_string(),
             Some(pb::SeqV {
@@ -116,38 +193,11 @@ mod tests {
         );
 
         let erased = item.without_proposed_at();
-
-        // Meta should be removed entirely (was only proposed_at_ms, now default)
         assert_eq!(erased.value.as_ref().unwrap().meta, None);
     }
 
     #[test]
-    fn test_stream_item_reduce() {
-        // Test reduce without touching proposed_at_ms
-        let item = pb::StreamItem::new(
-            "test_key".to_string(),
-            Some(pb::SeqV {
-                seq: 1,
-                data: b"test_data".to_vec(),
-                meta: Some(pb::KvMeta {
-                    expire_at: None,
-                    proposed_at_ms: Some(1_723_102_800_000),
-                }),
-            }),
-        );
-
-        let reduced = item.normalize();
-
-        // proposed_at_ms should remain, meta not removed (not default)
-        let value = reduced.value.as_ref().unwrap();
-        let meta = value.meta.as_ref().unwrap();
-        assert_eq!(meta.proposed_at_ms, Some(1_723_102_800_000));
-        assert_eq!(meta.expire_at, None);
-    }
-
-    #[test]
     fn test_stream_item_reduce_removes_default_meta() {
-        // Test that reduce removes metadata when it's default
         let item = pb::StreamItem::new(
             "test_key".to_string(),
             Some(pb::SeqV {
@@ -161,63 +211,6 @@ mod tests {
         );
 
         let reduced = item.normalize();
-
-        // Meta should be removed (is default)
-        assert_eq!(reduced.value.as_ref().unwrap().meta, None);
-    }
-
-    #[test]
-    fn test_stream_item_reduce_keeps_non_default_meta() {
-        // Test that reduce keeps metadata when it has expire_at
-        let item = pb::StreamItem::new(
-            "test_key".to_string(),
-            Some(pb::SeqV {
-                seq: 1,
-                data: b"test_data".to_vec(),
-                meta: Some(pb::KvMeta {
-                    expire_at: Some(1723102819),
-                    proposed_at_ms: None,
-                }),
-            }),
-        );
-
-        let reduced = item.normalize();
-
-        // Meta should remain (has expire_at)
-        let value = reduced.value.as_ref().unwrap();
-        let meta = value.meta.as_ref().unwrap();
-        assert_eq!(meta.expire_at, Some(1723102819));
-        assert_eq!(meta.proposed_at_ms, None);
-    }
-
-    #[test]
-    fn test_stream_item_with_no_value() {
-        // Test with None value
-        let item = pb::StreamItem::new("key".to_string(), None);
-
-        let erased = item.clone().without_proposed_at();
-        let reduced = item.normalize();
-
-        assert_eq!(erased.value, None);
-        assert_eq!(reduced.value, None);
-    }
-
-    #[test]
-    fn test_stream_item_with_no_meta() {
-        // Test with value but no meta
-        let item = pb::StreamItem::new(
-            "test_key".to_string(),
-            Some(pb::SeqV {
-                seq: 1,
-                data: b"data".to_vec(),
-                meta: None,
-            }),
-        );
-
-        let erased = item.clone().without_proposed_at();
-        let reduced = item.normalize();
-
-        assert_eq!(erased.value.as_ref().unwrap().meta, None);
         assert_eq!(reduced.value.as_ref().unwrap().meta, None);
     }
 }

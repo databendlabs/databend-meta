@@ -19,8 +19,8 @@ use std::time::Duration;
 use deepsize::Context;
 use display_more::DisplayUnixTimeStampExt;
 
+use crate::flexible_timestamp::flexible_timestamp_to_duration;
 use crate::time::Interval;
-use crate::time::flexible_timestamp_to_duration;
 
 /// Specifies the metadata associated with a kv record, used in an `upsert` cmd.
 ///
