@@ -66,15 +66,15 @@ pub fn grpc_changelog() -> BTreeMap<Version, GrpcVersionCompat> {
         min_server: ver(1, 2, 869),
     });
 
-    // 260304.0.0: no compatibility change
+    // 260312.0.0: no compatibility change
     #[cfg(feature = "txn-put-match-seq")]
-    m.insert(ver(260304, 0, 0), GrpcVersionCompat {
+    m.insert(ver(260312, 0, 0), GrpcVersionCompat {
         min_client: ver(1, 2, 676),
         min_server: ver(260217, 0, 0),
     });
 
     #[cfg(not(feature = "txn-put-match-seq"))]
-    m.insert(ver(260304, 0, 0), GrpcVersionCompat {
+    m.insert(ver(260312, 0, 0), GrpcVersionCompat {
         min_client: ver(1, 2, 676),
         min_server: ver(1, 2, 869),
     });
