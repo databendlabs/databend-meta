@@ -29,6 +29,7 @@ use tokio::time::Duration;
 
 use crate::testing::meta_service_test_harness;
 use crate::tests::service::MetaSrvTestContext;
+use crate::tests::service::grpc_client;
 use crate::tests::start_metasrv_with_context;
 
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
@@ -42,7 +43,7 @@ async fn test_restart() -> anyhow::Result<()> {
 
     let (mut tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
 
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     info!("--- upsert kv");
     {
@@ -85,7 +86,7 @@ async fn test_restart() -> anyhow::Result<()> {
     tokio::time::sleep(Duration::from_millis(10_000)).await;
 
     // try to reconnect the restarted server.
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     info!("--- get kv");
     {
@@ -178,8 +179,8 @@ async fn test_join() -> anyhow::Result<()> {
     start_metasrv_with_context::<TokioRuntime>(&mut tc0).await?;
     start_metasrv_with_context::<TokioRuntime>(&mut tc1).await?;
 
-    let client0 = tc0.grpc_client().await?;
-    let client1 = tc1.grpc_client().await?;
+    let client0 = grpc_client(&tc0).await?;
+    let client1 = grpc_client(&tc1).await?;
 
     let clients = [client0, client1];
 
@@ -262,7 +263,7 @@ async fn test_auto_sync_addr() -> anyhow::Result<()> {
     let addr1 = tc1.config.grpc.api_address().unwrap();
     let addr2 = tc2.config.grpc.api_address().unwrap();
 
-    let client = tc1.grpc_client().await?;
+    let client = grpc_client(&tc1).await?;
 
     let addrs = HashSet::from([addr0, addr1, addr2]);
 

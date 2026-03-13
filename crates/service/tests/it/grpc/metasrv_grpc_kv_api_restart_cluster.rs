@@ -28,6 +28,7 @@ use tokio::time::sleep;
 
 use crate::testing::meta_service_test_harness;
 use crate::tests::service::MetaSrvTestContext;
+use crate::tests::service::grpc_client;
 use crate::tests::service::start_metasrv_cluster;
 use crate::tests::start_metasrv_with_context;
 
@@ -50,7 +51,7 @@ async fn test_kv_api_restart_cluster_write_read() -> anyhow::Result<()> {
         info!("--- test write on every node: {}", key_suffix);
 
         for tc in tcs.iter() {
-            let client = tc.grpc_client().await?;
+            let client = grpc_client(tc).await?;
 
             let k = make_key(tc, key_suffix);
             let res = client.upsert_kv(UpsertKV::update(&k, &b(&k))).await?;
@@ -145,7 +146,7 @@ async fn test_kv_api_restart_cluster_token_expired() -> anyhow::Result<()> {
                 let res = client.upsert_kv(UpsertKV::update(&k, &b(&k))).await?;
                 info!("--- upsert res: {:?}", res);
             } else {
-                let client = tc.grpc_client().await.unwrap();
+                let client = grpc_client(tc).await.unwrap();
                 let res = client.upsert_kv(UpsertKV::update(&k, &b(&k))).await?;
                 info!("--- upsert res: {:?}", res);
             }

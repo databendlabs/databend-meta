@@ -24,6 +24,7 @@ use futures::StreamExt;
 use test_harness::test;
 
 use crate::testing::meta_service_test_harness;
+use crate::tests::service::grpc_client;
 use crate::tests::service::make_grpc_client;
 
 fn make_key_stream(
@@ -41,7 +42,7 @@ fn make_key_stream(
 #[fastrace::trace]
 async fn test_kv_get_many_on_leader() -> anyhow::Result<()> {
     let (tc, _) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     // Insert test data
     client.upsert_kv(UpsertKV::update("k1", b"v1")).await?;

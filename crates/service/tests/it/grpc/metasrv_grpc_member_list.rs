@@ -27,6 +27,7 @@ use tokio::time::sleep;
 
 use crate::testing::meta_service_test_harness;
 use crate::tests::service::MetaSrvTestContext;
+use crate::tests::service::grpc_client;
 
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
 #[fastrace::trace]
@@ -36,7 +37,7 @@ async fn test_member_list() -> anyhow::Result<()> {
 
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
 
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     let resp = client.get_member_list().await?;
     println!("member list: {:?}", resp);
@@ -138,7 +139,7 @@ async fn test_member_list_with_learner() -> anyhow::Result<()> {
         .await?;
 
     // Get member list from leader
-    let client = leader_tc.grpc_client().await?;
+    let client = grpc_client(leader_tc).await?;
     let resp = client.get_member_list().await?;
 
     println!("member list with 2 voters + 1 learner: {:?}", resp);

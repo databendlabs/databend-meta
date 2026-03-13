@@ -18,6 +18,7 @@ use regex::Regex;
 use test_harness::test;
 
 use crate::testing::meta_service_test_harness;
+use crate::tests::service::grpc_client;
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
 #[fastrace::trace]
 async fn test_get_client_info() -> anyhow::Result<()> {
@@ -26,7 +27,7 @@ async fn test_get_client_info() -> anyhow::Result<()> {
 
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
 
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     let resp = client.get_client_info().await?;
 
