@@ -14,15 +14,56 @@
 
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use databend_meta_client::ClientHandle;
+use databend_meta_client::DEFAULT_GRPC_MESSAGE_SIZE;
+use databend_meta_client::MetaGrpcClient;
+use databend_meta_client::errors::CreationError;
 use databend_meta_kvapi as kvapi;
+use databend_meta_runtime_api::RuntimeApi;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_test_harness::MetaSrvTestContext;
-use databend_meta_test_harness::make_grpc_client;
 use databend_meta_test_harness::start_metasrv;
 use databend_meta_test_harness::start_metasrv_cluster;
+
+fn make_grpc_client<R: RuntimeApi>(
+    addresses: Vec<String>,
+) -> Result<Arc<ClientHandle<R>>, CreationError> {
+    let client = MetaGrpcClient::<R>::try_create(
+        addresses,
+        "root",
+        "xxx",
+        Some(Duration::from_secs(2)),
+        Some(Duration::from_secs(10)),
+        None,
+        DEFAULT_GRPC_MESSAGE_SIZE,
+    )?;
+
+    Ok(client)
+}
+
+async fn grpc_client<R: RuntimeApi>(
+    tc: &MetaSrvTestContext<R>,
+) -> anyhow::Result<Arc<ClientHandle<R>>> {
+    let addr = tc
+        .config
+        .grpc
+        .api_address()
+        .ok_or_else(|| anyhow::anyhow!("gRPC port not assigned yet"))?;
+
+    let client = MetaGrpcClient::<R>::try_create(
+        vec![addr],
+        "root",
+        "xxx",
+        None,
+        Some(Duration::from_secs(10)),
+        None,
+        DEFAULT_GRPC_MESSAGE_SIZE,
+    )?;
+    Ok(client)
+}
 
 /// Builds `Arc<ClientHandle<TokioRuntime>>` backed by real metasrv instances.
 ///
@@ -45,7 +86,7 @@ impl MetaSrvBuilder {
 impl kvapi::ApiBuilder<Arc<ClientHandle<TokioRuntime>>> for MetaSrvBuilder {
     async fn build(&self) -> Arc<ClientHandle<TokioRuntime>> {
         let (tc, _addr) = start_metasrv::<TokioRuntime>().await.unwrap();
-        let client = tc.grpc_client().await.unwrap();
+        let client = grpc_client(&tc).await.unwrap();
         self.contexts.lock().unwrap().push(tc);
         client
     }

@@ -50,6 +50,7 @@ use test_harness::test;
 use tokio::time::sleep;
 
 use crate::testing::meta_service_test_harness;
+use crate::tests::service::grpc_client;
 
 async fn test_watch_main(
     addr: String,
@@ -344,7 +345,7 @@ async fn test_watch_initialization_flush() -> anyhow::Result<()> {
         UpsertKV::update("z", b"z"),
     ];
 
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
     for update in updates.iter() {
         client.upsert_kv(update.clone()).await?;
     }
