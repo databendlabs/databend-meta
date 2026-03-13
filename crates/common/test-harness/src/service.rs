@@ -16,7 +16,6 @@ use std::fmt;
 use std::fs;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use databend_base::testutil::next_port;
@@ -27,10 +26,6 @@ use databend_meta::message::ForwardRequest;
 use databend_meta::message::ForwardRequestBody;
 use databend_meta::meta_node::meta_worker::MetaWorker;
 use databend_meta::meta_service::MetaNode;
-use databend_meta_client::ClientHandle;
-use databend_meta_client::DEFAULT_GRPC_MESSAGE_SIZE;
-use databend_meta_client::MetaGrpcClient;
-use databend_meta_client::errors::CreationError;
 use databend_meta_runtime_api::RuntimeApi;
 use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
 use databend_meta_types::raft_types::NodeId;
@@ -112,22 +107,6 @@ pub async fn start_metasrv_cluster<R: RuntimeApi>(
     }
 
     Ok(res)
-}
-
-pub fn make_grpc_client<R: RuntimeApi>(
-    addresses: Vec<String>,
-) -> Result<Arc<ClientHandle<R>>, CreationError> {
-    let client = MetaGrpcClient::<R>::try_create(
-        addresses,
-        "root",
-        "xxx",
-        Some(Duration::from_secs(2)), // timeout
-        Some(Duration::from_secs(10)),
-        None,
-        DEFAULT_GRPC_MESSAGE_SIZE,
-    )?;
-
-    Ok(client)
 }
 
 /// It holds a reference to a MetaNode or a GrpcServer, for testing MetaNode or GrpcServer.
@@ -220,25 +199,6 @@ impl<R: RuntimeApi> MetaSrvTestContext<R> {
 
     pub fn meta_node(&self) -> Arc<MetaNode<R>> {
         self.meta_node.clone().unwrap()
-    }
-
-    pub async fn grpc_client(&self) -> anyhow::Result<Arc<ClientHandle<R>>> {
-        let addr = self
-            .config
-            .grpc
-            .api_address()
-            .ok_or_else(|| anyhow::anyhow!("gRPC port not assigned yet"))?;
-
-        let client = MetaGrpcClient::<R>::try_create(
-            vec![addr],
-            "root",
-            "xxx",
-            None,
-            Some(Duration::from_secs(10)),
-            None,
-            DEFAULT_GRPC_MESSAGE_SIZE,
-        )?;
-        Ok(client)
     }
 
     pub async fn raft_client(

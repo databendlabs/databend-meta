@@ -30,6 +30,7 @@ use tokio::time::Duration;
 
 use crate::testing::meta_service_test_harness;
 use crate::tests::service::MetaSrvTestContext;
+use crate::tests::service::grpc_client;
 use crate::tests::service::make_grpc_client;
 use crate::tests::start_metasrv_with_context;
 
@@ -44,7 +45,7 @@ async fn test_restart() -> anyhow::Result<()> {
 
     let (mut tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
 
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     info!("--- upsert kv");
     {
@@ -87,7 +88,7 @@ async fn test_restart() -> anyhow::Result<()> {
     tokio::time::sleep(Duration::from_millis(10_000)).await;
 
     // try to reconnect the restarted server.
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     info!("--- get kv");
     {

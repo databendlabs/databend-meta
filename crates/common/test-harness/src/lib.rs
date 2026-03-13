@@ -27,7 +27,6 @@ pub use databend_meta_runtime_api::TokioRuntime;
 pub use harness::meta_service_test_harness;
 pub use harness::meta_service_test_harness_sync;
 pub use service::MetaSrvTestContext;
-pub use service::make_grpc_client;
 pub use service::start_metasrv;
 pub use service::start_metasrv_cluster;
 pub use service::start_metasrv_with_context;

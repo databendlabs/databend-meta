@@ -38,6 +38,7 @@ use test_harness::test;
 
 use crate::testing::meta_service_test_harness;
 use crate::testing::since_epoch_sec;
+use crate::tests::service::grpc_client;
 use crate::tests::service::make_grpc_client;
 
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
@@ -47,7 +48,7 @@ async fn test_kv_read_v1_on_leader() -> anyhow::Result<()> {
 
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
 
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     initialize_kvs(&client).await?;
     test_streamed_mget(&client, now_sec).await?;
@@ -63,11 +64,11 @@ async fn test_kv_read_v1_on_follower() -> anyhow::Result<()> {
 
     let tcs = crate::tests::start_metasrv_cluster::<TokioRuntime>(&[0, 1, 2]).await?;
 
-    let client = tcs[0].grpc_client().await?;
+    let client = grpc_client(&tcs[0]).await?;
 
     initialize_kvs(&client).await?;
 
-    let client = tcs[1].grpc_client().await?;
+    let client = grpc_client(&tcs[1]).await?;
     test_streamed_mget(&client, now_sec).await?;
     test_streamed_list(&client, now_sec).await?;
 

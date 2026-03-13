@@ -24,6 +24,7 @@ use databend_meta_types::protobuf as pb;
 use test_harness::test;
 
 use crate::testing::meta_service_test_harness;
+use crate::tests::service::grpc_client;
 
 fn b(s: &str) -> Vec<u8> {
     s.as_bytes().to_vec()
@@ -46,7 +47,7 @@ fn kv_transaction_req(
 #[fastrace::trace]
 async fn test_kv_transaction_unconditional() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     let txn = kv_transaction_req(vec![(None, vec![TxnOp::put("k1", b("v1"))])]);
 
@@ -66,7 +67,7 @@ async fn test_kv_transaction_unconditional() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_multi_branch_fallthrough() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     // k1 does not exist (seq=0)
     let txn = kv_transaction_req(vec![
@@ -95,7 +96,7 @@ async fn test_kv_transaction_multi_branch_fallthrough() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_first_branch_matches() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     // k1 does not exist → seq==0
     let txn = kv_transaction_req(vec![
@@ -124,7 +125,7 @@ async fn test_kv_transaction_first_branch_matches() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_no_match() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     let txn = kv_transaction_req(vec![
         // Only branch: requires k1 seq==99 → fails (key doesn't exist)
@@ -152,7 +153,7 @@ async fn test_kv_transaction_no_match() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_get_op() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("k1", b"hello")).await?;
 
@@ -177,7 +178,7 @@ async fn test_kv_transaction_get_op() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_delete_op() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("k1", b"val")).await?;
 
@@ -198,7 +199,7 @@ async fn test_kv_transaction_delete_op() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_delete_by_prefix_op() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("pfx/a", b"1")).await?;
     client.upsert_kv(UpsertKV::update("pfx/b", b"2")).await?;
@@ -223,7 +224,7 @@ async fn test_kv_transaction_delete_by_prefix_op() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_value_condition() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("k1", b"abc")).await?;
 
@@ -258,7 +259,7 @@ async fn test_kv_transaction_value_condition() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_or_predicate() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("k1", b"v1")).await?;
 
@@ -285,7 +286,7 @@ async fn test_kv_transaction_or_predicate() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_multiple_ops_in_branch() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("k1", b"old")).await?;
 
@@ -319,7 +320,7 @@ async fn test_kv_transaction_multiple_ops_in_branch() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_put_match_seq_none() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("k1", b"old")).await?;
 
@@ -345,7 +346,7 @@ async fn test_kv_transaction_put_match_seq_none() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_put_match_seq_not_match() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("k1", b"old")).await?;
 
@@ -380,7 +381,7 @@ async fn test_kv_transaction_put_match_seq_not_match() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_put_match_seq_match() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("k1", b"old")).await?;
 
@@ -413,7 +414,7 @@ async fn test_kv_transaction_put_match_seq_match() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_put_new_key_response() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     let txn = kv_transaction_req(vec![(None, vec![TxnOp::put("brand_new", b("val"))])]);
     let reply = client.transaction_v2(txn).await?;
@@ -449,7 +450,7 @@ async fn test_kv_transaction_put_new_key_response() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_get_nonexistent() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     let txn = kv_transaction_req(vec![(None, vec![TxnOp::get("does_not_exist")])]);
     let reply = client.transaction_v2(txn).await?;
@@ -468,7 +469,7 @@ async fn test_kv_transaction_get_nonexistent() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_empty_branches() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     let txn = kv_transaction_req(vec![]);
     let reply = client.transaction_v2(txn).await?;
@@ -484,7 +485,7 @@ async fn test_kv_transaction_empty_branches() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_delete_match_seq_matches() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("k1", b"val")).await?;
 
@@ -526,7 +527,7 @@ async fn test_kv_transaction_delete_match_seq_matches() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_delete_match_seq_mismatch() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("k1", b"val")).await?;
 
@@ -578,7 +579,7 @@ async fn test_kv_transaction_delete_match_seq_mismatch() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_delete_by_prefix_response_count() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("p/a", b"1")).await?;
     client.upsert_kv(UpsertKV::update("p/b", b"2")).await?;
@@ -604,7 +605,7 @@ async fn test_kv_transaction_delete_by_prefix_response_count() -> anyhow::Result
 #[fastrace::trace]
 async fn test_kv_transaction_and_predicate_both_match() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("a", b"va")).await?;
     client.upsert_kv(UpsertKV::update("b", b"vb")).await?;
@@ -630,7 +631,7 @@ async fn test_kv_transaction_and_predicate_both_match() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_and_predicate_one_fails() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("a", b"va")).await?;
     // "b" does not exist → seq==0
@@ -659,7 +660,7 @@ async fn test_kv_transaction_and_predicate_one_fails() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_keys_with_prefix_condition() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     client.upsert_kv(UpsertKV::update("ns/x", b"1")).await?;
     client.upsert_kv(UpsertKV::update("ns/y", b"2")).await?;
@@ -693,7 +694,7 @@ async fn test_kv_transaction_keys_with_prefix_condition() -> anyhow::Result<()> 
 #[fastrace::trace]
 async fn test_kv_transaction_fetch_add_u64_from_zero() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     // "counter" doesn't exist → starts at 0; after = 0 + 5 = 5
     let txn = kv_transaction_req(vec![(None, vec![TxnOp::fetch_add_u64("counter", 5)])]);
@@ -719,7 +720,7 @@ async fn test_kv_transaction_fetch_add_u64_from_zero() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_fetch_add_u64_accumulates() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     let inc =
         |delta: i64| kv_transaction_req(vec![(None, vec![TxnOp::fetch_add_u64("counter", delta)])]);
@@ -767,7 +768,7 @@ async fn test_kv_transaction_fetch_add_u64_accumulates() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_fetch_increase_u64_with_floor() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     // current=0 (new key), floor=100, delta=1 → after = max(0, 100) + 1 = 101
     let txn = kv_transaction_req(vec![(None, vec![TxnOp::fetch_increase_u64(
@@ -810,7 +811,7 @@ async fn test_kv_transaction_fetch_increase_u64_with_floor() -> anyhow::Result<(
 #[fastrace::trace]
 async fn test_kv_transaction_fetch_max_u64() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     // Set counter to 50 first
     client
@@ -861,7 +862,7 @@ async fn test_kv_transaction_fetch_max_u64() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_fetch_increase_u64_match_seq_match() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     // First increment to establish the key (seq becomes 1)
     client
@@ -895,7 +896,7 @@ async fn test_kv_transaction_fetch_increase_u64_match_seq_match() -> anyhow::Res
 #[fastrace::trace]
 async fn test_kv_transaction_fetch_increase_u64_match_seq_mismatch() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     // Establish counter at 10 (seq=1)
     client
@@ -930,7 +931,7 @@ async fn test_kv_transaction_fetch_increase_u64_match_seq_mismatch() -> anyhow::
 #[fastrace::trace]
 async fn test_kv_transaction_put_sequential_basic() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     let txn = kv_transaction_req(vec![(None, vec![TxnOp::put_sequential(
         "log/",
@@ -987,7 +988,7 @@ async fn test_kv_transaction_put_sequential_basic() -> anyhow::Result<()> {
 #[fastrace::trace]
 async fn test_kv_transaction_put_sequential_unique_keys() -> anyhow::Result<()> {
     let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let client = tc.grpc_client().await?;
+    let client = grpc_client(&tc).await?;
 
     let mk_txn = |v: &'static str| {
         kv_transaction_req(vec![(None, vec![TxnOp::put_sequential(
