@@ -17,6 +17,7 @@ use databend_meta_types::Node;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::raft_types::Membership;
 use databend_meta_types::raft_types::StoredMembership;
+use databend_meta_types::raft_types::TypeConfig;
 use map_api::mvcc::ScopedSet;
 use maplit::btreemap;
 use openraft::testing::log_id;
@@ -34,10 +35,10 @@ pub(crate) async fn build_3_levels_leveled_map() -> anyhow::Result<LeveledMap> {
     let lm = LeveledMap::default();
     lm.with_sys_data(|sd| {
         *sd.last_membership_mut() = StoredMembership::new(
-            Some(log_id(1, 1, 1)),
+            Some(log_id::<TypeConfig>(1, 1, 1)),
             Membership::new_with_defaults(vec![], []),
         );
-        *sd.last_applied_mut() = Some(log_id(1, 1, 1));
+        *sd.last_applied_mut() = Some(log_id::<TypeConfig>(1, 1, 1));
         *sd.nodes_mut() = btreemap! {1=>Node::new("1", Endpoint::new("1", 1))};
     });
 
@@ -55,10 +56,10 @@ pub(crate) async fn build_3_levels_leveled_map() -> anyhow::Result<LeveledMap> {
 
     lm.with_sys_data(|sd| {
         *sd.last_membership_mut() = StoredMembership::new(
-            Some(log_id(2, 2, 2)),
+            Some(log_id::<TypeConfig>(2, 2, 2)),
             Membership::new_with_defaults(vec![], []),
         );
-        *sd.last_applied_mut() = Some(log_id(2, 2, 2));
+        *sd.last_applied_mut() = Some(log_id::<TypeConfig>(2, 2, 2));
         *sd.nodes_mut() = btreemap! {2=>Node::new("2", Endpoint::new("2", 2))};
     });
     let mut view = lm.to_view();
@@ -73,10 +74,10 @@ pub(crate) async fn build_3_levels_leveled_map() -> anyhow::Result<LeveledMap> {
 
     lm.with_sys_data(|sd| {
         *sd.last_membership_mut() = StoredMembership::new(
-            Some(log_id(3, 3, 3)),
+            Some(log_id::<TypeConfig>(3, 3, 3)),
             Membership::new_with_defaults(vec![], []),
         );
-        *sd.last_applied_mut() = Some(log_id(3, 3, 3));
+        *sd.last_applied_mut() = Some(log_id::<TypeConfig>(3, 3, 3));
         *sd.nodes_mut() = btreemap! {3=>Node::new("3", Endpoint::new("3", 3))};
     });
 

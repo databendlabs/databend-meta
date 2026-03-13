@@ -19,15 +19,18 @@ use openraft::TokioRuntime;
 use openraft::error::Infallible;
 use openraft::impls::OneshotResponder;
 use openraft::vote::RaftLeaderId;
-pub use openraft::vote::leader_id_adv::CommittedLeaderId;
 
 use crate::AppliedState;
 use crate::LogEntry;
 use crate::snapshot_db::DB;
+
 pub type NodeId = u64;
 pub type MembershipNode = openraft::EmptyNode;
 pub type LogIndex = u64;
 pub type Term = u64;
+
+pub type LeaderId = openraft::impls::leader_id_adv::LeaderId<Term, NodeId>;
+pub type CommittedLeaderId = openraft::vote::leader_id_adv::CommittedLeaderId<Term, NodeId>;
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
 pub struct TypeConfig {}
@@ -36,10 +39,10 @@ impl RaftTypeConfig for TypeConfig {
     type R = AppliedState;
     type NodeId = NodeId;
     type Node = MembershipNode;
-    type Term = u64;
-    type LeaderId = openraft::impls::leader_id_adv::LeaderId<Self>;
-    type Vote = openraft::impls::Vote<Self>;
-    type Entry = openraft::entry::Entry<TypeConfig>;
+    type Term = Term;
+    type LeaderId = LeaderId;
+    type Vote = openraft::Vote<LeaderId>;
+    type Entry = openraft::Entry<CommittedLeaderId, LogEntry, NodeId, MembershipNode>;
     type SnapshotData = DB;
     type AsyncRuntime = TokioRuntime;
     type Responder<T>
@@ -50,17 +53,17 @@ impl RaftTypeConfig for TypeConfig {
 
 pub type IOFlushed = openraft::storage::IOFlushed<TypeConfig>;
 
-pub type LogId = openraft::LogId<TypeConfig>;
-pub type Vote = openraft::Vote<TypeConfig>;
+pub type LogId = openraft::LogId<CommittedLeaderId>;
+pub type Vote = openraft::Vote<LeaderId>;
 
-pub type Membership = openraft::Membership<TypeConfig>;
-pub type StoredMembership = openraft::StoredMembership<TypeConfig>;
+pub type Membership = openraft::Membership<NodeId, MembershipNode>;
+pub type StoredMembership = openraft::StoredMembership<CommittedLeaderId, NodeId, MembershipNode>;
 
-pub type EntryPayload = openraft::EntryPayload<TypeConfig>;
-pub type Entry = openraft::Entry<TypeConfig>;
+pub type EntryPayload = openraft::EntryPayload<LogEntry, NodeId, MembershipNode>;
+pub type Entry = openraft::Entry<CommittedLeaderId, LogEntry, NodeId, MembershipNode>;
 
-pub type SnapshotMeta = openraft::SnapshotMeta<TypeConfig>;
-pub type Snapshot = openraft::Snapshot<TypeConfig>;
+pub type SnapshotMeta = openraft::SnapshotMeta<CommittedLeaderId, NodeId, MembershipNode>;
+pub type Snapshot = openraft::Snapshot<CommittedLeaderId, NodeId, MembershipNode, DB>;
 
 pub type RaftMetrics = openraft::RaftMetrics<TypeConfig>;
 pub type WatchReceiver<T> = openraft::type_config::alias::WatchReceiverOf<TypeConfig, T>;
@@ -77,7 +80,7 @@ pub type NetworkError = openraft::error::NetworkError<TypeConfig>;
 pub type StorageError = openraft::StorageError<TypeConfig>;
 pub type ForwardToLeader = openraft::error::ForwardToLeader<TypeConfig>;
 pub type Fatal = openraft::error::Fatal<TypeConfig>;
-pub type ChangeMembershipError = openraft::error::ChangeMembershipError<TypeConfig>;
+pub type ChangeMembershipError = openraft::error::ChangeMembershipError<CommittedLeaderId, NodeId>;
 pub type ClientWriteError = openraft::error::ClientWriteError<TypeConfig>;
 pub type InitializeError = openraft::error::InitializeError<TypeConfig>;
 pub type StreamingError = openraft::error::StreamingError<TypeConfig>;

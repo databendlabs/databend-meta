@@ -41,7 +41,7 @@ use crate::util::reply_to_api_result;
 pub struct MetaForwarder<'a, SP> {
     sto: &'a RaftStore<SP>,
     #[allow(dead_code)]
-    raft: &'a MetaRaft,
+    raft: &'a MetaRaft<SP>,
 }
 
 impl<'a, SP: SpawnApi> MetaForwarder<'a, SP> {

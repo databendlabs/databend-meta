@@ -37,6 +37,7 @@ use databend_meta_types::protobuf::SnapshotChunkRequestV003;
 use databend_meta_types::raft_types::SnapshotMeta;
 use databend_meta_types::raft_types::SnapshotResponse;
 use databend_meta_types::raft_types::StoredMembership;
+use databend_meta_types::raft_types::TypeConfig;
 use databend_meta_types::raft_types::Vote;
 use databend_meta_types::sys_data::SysData;
 use futures::TryStreamExt;
@@ -171,7 +172,7 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
 
     let mut client0 = tc0.raft_client().await?;
 
-    let last_log_id = log_id(10, 2, 4);
+    let last_log_id = log_id::<TypeConfig>(10, 2, 4);
 
     let snapshot_id = MetaSnapshotId::new(Some(last_log_id), 1);
 
@@ -256,7 +257,7 @@ async fn test_raft_service_install_snapshot_v004() -> anyhow::Result<()> {
 
     let mut client0 = tc0.raft_client().await?;
 
-    let last_log_id = log_id(10, 2, 4);
+    let last_log_id = log_id::<TypeConfig>(10, 2, 4);
 
     let snapshot_id = MetaSnapshotId::new(Some(last_log_id), 1);
 

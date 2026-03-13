@@ -128,7 +128,7 @@ pub type LogStore = MetaRaftLog;
 pub type SMStore<SP> = MetaRaftStateMachine<SP>;
 
 /// MetaRaft is an implementation of the generic Raft handling metadata R/W.
-pub type MetaRaft = Raft<TypeConfig>;
+pub type MetaRaft<SP> = Raft<TypeConfig, MetaRaftStateMachine<SP>>;
 
 /// MetaNode is the container of metadata related components and threads, such as storage, the raft node and a raft-state monitor.
 pub struct MetaNode<SP: SpawnApi> {
@@ -137,7 +137,7 @@ pub struct MetaNode<SP: SpawnApi> {
     ///
     /// Other components should keep a weak one.
     pub dispatcher_handle: Arc<DispatcherHandle>,
-    pub raft: MetaRaft,
+    pub raft: MetaRaft<SP>,
     pub runtime_config: RuntimeConfig,
     pub running_tx: watch::Sender<()>,
     pub running_rx: watch::Receiver<()>,
