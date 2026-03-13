@@ -80,7 +80,7 @@ use crate::meta_service::watcher::WatchTypes;
 use crate::metrics::InFlightRead;
 use crate::metrics::InFlightWrite;
 use crate::metrics::network_metrics;
-use crate::version::MIN_CLIENT_VERSION;
+use crate::raft_version::MIN_CLIENT_VERSION;
 
 /// Guard type for in-flight read requests.
 type InFlightReadGuard = Counted<InFlightRead, ()>;
