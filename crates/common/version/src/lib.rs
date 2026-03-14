@@ -129,6 +129,15 @@ mod tests {
         );
     }
 
+    /// Read a version from `[package.metadata.compat]` in this crate's Cargo.toml.
+    fn cargo_compat_version(key: &str) -> Version {
+        let v: toml::Value = toml::from_str(include_str!("../Cargo.toml")).unwrap();
+        let s = v["package"]["metadata"]["compat"][key]
+            .as_str()
+            .unwrap_or_else(|| panic!("missing key `{key}` in [package.metadata.compat]"));
+        Version::parse(s)
+    }
+
     #[test]
     fn test_version_string() {
         assert_eq!(version_str(), "260312.0.0");
@@ -181,6 +190,40 @@ mod tests {
             "MIN_RAFT_CLIENT_VERSION",
             &MIN_RAFT_CLIENT_VERSION,
             spec.min_compatible_client_version(),
+        );
+    }
+
+    #[test]
+    fn test_min_client_version_matches_cargo_metadata() {
+        assert_eq!(
+            MIN_CLIENT_VERSION,
+            cargo_compat_version("min-client-version")
+        );
+    }
+
+    #[test]
+    fn test_min_server_version_matches_cargo_metadata() {
+        let key = if cfg!(feature = "txn-put-match-seq") {
+            "min-server-version-txn-put-match-seq"
+        } else {
+            "min-server-version"
+        };
+        assert_eq!(MIN_SERVER_VERSION, cargo_compat_version(key));
+    }
+
+    #[test]
+    fn test_min_raft_server_version_matches_cargo_metadata() {
+        assert_eq!(
+            MIN_RAFT_SERVER_VERSION,
+            cargo_compat_version("min-raft-server-version")
+        );
+    }
+
+    #[test]
+    fn test_min_raft_client_version_matches_cargo_metadata() {
+        assert_eq!(
+            MIN_RAFT_CLIENT_VERSION,
+            cargo_compat_version("min-raft-client-version")
         );
     }
 }
