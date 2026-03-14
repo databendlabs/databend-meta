@@ -14,6 +14,7 @@
 
 //! Supporting mod for tests
 
+pub mod cargo_metadata;
 pub mod meta_node;
 pub mod service;
 pub mod tls_constants;

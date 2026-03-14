@@ -46,6 +46,11 @@ txn-put-match-seq = ["databend-meta-types/txn-put-match-seq", "databend-meta-ver
 anyhow = { workspace = true }
 databend-meta-version = { workspace = true }
 rand = { workspace = true }
+toml = { workspace = true }
+
+[package.metadata.compat]
+min-server-version = "1.2.869"
+min-server-version-txn-put-match-seq = "260217.0.0"
 
 [lints]
 workspace = true
