@@ -101,6 +101,27 @@ impl Version {
     }
 }
 
+impl Version {
+    /// Parses a version string in the format "major.minor.patch".
+    ///
+    /// Panics if the string is not in the expected format.
+    pub fn parse(s: &str) -> Self {
+        let parts: Vec<&str> = s.split('.').collect();
+        assert_eq!(parts.len(), 3, "expected 'major.minor.patch', got: {}", s);
+        Version::new(
+            parts[0]
+                .parse()
+                .unwrap_or_else(|_| panic!("invalid major in: {}", s)),
+            parts[1]
+                .parse()
+                .unwrap_or_else(|_| panic!("invalid minor in: {}", s)),
+            parts[2]
+                .parse()
+                .unwrap_or_else(|_| panic!("invalid patch in: {}", s)),
+        )
+    }
+}
+
 impl From<&semver::Version> for Version {
     fn from(v: &semver::Version) -> Self {
         Version::new(v.major, v.minor, v.patch)

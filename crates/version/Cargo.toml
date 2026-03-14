@@ -10,5 +10,12 @@ edition = { workspace = true }
 [dependencies]
 semver = { workspace = true }
 
+[dev-dependencies]
+toml = { workspace = true }
+
+[package.metadata.compat]
+min-client-version = "1.2.676"
+min-server-version = "1.2.770"
+
 [lints]
 workspace = true

@@ -14,6 +14,7 @@
 #![allow(clippy::uninlined_format_args)]
 #![allow(clippy::diverging_sub_expression)]
 
+mod cargo_metadata;
 mod grpc_client;
 mod grpc_server;
 
