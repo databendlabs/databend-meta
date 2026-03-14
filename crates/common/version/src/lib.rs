@@ -131,7 +131,11 @@ mod tests {
 
     /// Read a version from `[package.metadata.compat]` in this crate's Cargo.toml.
     fn cargo_compat_version(key: &str) -> Version {
-        let v: toml::Value = toml::from_str(include_str!("../Cargo.toml")).unwrap();
+        let v: toml::Value = toml::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/Cargo.toml"
+        )))
+        .unwrap();
         let s = v["package"]["metadata"]["compat"][key]
             .as_str()
             .unwrap_or_else(|| panic!("missing key `{key}` in [package.metadata.compat]"));
@@ -140,17 +144,17 @@ mod tests {
 
     #[test]
     fn test_version_string() {
-        assert_eq!(version_str(), "260312.0.0");
+        assert_eq!(version_str(), "260312.1.0");
     }
 
     #[test]
     fn test_semver_components() {
-        assert_eq!(semver_tuple(version()), (260312, 0, 0));
+        assert_eq!(semver_tuple(version()), (260312, 1, 0));
     }
 
     #[test]
     fn test_semver_display() {
-        assert_eq!(version().to_semver().to_string(), "260312.0.0");
+        assert_eq!(version().to_semver().to_string(), "260312.1.0");
     }
 
     #[test]
