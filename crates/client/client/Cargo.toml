@@ -19,8 +19,8 @@ databend-base = { workspace = true }
 databend-meta-kvapi = { workspace = true }
 databend-meta-kvapi-test-suite = { workspace = true }
 databend-meta-runtime-api = { workspace = true }
-databend-meta-types = { workspace = true }
-databend-meta-version = { workspace = true }
+databend-meta-types = { workspace = true, features = ["txn-put-match-seq"] }
+databend-meta-version = { workspace = true, features = ["txn-put-match-seq"] }
 derive_more = { workspace = true }
 display-more = { workspace = true }
 fastrace = { workspace = true }
@@ -38,10 +38,6 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 
-[features]
-transaction-v2 = []
-txn-put-match-seq = ["databend-meta-types/txn-put-match-seq", "databend-meta-version/txn-put-match-seq"]
-
 [dev-dependencies]
 anyhow = { workspace = true }
 databend-meta-version = { workspace = true }
@@ -49,8 +45,7 @@ rand = { workspace = true }
 toml = { workspace = true }
 
 [package.metadata.compat]
-min-server-version = "1.2.869"
-min-server-version-txn-put-match-seq = "260217.0.0"
+min-server-version = "260217.0.0"
 
 [lints]
 workspace = true
