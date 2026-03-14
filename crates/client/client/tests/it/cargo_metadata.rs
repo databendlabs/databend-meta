@@ -18,7 +18,11 @@
 use databend_meta_version::Version;
 
 fn cargo_compat_version(key: &str) -> Version {
-    let v: toml::Value = toml::from_str(include_str!("../../Cargo.toml")).unwrap();
+    let v: toml::Value = toml::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/Cargo.toml"
+    )))
+    .unwrap();
     let s = v["package"]["metadata"]["compat"][key]
         .as_str()
         .unwrap_or_else(|| panic!("missing key `{key}` in [package.metadata.compat]"));
