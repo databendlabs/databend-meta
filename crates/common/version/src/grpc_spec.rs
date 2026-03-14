@@ -252,11 +252,7 @@ impl GrpcSpec {
             add(&mut cli, F::KvList, Version::max());
             add(&mut cli, F::KvTransaction, Version::max());
 
-            #[cfg(feature = "txn-put-match-seq")]
             add(&mut cli, F::KvTransactionPutMatchSeq, ver(260217, 0, 0));
-
-            #[cfg(not(feature = "txn-put-match-seq"))]
-            add(&mut cli, F::KvTransactionPutMatchSeq, Version::max());
         }
 
         FeatureSpec::build(version, srv, cli)
@@ -280,11 +276,7 @@ mod tests {
         let spec = GrpcSpec::load();
         let min_server = spec.min_compatible_server_version();
 
-        #[cfg(feature = "txn-put-match-seq")]
         assert_eq!(min_server, Version::new(260217, 0, 0));
-
-        #[cfg(not(feature = "txn-put-match-seq"))]
-        assert_eq!(min_server, Version::new(1, 2, 869));
     }
 
     #[test]

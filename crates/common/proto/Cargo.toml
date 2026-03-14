@@ -27,9 +27,6 @@ tonic = { workspace = true }
 prost-build = { workspace = true }
 tonic-build = { workspace = true }
 
-[features]
-txn-put-match-seq = []
-
 [package.metadata.cargo-machete]
 ignored = ["deepsize", "num-derive", "num-traits", "prost"]
 
