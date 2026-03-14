@@ -1,6 +1,6 @@
 CARGO_TARGET_DIR ?= $(CURDIR)/target
 
-.PHONY: all setup fmt lint build build-release check test unit-test miri coverage coverage-html clean doc doc-open
+.PHONY: all setup fmt lint build build-release check test unit-test miri coverage coverage-html clean doc doc-open compat-history
 
 all: lint test
 
@@ -19,7 +19,7 @@ fmt:
 	taplo fmt
 
 # Linting
-lint: fmt
+lint: fmt compat-history
 	cargo clippy --workspace --all-targets -- -D warnings
 	cargo machete
 	cargo doc --workspace --no-deps
@@ -30,14 +30,14 @@ check:
 	cargo check --workspace --all-targets
 
 # Build
-build:
+build: compat-history
 	cargo build --workspace
 
 build-release:
 	cargo build --workspace --release
 
 # Testing
-test: unit-test
+test: compat-history unit-test
 
 unit-test:
 	ulimit -n 10000 2>/dev/null || true; \
@@ -55,6 +55,10 @@ coverage-html:
 miri:
 	cargo miri setup
 	MIRIFLAGS="-Zmiri-disable-isolation" cargo miri test --no-default-features
+
+# Update compatibility history
+compat-history:
+	python3 docs/update-compat-history.py
 
 # Cleanup
 clean:
