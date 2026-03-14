@@ -13,13 +13,9 @@ semver = { workspace = true }
 [dev-dependencies]
 toml = { workspace = true }
 
-[features]
-txn-put-match-seq = []
-
 [package.metadata.compat]
 min-client-version = "1.2.676"
-min-server-version = "1.2.869"
-min-server-version-txn-put-match-seq = "260217.0.0"
+min-server-version = "260217.0.0"
 min-raft-server-version = "1.2.547"
 min-raft-client-version = "0.0.0"
 

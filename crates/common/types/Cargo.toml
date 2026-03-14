@@ -29,9 +29,6 @@ state-machine-api = { workspace = true }
 thiserror = { workspace = true }
 tonic = { workspace = true }
 
-[features]
-txn-put-match-seq = ["databend-meta-proto/txn-put-match-seq"]
-
 [dev-dependencies]
 anyhow = { workspace = true }
 tempfile = { workspace = true }

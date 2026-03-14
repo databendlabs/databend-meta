@@ -53,43 +53,21 @@ pub fn grpc_changelog() -> BTreeMap<Version, GrpcVersionCompat> {
     });
 
     // 260217.0.0: client adds KvTransactionPutMatchSeq (server since 260217.0.0)
-    #[cfg(feature = "txn-put-match-seq")]
     m.insert(ver(260217, 0, 0), GrpcVersionCompat {
         min_client: ver(1, 2, 676),
         min_server: ver(260217, 0, 0),
-    });
-
-    // 260217.0.0: without txn-put-match-seq, no new client requirement
-    #[cfg(not(feature = "txn-put-match-seq"))]
-    m.insert(ver(260217, 0, 0), GrpcVersionCompat {
-        min_client: ver(1, 2, 676),
-        min_server: ver(1, 2, 869),
     });
 
     // 260312.0.0: no compatibility change
-    #[cfg(feature = "txn-put-match-seq")]
     m.insert(ver(260312, 0, 0), GrpcVersionCompat {
         min_client: ver(1, 2, 676),
         min_server: ver(260217, 0, 0),
-    });
-
-    #[cfg(not(feature = "txn-put-match-seq"))]
-    m.insert(ver(260312, 0, 0), GrpcVersionCompat {
-        min_client: ver(1, 2, 676),
-        min_server: ver(1, 2, 869),
     });
 
     // 260312.1.0: no compatibility change
-    #[cfg(feature = "txn-put-match-seq")]
     m.insert(ver(260312, 1, 0), GrpcVersionCompat {
         min_client: ver(1, 2, 676),
         min_server: ver(260217, 0, 0),
-    });
-
-    #[cfg(not(feature = "txn-put-match-seq"))]
-    m.insert(ver(260312, 1, 0), GrpcVersionCompat {
-        min_client: ver(1, 2, 676),
-        min_server: ver(1, 2, 869),
     });
 
     m

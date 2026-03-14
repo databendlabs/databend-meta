@@ -160,15 +160,7 @@ impl pb::TxnOp {
 
         match req {
             pb::txn_op::Request::Put(p) => {
-                #[cfg(feature = "txn-put-match-seq")]
-                {
-                    p.match_seq = seq;
-                }
-
-                #[cfg(not(feature = "txn-put-match-seq"))]
-                {
-                    let _ = p;
-                }
+                p.match_seq = seq;
             }
             pb::txn_op::Request::Delete(p) => p.match_seq = seq,
             pb::txn_op::Request::FetchIncreaseU64(d) => d.match_seq = seq,
@@ -349,9 +341,8 @@ mod tests {
         assert_eq!(delete_req.match_seq, Some(123));
     }
 
-    #[cfg(feature = "txn-put-match-seq")]
     #[test]
-    fn test_match_seq_on_put_enabled() {
+    fn test_match_seq_on_put() {
         let op = pb::TxnOp::put("k1", b"v1".to_vec()).match_seq(Some(7));
 
         let Some(pb::txn_op::Request::Put(put_req)) = &op.request else {
@@ -359,18 +350,6 @@ mod tests {
         };
 
         assert_eq!(put_req.match_seq, Some(7));
-    }
-
-    #[cfg(not(feature = "txn-put-match-seq"))]
-    #[test]
-    fn test_match_seq_on_put_disabled() {
-        let op = pb::TxnOp::put("k1", b"v1".to_vec()).match_seq(Some(7));
-
-        let Some(pb::txn_op::Request::Put(put_req)) = &op.request else {
-            panic!("Expected Put request");
-        };
-
-        assert_eq!(put_req.match_seq, None);
     }
 
     #[test]
