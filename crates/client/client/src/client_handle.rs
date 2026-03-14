@@ -162,7 +162,6 @@ impl<RT: SpawnApi> ClientHandle<RT> {
         self.request(txn).await.map_err(MetaError::from)
     }
 
-    #[cfg(any(test, feature = "transaction-v2"))]
     pub async fn transaction_v2(
         &self,
         txn: databend_meta_types::protobuf::KvTransactionRequest,

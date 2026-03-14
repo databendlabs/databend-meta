@@ -31,13 +31,8 @@ fn cargo_compat_version(key: &str) -> Version {
 
 #[test]
 fn test_min_server_version_matches_version_crate() {
-    let key = if cfg!(feature = "txn-put-match-seq") {
-        "min-server-version-txn-put-match-seq"
-    } else {
-        "min-server-version"
-    };
     assert_eq!(
         databend_meta_version::MIN_SERVER_VERSION,
-        cargo_compat_version(key)
+        cargo_compat_version("min-server-version")
     );
 }
