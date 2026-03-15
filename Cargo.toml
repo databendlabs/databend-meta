@@ -8,9 +8,9 @@ edition = "2024"
 [workspace]
 resolver = "2"
 members = [
-    "crates/common/base",
+    "crates/server/base",
     "crates/common/proto",
-    "crates/common/types",
+    "crates/server/types",
     "crates/common/runtime-api",
     "crates/common/version",
     "crates/common/test-harness",
@@ -27,7 +27,7 @@ members = [
 [workspace.dependencies]
 # Internal crates
 databend-meta = { path = "crates/server/service" }
-databend-meta-base = { path = "crates/common/base" }
+databend-meta-base = { path = "crates/server/base" }
 databend-meta-client = { path = "crates/client/client" }
 databend-meta-kvapi = { path = "crates/client/kvapi" }
 databend-meta-kvapi-test-suite = { path = "crates/client/kvapi-test-suite" }
@@ -37,7 +37,7 @@ databend-meta-raft-store = { path = "crates/server/raft-store" }
 databend-meta-runtime-api = { path = "crates/common/runtime-api" }
 databend-meta-sled-store = { path = "crates/server/sled-store" }
 databend-meta-test-harness = { path = "crates/common/test-harness" }
-databend-meta-types = { path = "crates/common/types" }
+databend-meta-types = { path = "crates/server/types" }
 databend-meta-version = { path = "crates/common/version" }
 
 # External dependencies from databendlabs forks
