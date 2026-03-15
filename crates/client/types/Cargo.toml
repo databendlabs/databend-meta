@@ -8,33 +8,19 @@ edition = { workspace = true }
 
 [dependencies]
 anyerror = { workspace = true }
-databend-meta-base = { workspace = true }
 databend-meta-proto = { workspace = true }
-deepsize = { workspace = true }
-derive_more = { workspace = true }
-display-more = { workspace = true }
-futures-util = { workspace = true }
 log = { workspace = true }
 map-api = { workspace = true }
-num-derive = { workspace = true }
-num-traits = { workspace = true }
-num_cpus = { workspace = true }
 openraft = { workspace = true }
-pretty_assertions = { workspace = true }
-prost = { workspace = true }
-rotbl = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 state-machine-api = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 tonic = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
-tempfile = { workspace = true }
-
-[package.metadata.cargo-machete]
-ignored = ["num-derive", "prost", "databend-meta-proto"]
 
 [lints]
 workspace = true

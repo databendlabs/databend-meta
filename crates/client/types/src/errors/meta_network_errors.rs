@@ -16,12 +16,12 @@ use std::fmt::Display;
 use std::io;
 
 use anyerror::AnyError;
-use databend_meta_base::InvalidReply;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 use tonic::Code;
 
+use crate::InvalidReply;
 use crate::errors;
 
 // represent network related errors

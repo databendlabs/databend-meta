@@ -62,7 +62,9 @@ impl NodeInfo {
         binary_version: String,
         cache_id: String,
     ) -> NodeInfo {
-        let cpu_nums = num_cpus::get() as u64;
+        let cpu_nums = std::thread::available_parallelism()
+            .map(|n| n.get() as u64)
+            .unwrap_or(1);
         NodeInfo {
             id,
             secret,

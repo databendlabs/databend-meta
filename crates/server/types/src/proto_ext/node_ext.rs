@@ -17,8 +17,13 @@ use databend_meta_base::Node;
 
 use crate::protobuf as pb;
 
-impl From<Node> for pb::Node {
-    fn from(n: Node) -> Self {
+pub trait PbNodeExt {
+    fn from_node(n: Node) -> pb::Node;
+    fn to_node(self) -> Node;
+}
+
+impl PbNodeExt for pb::Node {
+    fn from_node(n: Node) -> pb::Node {
         pb::Node {
             name: n.name,
             addr: n.endpoint.addr().to_string(),
@@ -26,12 +31,10 @@ impl From<Node> for pb::Node {
             grpc_api_advertise_address: n.grpc_api_advertise_address,
         }
     }
-}
 
-impl From<pb::Node> for Node {
-    fn from(n: pb::Node) -> Self {
-        Node::new(n.name, Endpoint::new(n.addr, n.port as u16))
-            .with_grpc_advertise_address(n.grpc_api_advertise_address)
+    fn to_node(self) -> Node {
+        Node::new(self.name, Endpoint::new(self.addr, self.port as u16))
+            .with_grpc_advertise_address(self.grpc_api_advertise_address)
     }
 }
 
@@ -43,8 +46,8 @@ mod tests {
     fn test_node_round_trip() {
         let n = Node::new("node1", Endpoint::new("10.0.0.1", 9191))
             .with_grpc_advertise_address(Some("grpc.example.com:443"));
-        let pb_n = pb::Node::from(n.clone());
-        let back = Node::from(pb_n);
+        let pb_n = pb::Node::from_node(n.clone());
+        let back = pb_n.to_node();
         assert_eq!(n, back);
     }
 }
