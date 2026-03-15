@@ -77,6 +77,7 @@ impl GrpcSpec {
             add(&mut srv, F::KvApiMGetKv, ver(1, 2, 163));
             add(&mut srv, F::KvApiListKv, ver(1, 2, 163));
             add(&mut srv, F::KvReadV1, ver(1, 2, 163));
+            add(&mut srv, F::TransactionRequestPrevValueFlag, ver(1, 2, 163));
 
             add(&mut cli, F::OperationAsIs, ver(1, 2, 163));
             add(&mut cli, F::KvApi, ver(1, 2, 163));
@@ -84,6 +85,7 @@ impl GrpcSpec {
             add(&mut cli, F::KvApiGetKv, ver(1, 2, 163));
             add(&mut cli, F::KvApiMGetKv, ver(1, 2, 163));
             add(&mut cli, F::KvApiListKv, ver(1, 2, 163));
+            add(&mut cli, F::TransactionRequestPrevValueFlag, ver(1, 2, 163));
 
             // 2023-10-20: since 1.2.176:
             // 👥 client: call stream api kv_read_v1(), revert to 1.1.32 if server < 1.2.163
@@ -237,6 +239,14 @@ impl GrpcSpec {
             // 🖥 server: add TxnPutRequest.match_seq for conditional put
             add(&mut srv, F::KvTransactionPutMatchSeq, ver(260217, 0, 0));
 
+            // 2026-02-18: since 260217.0.0
+            // 👥 client: use `kv_transaction` gRPC API.
+            add(&mut cli, F::KvTransaction, ver(260217, 0, 0));
+
+            // 2026-02-18: since 260217.0.0
+            // 👥 client: use match_seq in put `kv_transaction` gRPC API.
+            add(&mut cli, F::KvTransactionPutMatchSeq, ver(260217, 0, 0));
+
             // Sever does not set this field but the field still present.
             // And the error is set instead in Status.
             //
@@ -250,9 +260,6 @@ impl GrpcSpec {
             add(&mut cli, F::ProposedAtMs, Version::max());
             add(&mut cli, F::FetchIncreaseU64, Version::max());
             add(&mut cli, F::KvList, Version::max());
-            add(&mut cli, F::KvTransaction, Version::max());
-
-            add(&mut cli, F::KvTransactionPutMatchSeq, ver(260217, 0, 0));
         }
 
         FeatureSpec::build(version, srv, cli)
