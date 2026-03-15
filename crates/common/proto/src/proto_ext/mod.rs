@@ -22,7 +22,6 @@ mod keys_count_ext;
 mod kv_transaction_reply_ext;
 mod log_id_ext;
 mod membership_ext;
-mod node_ext;
 mod put_sequential_ext;
 mod raft_reply_ext;
 mod seq_v_ext;

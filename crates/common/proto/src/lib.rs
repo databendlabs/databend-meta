@@ -21,6 +21,8 @@
 //! This crate provides the wire-protocol types generated from `.proto` files,
 //! along with convenience methods and Display implementations.
 
+pub use databend_meta_base;
+
 pub mod proto_display;
 pub mod proto_ext;
 

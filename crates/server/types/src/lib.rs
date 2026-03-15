@@ -27,6 +27,7 @@ mod message;
 pub mod cmd;
 pub mod errors;
 pub mod kv_transaction;
+pub mod proto_ext;
 pub mod raft_types;
 
 pub mod snapshot_db;
@@ -99,3 +100,4 @@ pub use state_machine_api::SeqV;
 pub use crate::cmd::Cmd;
 pub use crate::cmd::CmdContext;
 pub use crate::grpc_helper::GrpcHelper;
+pub use crate::proto_ext::PbNodeExt;

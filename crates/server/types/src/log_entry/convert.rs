@@ -20,6 +20,7 @@ use openraft::entry::RaftEntry;
 
 use crate::Cmd;
 use crate::LogEntry;
+use crate::proto_ext::PbNodeExt;
 use crate::protobuf as pb;
 use crate::raft_types;
 
@@ -48,7 +49,7 @@ impl PbLogEntryExt for pb::LogEntry {
                         overriding,
                     } => pb::log_entry::Cmd::AddNode(pb::CmdAddNode {
                         node_id,
-                        node: Some(pb::Node::from(node)),
+                        node: Some(pb::Node::from_node(node)),
                         overriding,
                     }),
                     Cmd::RemoveNode { node_id } => {
@@ -100,7 +101,7 @@ impl PbLogEntryExt for pb::LogEntry {
                         node_id: c.node_id,
                         node: c
                             .node
-                            .map(databend_meta_base::Node::from)
+                            .map(pb::Node::to_node)
                             .ok_or_else(|| "CmdAddNode missing node".to_string())?,
                         overriding: c.overriding,
                     },
@@ -345,10 +346,12 @@ mod tests {
 
     #[test]
     fn test_node_round_trip() {
+        use crate::proto_ext::PbNodeExt;
+
         let n = Node::new("node1", Endpoint::new("10.0.0.1", 9191))
             .with_grpc_advertise_address(Some("grpc.example.com:443"));
-        let pb_n = pb::Node::from(n.clone());
-        let back = Node::from(pb_n);
+        let pb_n = pb::Node::from_node(n.clone());
+        let back = pb_n.to_node();
         assert_eq!(n, back);
     }
 

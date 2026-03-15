@@ -100,19 +100,6 @@ impl WatchResponse {
         }
     }
 
-    pub fn new(change: &databend_meta_base::Change<Vec<u8>, String>) -> Option<WatchResponse> {
-        let ev = pb::Event {
-            key: change.ident.clone()?,
-            prev: change.prev.clone().map(pb::SeqV::from),
-            current: change.result.clone().map(pb::SeqV::from),
-        };
-
-        Some(WatchResponse {
-            event: Some(ev),
-            is_initialization: false,
-        })
-    }
-
     /// Check if the response is an empty indicator just to indicating initialization completion.
     pub fn is_initialization_complete_flag(&self) -> bool {
         !self.is_initialization && self.event.is_none()
