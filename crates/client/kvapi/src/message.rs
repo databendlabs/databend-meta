@@ -15,9 +15,10 @@
 use std::fmt;
 use std::fmt::Formatter;
 
-use databend_meta_client_types::Change;
-use databend_meta_client_types::SeqV;
 use display_more::display_slice::DisplaySliceExt;
+
+use crate::types::Change;
+use crate::types::SeqV;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct GetKVReq {

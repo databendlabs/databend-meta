@@ -14,6 +14,8 @@
 
 #![allow(clippy::uninlined_format_args)]
 
+pub extern crate databend_meta_client_types as types;
+
 mod api;
 mod dir_name;
 mod helper;

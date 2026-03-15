@@ -15,33 +15,6 @@
 use std::time::Duration;
 use std::time::SystemTime;
 
-use databend_meta_client_types::ConditionResult;
-use databend_meta_client_types::MatchSeq;
-use databend_meta_client_types::MetaSpec;
-use databend_meta_client_types::SeqV;
-use databend_meta_client_types::TxnCondition;
-use databend_meta_client_types::TxnDeleteByPrefixRequest;
-use databend_meta_client_types::TxnDeleteByPrefixResponse;
-use databend_meta_client_types::TxnDeleteRequest;
-use databend_meta_client_types::TxnDeleteResponse;
-use databend_meta_client_types::TxnGetRequest;
-use databend_meta_client_types::TxnGetResponse;
-use databend_meta_client_types::TxnOp;
-use databend_meta_client_types::TxnOpResponse;
-use databend_meta_client_types::TxnPutResponse;
-use databend_meta_client_types::TxnReply;
-use databend_meta_client_types::TxnRequest;
-use databend_meta_client_types::UpsertKV;
-use databend_meta_client_types::With;
-use databend_meta_client_types::normalize_meta::NormalizeMeta;
-use databend_meta_client_types::protobuf as pb;
-use databend_meta_client_types::protobuf::BooleanExpression;
-use databend_meta_client_types::protobuf::FetchIncreaseU64Response;
-use databend_meta_client_types::protobuf::KvMeta;
-use databend_meta_client_types::txn_condition;
-use databend_meta_client_types::txn_op;
-use databend_meta_client_types::txn_op_response;
-use databend_meta_client_types::txn_op_response::Response;
 use databend_meta_kvapi as kvapi;
 use databend_meta_kvapi::KvApiExt;
 use databend_meta_kvapi::ListOptions;
@@ -54,6 +27,34 @@ use log::debug;
 use log::info;
 use state_machine_api::KVMeta;
 use tokio::time::sleep;
+
+use crate::types::ConditionResult;
+use crate::types::MatchSeq;
+use crate::types::MetaSpec;
+use crate::types::SeqV;
+use crate::types::TxnCondition;
+use crate::types::TxnDeleteByPrefixRequest;
+use crate::types::TxnDeleteByPrefixResponse;
+use crate::types::TxnDeleteRequest;
+use crate::types::TxnDeleteResponse;
+use crate::types::TxnGetRequest;
+use crate::types::TxnGetResponse;
+use crate::types::TxnOp;
+use crate::types::TxnOpResponse;
+use crate::types::TxnPutResponse;
+use crate::types::TxnReply;
+use crate::types::TxnRequest;
+use crate::types::UpsertKV;
+use crate::types::With;
+use crate::types::normalize_meta::NormalizeMeta;
+use crate::types::pb;
+use crate::types::pb::BooleanExpression;
+use crate::types::pb::FetchIncreaseU64Response;
+use crate::types::pb::KvMeta;
+use crate::types::txn_condition;
+use crate::types::txn_op;
+use crate::types::txn_op_response;
+use crate::types::txn_op_response::Response;
 
 pub struct TestSuite {}
 
@@ -507,9 +508,10 @@ impl TestSuite {
         &self,
         kv: &KV,
     ) -> anyhow::Result<()> {
-        use databend_meta_client_types::errors::IncompleteStream;
         use databend_meta_kvapi::KVStream;
         use futures_util::StreamExt;
+
+        use crate::types::errors::IncompleteStream;
 
         info!("--- kvapi::KVApiTestSuite::kv_get_many_kv_error_propagation() start");
 

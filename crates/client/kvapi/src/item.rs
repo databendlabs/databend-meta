@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use databend_meta_client_types::SeqV;
-
 use crate::Key;
+use crate::types::SeqV;
 
 /// Key-Value item contains key and optional value with seq number.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,11 +43,10 @@ impl<K: Key> NonEmptyItem<K> {
 
 #[cfg(test)]
 mod tests {
-    use databend_meta_client_types::SeqV;
-
     use super::*;
     use crate::testing::FooKey;
     use crate::testing::FooValue;
+    use crate::types::SeqV;
 
     fn foo_key(a: u64, b: &str, c: u64) -> FooKey {
         FooKey {

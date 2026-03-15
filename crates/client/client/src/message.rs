@@ -15,19 +15,6 @@
 use std::fmt;
 use std::fmt::Formatter;
 
-use databend_meta_client_types::MetaClientError;
-use databend_meta_client_types::MetaError;
-use databend_meta_client_types::TxnReply;
-use databend_meta_client_types::TxnRequest;
-use databend_meta_client_types::protobuf::ClientInfo;
-use databend_meta_client_types::protobuf::ClusterStatus;
-use databend_meta_client_types::protobuf::ExportedChunk;
-use databend_meta_client_types::protobuf::KvTransactionReply;
-use databend_meta_client_types::protobuf::KvTransactionRequest;
-use databend_meta_client_types::protobuf::MemberListReply;
-use databend_meta_client_types::protobuf::StreamItem;
-use databend_meta_client_types::protobuf::WatchRequest;
-use databend_meta_client_types::protobuf::WatchResponse;
 use fastrace::Span;
 use tokio::sync::oneshot::Sender;
 use tonic::codegen::BoxStream;
@@ -36,6 +23,19 @@ use crate::established_client::EstablishedClient;
 use crate::grpc_action::ListKVReq;
 use crate::grpc_action::MGetKVReq;
 use crate::grpc_action::StreamedGetMany;
+use crate::types::MetaClientError;
+use crate::types::MetaError;
+use crate::types::TxnReply;
+use crate::types::TxnRequest;
+use crate::types::pb::ClientInfo;
+use crate::types::pb::ClusterStatus;
+use crate::types::pb::ExportedChunk;
+use crate::types::pb::KvTransactionReply;
+use crate::types::pb::KvTransactionRequest;
+use crate::types::pb::MemberListReply;
+use crate::types::pb::StreamItem;
+use crate::types::pb::WatchRequest;
+use crate::types::pb::WatchResponse;
 
 /// A request that is sent by a meta-client handle to its worker.
 pub struct ClientWorkerRequest {

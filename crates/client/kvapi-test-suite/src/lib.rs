@@ -14,5 +14,7 @@
 
 #![allow(clippy::uninlined_format_args)]
 
+pub extern crate databend_meta_client_types as types;
+
 mod kvapi_test_suite;
 pub use kvapi_test_suite::TestSuite;
