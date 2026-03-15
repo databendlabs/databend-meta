@@ -13,13 +13,6 @@
 // limitations under the License.
 
 use async_trait::async_trait;
-use databend_meta_client_types::Change;
-use databend_meta_client_types::SeqV;
-use databend_meta_client_types::TxnReplyUpsertExt;
-use databend_meta_client_types::TxnRequest;
-use databend_meta_client_types::TxnRequestUpsertExt;
-use databend_meta_client_types::UpsertKV;
-use databend_meta_client_types::errors;
 use futures_util::StreamExt;
 use futures_util::TryStreamExt;
 use log::debug;
@@ -27,6 +20,13 @@ use log::debug;
 use crate::KVApi;
 use crate::KVStream;
 use crate::ListOptions;
+use crate::types::Change;
+use crate::types::SeqV;
+use crate::types::TxnReplyUpsertExt;
+use crate::types::TxnRequest;
+use crate::types::TxnRequestUpsertExt;
+use crate::types::UpsertKV;
+use crate::types::errors;
 
 /// Extend the `KVApi` trait with auto implemented handy methods.
 #[async_trait]
@@ -126,11 +126,6 @@ mod tests {
     use std::io;
 
     use async_trait::async_trait;
-    use databend_meta_client_types::SeqV;
-    use databend_meta_client_types::TxnReply;
-    use databend_meta_client_types::TxnRequest;
-    use databend_meta_client_types::protobuf;
-    use databend_meta_client_types::protobuf::StreamItem;
     use futures_util::StreamExt;
     use futures_util::TryStreamExt;
     use futures_util::stream::BoxStream;
@@ -141,17 +136,22 @@ mod tests {
     use crate::ListOptions;
     use crate::fail_fast;
     use crate::limit_stream;
+    use crate::types::SeqV;
+    use crate::types::TxnReply;
+    use crate::types::TxnRequest;
+    use crate::types::pb;
+    use crate::types::pb::StreamItem;
 
     /// In-memory mock of KVApi backed by a BTreeMap of protobuf SeqV.
     struct MockKVApi {
-        data: BTreeMap<String, protobuf::SeqV>,
+        data: BTreeMap<String, pb::SeqV>,
     }
 
     impl MockKVApi {
         fn new(entries: &[(&str, u64, &[u8])]) -> Self {
             let data = entries
                 .iter()
-                .map(|&(k, seq, v)| (k.to_string(), protobuf::SeqV::new(seq, v.to_vec())))
+                .map(|&(k, seq, v)| (k.to_string(), pb::SeqV::new(seq, v.to_vec())))
                 .collect();
             Self { data }
         }
@@ -235,8 +235,8 @@ mod tests {
         let items: Vec<StreamItem> = strm.try_collect().await.unwrap();
 
         assert_eq!(items, vec![
-            StreamItem::new("x".into(), Some(protobuf::SeqV::new(5, b"vx".to_vec()))),
-            StreamItem::new("y".into(), Some(protobuf::SeqV::new(6, b"vy".to_vec()))),
+            StreamItem::new("x".into(), Some(pb::SeqV::new(5, b"vx".to_vec()))),
+            StreamItem::new("y".into(), Some(pb::SeqV::new(6, b"vy".to_vec()))),
             StreamItem::new("z".into(), None),
         ]);
     }

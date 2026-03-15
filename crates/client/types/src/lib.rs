@@ -59,6 +59,7 @@ pub use errors::meta_network_errors::InvalidArgument;
 pub use errors::meta_network_errors::MetaNetworkError;
 pub use errors::meta_network_errors::MetaNetworkResult;
 pub use map_api::Expirable;
+pub use protobuf as pb;
 pub mod match_seq {
     pub use map_api::match_seq::MatchSeq;
     pub use map_api::match_seq::MatchSeqExt;

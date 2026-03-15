@@ -13,10 +13,6 @@
 // limitations under the License.
 
 use async_trait::async_trait;
-use databend_meta_client_types::MetaError;
-use databend_meta_client_types::MetaNetworkError;
-use databend_meta_client_types::TxnReply;
-use databend_meta_client_types::TxnRequest;
 use databend_meta_kvapi as kvapi;
 use databend_meta_kvapi::KVStream;
 use databend_meta_kvapi::ListOptions;
@@ -28,6 +24,10 @@ use futures_util::stream::BoxStream;
 
 use crate::ClientHandle;
 use crate::grpc_action::StreamedGetMany;
+use crate::types::MetaError;
+use crate::types::MetaNetworkError;
+use crate::types::TxnReply;
+use crate::types::TxnRequest;
 
 fn status_to_meta_error(status: tonic::Status) -> MetaError {
     MetaNetworkError::from(status).into()

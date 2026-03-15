@@ -19,9 +19,6 @@ use std::time::Instant;
 
 use anyerror::AnyError;
 use databend_base::futures::ElapsedFutureExt;
-use databend_meta_client_types::ConnectionError;
-use databend_meta_client_types::MetaClientError;
-use databend_meta_client_types::MetaNetworkError;
 use databend_meta_runtime_api::RuntimeApi;
 use log::debug;
 use log::info;
@@ -32,6 +29,9 @@ use tonic::Status;
 
 use crate::MetaGrpcClient;
 use crate::established_client::EstablishedClient;
+use crate::types::ConnectionError;
+use crate::types::MetaClientError;
+use crate::types::MetaNetworkError;
 
 /// Represents the action to take after processing an RPC response.
 ///

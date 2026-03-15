@@ -23,17 +23,6 @@ use std::sync::atomic::Ordering;
 
 use anyerror::AnyError;
 use databend_base::counter::Counter;
-use databend_meta_client_types::ConnectionError;
-use databend_meta_client_types::MetaClientError;
-use databend_meta_client_types::MetaError;
-use databend_meta_client_types::TxnReply;
-use databend_meta_client_types::TxnRequest;
-use databend_meta_client_types::protobuf::ClientInfo;
-use databend_meta_client_types::protobuf::ClusterStatus;
-use databend_meta_client_types::protobuf::MemberListReply;
-use databend_meta_client_types::protobuf::StreamItem;
-use databend_meta_client_types::protobuf::WatchRequest;
-use databend_meta_client_types::protobuf::WatchResponse;
 use databend_meta_runtime_api::ClientMetricsApi;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_version::Version;
@@ -59,6 +48,17 @@ use crate::grpc_action::MGetKVReq;
 use crate::grpc_action::StreamedGetMany;
 use crate::message;
 use crate::message::Response;
+use crate::types::ConnectionError;
+use crate::types::MetaClientError;
+use crate::types::MetaError;
+use crate::types::TxnReply;
+use crate::types::TxnRequest;
+use crate::types::pb::ClientInfo;
+use crate::types::pb::ClusterStatus;
+use crate::types::pb::MemberListReply;
+use crate::types::pb::StreamItem;
+use crate::types::pb::WatchRequest;
+use crate::types::pb::WatchResponse;
 
 /// A handle to access meta-client worker.
 /// The worker will be actually running in a dedicated runtime: `MetaGrpcClient.rt`.
@@ -164,8 +164,8 @@ impl<RT: SpawnApi> ClientHandle<RT> {
 
     pub async fn transaction_v2(
         &self,
-        txn: databend_meta_client_types::protobuf::KvTransactionRequest,
-    ) -> Result<databend_meta_client_types::protobuf::KvTransactionReply, MetaError> {
+        txn: crate::types::pb::KvTransactionRequest,
+    ) -> Result<crate::types::pb::KvTransactionReply, MetaError> {
         self.request(txn).await.map_err(MetaError::from)
     }
 

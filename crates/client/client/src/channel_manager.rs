@@ -17,10 +17,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyerror::AnyError;
-use databend_meta_client_types::ConnectionError;
-use databend_meta_client_types::MetaClientError;
-use databend_meta_client_types::MetaNetworkError;
-use databend_meta_client_types::protobuf::meta_service_client::MetaServiceClient;
 use databend_meta_runtime_api::ChannelError;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TlsConfig;
@@ -36,6 +32,10 @@ use crate::grpc_client::AuthInterceptor;
 use crate::grpc_client::RealClient;
 use crate::grpc_client::handshake;
 use crate::pool::ItemManager;
+use crate::types::ConnectionError;
+use crate::types::MetaClientError;
+use crate::types::MetaNetworkError;
+use crate::types::pb::meta_service_client::MetaServiceClient;
 
 pub const DEFAULT_GRPC_MESSAGE_SIZE: usize = 32 * 1024 * 1024;
 

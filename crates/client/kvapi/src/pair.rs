@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use databend_meta_client_types::SeqV;
-
 use crate as kvapi;
+use crate::types::SeqV;
 
 /// A Key-Value pair for type Key. The value does not have a seq number.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -114,11 +113,10 @@ where K: kvapi::Key
 
 #[cfg(test)]
 mod tests {
-    use databend_meta_client_types::SeqV;
-
     use super::*;
     use crate::testing::FooKey;
     use crate::testing::FooValue;
+    use crate::types::SeqV;
 
     fn foo_key(a: u64, b: &str, c: u64) -> FooKey {
         FooKey {

@@ -16,10 +16,10 @@ use std::convert::TryInto;
 use std::fmt;
 use std::fmt::Debug;
 
-use databend_meta_client_types::Change;
-use databend_meta_client_types::GrpcHelper;
-use databend_meta_client_types::MetaError;
-use databend_meta_client_types::SeqV;
+use crate::types::Change;
+use crate::types::GrpcHelper;
+use crate::types::MetaError;
+use crate::types::SeqV;
 
 /// Get a single key-value pair.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -73,19 +73,6 @@ pub type UpsertKVReply = Change<Vec<u8>>;
 pub type GetKVReply = Option<SeqV<Vec<u8>>>;
 pub type MGetKVReply = Vec<Option<SeqV<Vec<u8>>>>;
 pub type ListKVReply = Vec<(String, SeqV<Vec<u8>>)>;
-use databend_meta_client_types::InvalidArgument;
-use databend_meta_client_types::TxnReply;
-use databend_meta_client_types::TxnRequest;
-use databend_meta_client_types::UpsertKV;
-use databend_meta_client_types::protobuf::ClientInfo;
-use databend_meta_client_types::protobuf::ClusterStatus;
-use databend_meta_client_types::protobuf::KvTransactionReply;
-use databend_meta_client_types::protobuf::KvTransactionRequest;
-use databend_meta_client_types::protobuf::MemberListReply;
-use databend_meta_client_types::protobuf::RaftRequest;
-use databend_meta_client_types::protobuf::StreamItem;
-use databend_meta_client_types::protobuf::WatchRequest;
-use databend_meta_client_types::protobuf::WatchResponse;
 use log::debug;
 use tonic::Request;
 use tonic::codegen::BoxStream;
@@ -99,6 +86,19 @@ use crate::message::GetEndpoints;
 use crate::message::GetMemberList;
 use crate::message::MakeEstablishedClient;
 use crate::message::Streamed;
+use crate::types::InvalidArgument;
+use crate::types::TxnReply;
+use crate::types::TxnRequest;
+use crate::types::UpsertKV;
+use crate::types::pb::ClientInfo;
+use crate::types::pb::ClusterStatus;
+use crate::types::pb::KvTransactionReply;
+use crate::types::pb::KvTransactionRequest;
+use crate::types::pb::MemberListReply;
+use crate::types::pb::RaftRequest;
+use crate::types::pb::StreamItem;
+use crate::types::pb::WatchRequest;
+use crate::types::pb::WatchResponse;
 
 /// Bind a request type to its corresponding response type.
 pub trait RequestFor: fmt::Debug {
