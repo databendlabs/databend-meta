@@ -1,0 +1,28 @@
+[package]
+name = "databend-meta-client-base"
+version = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+publish = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+anyerror = { workspace = true }
+deepsize = { workspace = true }
+derive_more = { workspace = true }
+display-more = { workspace = true }
+map-api = { workspace = true }
+seq-marked = { workspace = true }
+serde = { workspace = true }
+state-machine-api = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+
+[package.metadata.cargo-machete]
+ignored = ["deepsize", "display-more", "seq-marked"]
+
+[lints]
+workspace = true

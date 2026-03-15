@@ -23,19 +23,19 @@ use std::sync::atomic::Ordering;
 
 use anyerror::AnyError;
 use databend_base::counter::Counter;
+use databend_meta_client_types::ConnectionError;
+use databend_meta_client_types::MetaClientError;
+use databend_meta_client_types::MetaError;
+use databend_meta_client_types::TxnReply;
+use databend_meta_client_types::TxnRequest;
+use databend_meta_client_types::protobuf::ClientInfo;
+use databend_meta_client_types::protobuf::ClusterStatus;
+use databend_meta_client_types::protobuf::MemberListReply;
+use databend_meta_client_types::protobuf::StreamItem;
+use databend_meta_client_types::protobuf::WatchRequest;
+use databend_meta_client_types::protobuf::WatchResponse;
 use databend_meta_runtime_api::ClientMetricsApi;
 use databend_meta_runtime_api::SpawnApi;
-use databend_meta_types::ConnectionError;
-use databend_meta_types::MetaClientError;
-use databend_meta_types::MetaError;
-use databend_meta_types::TxnReply;
-use databend_meta_types::TxnRequest;
-use databend_meta_types::protobuf::ClientInfo;
-use databend_meta_types::protobuf::ClusterStatus;
-use databend_meta_types::protobuf::MemberListReply;
-use databend_meta_types::protobuf::StreamItem;
-use databend_meta_types::protobuf::WatchRequest;
-use databend_meta_types::protobuf::WatchResponse;
 use databend_meta_version::Version;
 use fastrace::Span;
 use log::debug;
@@ -164,8 +164,8 @@ impl<RT: SpawnApi> ClientHandle<RT> {
 
     pub async fn transaction_v2(
         &self,
-        txn: databend_meta_types::protobuf::KvTransactionRequest,
-    ) -> Result<databend_meta_types::protobuf::KvTransactionReply, MetaError> {
+        txn: databend_meta_client_types::protobuf::KvTransactionRequest,
+    ) -> Result<databend_meta_client_types::protobuf::KvTransactionReply, MetaError> {
         self.request(txn).await.map_err(MetaError::from)
     }
 

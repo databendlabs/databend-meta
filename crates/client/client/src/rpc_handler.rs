@@ -19,10 +19,10 @@ use std::time::Instant;
 
 use anyerror::AnyError;
 use databend_base::futures::ElapsedFutureExt;
+use databend_meta_client_types::ConnectionError;
+use databend_meta_client_types::MetaClientError;
+use databend_meta_client_types::MetaNetworkError;
 use databend_meta_runtime_api::RuntimeApi;
-use databend_meta_types::ConnectionError;
-use databend_meta_types::MetaClientError;
-use databend_meta_types::MetaNetworkError;
 use log::debug;
 use log::info;
 use log::warn;

@@ -13,11 +13,11 @@
 // limitations under the License.
 
 use async_trait::async_trait;
-use databend_meta_types::Change;
-use databend_meta_types::SeqV;
-use databend_meta_types::TxnRequest;
-use databend_meta_types::UpsertKV;
-use databend_meta_types::errors;
+use databend_meta_client_types::Change;
+use databend_meta_client_types::SeqV;
+use databend_meta_client_types::TxnRequest;
+use databend_meta_client_types::UpsertKV;
+use databend_meta_client_types::errors;
 use futures_util::StreamExt;
 use futures_util::TryStreamExt;
 use log::debug;
@@ -124,11 +124,11 @@ mod tests {
     use std::io;
 
     use async_trait::async_trait;
-    use databend_meta_types::SeqV;
-    use databend_meta_types::TxnReply;
-    use databend_meta_types::TxnRequest;
-    use databend_meta_types::protobuf;
-    use databend_meta_types::protobuf::StreamItem;
+    use databend_meta_client_types::SeqV;
+    use databend_meta_client_types::TxnReply;
+    use databend_meta_client_types::TxnRequest;
+    use databend_meta_client_types::protobuf;
+    use databend_meta_client_types::protobuf::StreamItem;
     use futures_util::StreamExt;
     use futures_util::TryStreamExt;
     use futures_util::stream::BoxStream;

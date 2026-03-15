@@ -16,10 +16,10 @@ use std::convert::TryInto;
 use std::fmt;
 use std::fmt::Debug;
 
-use databend_meta_types::Change;
-use databend_meta_types::GrpcHelper;
-use databend_meta_types::MetaError;
-use databend_meta_types::SeqV;
+use databend_meta_client_types::Change;
+use databend_meta_client_types::GrpcHelper;
+use databend_meta_client_types::MetaError;
+use databend_meta_client_types::SeqV;
 
 /// Get a single key-value pair.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -73,19 +73,19 @@ pub type UpsertKVReply = Change<Vec<u8>>;
 pub type GetKVReply = Option<SeqV<Vec<u8>>>;
 pub type MGetKVReply = Vec<Option<SeqV<Vec<u8>>>>;
 pub type ListKVReply = Vec<(String, SeqV<Vec<u8>>)>;
-use databend_meta_types::InvalidArgument;
-use databend_meta_types::TxnReply;
-use databend_meta_types::TxnRequest;
-use databend_meta_types::UpsertKV;
-use databend_meta_types::protobuf::ClientInfo;
-use databend_meta_types::protobuf::ClusterStatus;
-use databend_meta_types::protobuf::KvTransactionReply;
-use databend_meta_types::protobuf::KvTransactionRequest;
-use databend_meta_types::protobuf::MemberListReply;
-use databend_meta_types::protobuf::RaftRequest;
-use databend_meta_types::protobuf::StreamItem;
-use databend_meta_types::protobuf::WatchRequest;
-use databend_meta_types::protobuf::WatchResponse;
+use databend_meta_client_types::InvalidArgument;
+use databend_meta_client_types::TxnReply;
+use databend_meta_client_types::TxnRequest;
+use databend_meta_client_types::UpsertKV;
+use databend_meta_client_types::protobuf::ClientInfo;
+use databend_meta_client_types::protobuf::ClusterStatus;
+use databend_meta_client_types::protobuf::KvTransactionReply;
+use databend_meta_client_types::protobuf::KvTransactionRequest;
+use databend_meta_client_types::protobuf::MemberListReply;
+use databend_meta_client_types::protobuf::RaftRequest;
+use databend_meta_client_types::protobuf::StreamItem;
+use databend_meta_client_types::protobuf::WatchRequest;
+use databend_meta_client_types::protobuf::WatchResponse;
 use log::debug;
 use tonic::Request;
 use tonic::codegen::BoxStream;

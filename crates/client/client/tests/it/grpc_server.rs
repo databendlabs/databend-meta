@@ -17,29 +17,29 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use databend_meta_client::MIN_SERVER_VERSION;
+use databend_meta_client_types::protobuf as pb;
+use databend_meta_client_types::protobuf::ClientInfo;
+use databend_meta_client_types::protobuf::ClusterStatus;
+use databend_meta_client_types::protobuf::Empty;
+use databend_meta_client_types::protobuf::ExportedChunk;
+use databend_meta_client_types::protobuf::HandshakeResponse;
+use databend_meta_client_types::protobuf::KeysCount;
+use databend_meta_client_types::protobuf::KeysLayoutRequest;
+use databend_meta_client_types::protobuf::KvGetManyRequest;
+use databend_meta_client_types::protobuf::KvListRequest;
+use databend_meta_client_types::protobuf::MemberListReply;
+use databend_meta_client_types::protobuf::MemberListRequest;
+use databend_meta_client_types::protobuf::RaftReply;
+use databend_meta_client_types::protobuf::RaftRequest;
+use databend_meta_client_types::protobuf::StreamItem;
+use databend_meta_client_types::protobuf::TxnReply;
+use databend_meta_client_types::protobuf::TxnRequest;
+use databend_meta_client_types::protobuf::WatchRequest;
+use databend_meta_client_types::protobuf::WatchResponse;
+use databend_meta_client_types::protobuf::meta_service_server::MetaService;
+use databend_meta_client_types::protobuf::meta_service_server::MetaServiceServer;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TokioRuntime;
-use databend_meta_types::protobuf as pb;
-use databend_meta_types::protobuf::ClientInfo;
-use databend_meta_types::protobuf::ClusterStatus;
-use databend_meta_types::protobuf::Empty;
-use databend_meta_types::protobuf::ExportedChunk;
-use databend_meta_types::protobuf::HandshakeResponse;
-use databend_meta_types::protobuf::KeysCount;
-use databend_meta_types::protobuf::KeysLayoutRequest;
-use databend_meta_types::protobuf::KvGetManyRequest;
-use databend_meta_types::protobuf::KvListRequest;
-use databend_meta_types::protobuf::MemberListReply;
-use databend_meta_types::protobuf::MemberListRequest;
-use databend_meta_types::protobuf::RaftReply;
-use databend_meta_types::protobuf::RaftRequest;
-use databend_meta_types::protobuf::StreamItem;
-use databend_meta_types::protobuf::TxnReply;
-use databend_meta_types::protobuf::TxnRequest;
-use databend_meta_types::protobuf::WatchRequest;
-use databend_meta_types::protobuf::WatchResponse;
-use databend_meta_types::protobuf::meta_service_server::MetaService;
-use databend_meta_types::protobuf::meta_service_server::MetaServiceServer;
 use futures::Stream;
 use rand::Rng;
 use tokio::sync::oneshot;
@@ -61,7 +61,7 @@ impl MetaService for GrpcServiceForTestImpl {
 
     async fn handshake(
         &self,
-        _request: Request<Streaming<databend_meta_types::protobuf::HandshakeRequest>>,
+        _request: Request<Streaming<databend_meta_client_types::protobuf::HandshakeRequest>>,
     ) -> Result<Response<Self::HandshakeStream>, Status> {
         tokio::time::sleep(Duration::from_secs(2)).await;
         let output = futures::stream::once(async {
@@ -113,7 +113,7 @@ impl MetaService for GrpcServiceForTestImpl {
 
     async fn export(
         &self,
-        _request: Request<databend_meta_types::protobuf::Empty>,
+        _request: Request<databend_meta_client_types::protobuf::Empty>,
     ) -> Result<Response<Self::ExportStream>, Status> {
         unimplemented!()
     }
@@ -123,7 +123,7 @@ impl MetaService for GrpcServiceForTestImpl {
 
     async fn export_v1(
         &self,
-        _request: Request<databend_meta_types::protobuf::ExportRequest>,
+        _request: Request<databend_meta_client_types::protobuf::ExportRequest>,
     ) -> Result<Response<Self::ExportStream>, Status> {
         unimplemented!()
     }
