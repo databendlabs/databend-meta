@@ -15,36 +15,36 @@
 use std::time::Duration;
 use std::time::SystemTime;
 
+use databend_meta_client_types::ConditionResult;
+use databend_meta_client_types::MatchSeq;
+use databend_meta_client_types::MetaSpec;
+use databend_meta_client_types::SeqV;
+use databend_meta_client_types::TxnCondition;
+use databend_meta_client_types::TxnDeleteByPrefixRequest;
+use databend_meta_client_types::TxnDeleteByPrefixResponse;
+use databend_meta_client_types::TxnDeleteRequest;
+use databend_meta_client_types::TxnDeleteResponse;
+use databend_meta_client_types::TxnGetRequest;
+use databend_meta_client_types::TxnGetResponse;
+use databend_meta_client_types::TxnOp;
+use databend_meta_client_types::TxnOpResponse;
+use databend_meta_client_types::TxnPutResponse;
+use databend_meta_client_types::TxnReply;
+use databend_meta_client_types::TxnRequest;
+use databend_meta_client_types::UpsertKV;
+use databend_meta_client_types::With;
+use databend_meta_client_types::normalize_meta::NormalizeMeta;
+use databend_meta_client_types::protobuf as pb;
+use databend_meta_client_types::protobuf::BooleanExpression;
+use databend_meta_client_types::protobuf::FetchIncreaseU64Response;
+use databend_meta_client_types::protobuf::KvMeta;
+use databend_meta_client_types::txn_condition;
+use databend_meta_client_types::txn_op;
+use databend_meta_client_types::txn_op_response;
+use databend_meta_client_types::txn_op_response::Response;
 use databend_meta_kvapi as kvapi;
 use databend_meta_kvapi::KvApiExt;
 use databend_meta_kvapi::ListOptions;
-use databend_meta_types::ConditionResult;
-use databend_meta_types::MatchSeq;
-use databend_meta_types::MetaSpec;
-use databend_meta_types::SeqV;
-use databend_meta_types::TxnCondition;
-use databend_meta_types::TxnDeleteByPrefixRequest;
-use databend_meta_types::TxnDeleteByPrefixResponse;
-use databend_meta_types::TxnDeleteRequest;
-use databend_meta_types::TxnDeleteResponse;
-use databend_meta_types::TxnGetRequest;
-use databend_meta_types::TxnGetResponse;
-use databend_meta_types::TxnOp;
-use databend_meta_types::TxnOpResponse;
-use databend_meta_types::TxnPutResponse;
-use databend_meta_types::TxnReply;
-use databend_meta_types::TxnRequest;
-use databend_meta_types::UpsertKV;
-use databend_meta_types::With;
-use databend_meta_types::normalize_meta::NormalizeMeta;
-use databend_meta_types::protobuf as pb;
-use databend_meta_types::protobuf::BooleanExpression;
-use databend_meta_types::protobuf::FetchIncreaseU64Response;
-use databend_meta_types::protobuf::KvMeta;
-use databend_meta_types::txn_condition;
-use databend_meta_types::txn_op;
-use databend_meta_types::txn_op_response;
-use databend_meta_types::txn_op_response::Response;
 use display_more::DisplayOptionExt;
 use display_more::DisplaySliceExt;
 use fastrace::func_name;
@@ -507,8 +507,8 @@ impl TestSuite {
         &self,
         kv: &KV,
     ) -> anyhow::Result<()> {
+        use databend_meta_client_types::errors::IncompleteStream;
         use databend_meta_kvapi::KVStream;
-        use databend_meta_types::errors::IncompleteStream;
         use futures_util::StreamExt;
 
         info!("--- kvapi::KVApiTestSuite::kv_get_many_kv_error_propagation() start");

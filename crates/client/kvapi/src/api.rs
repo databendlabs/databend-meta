@@ -15,10 +15,10 @@
 use std::ops::Deref;
 
 use async_trait::async_trait;
-use databend_meta_types::TxnReply;
-use databend_meta_types::TxnRequest;
-use databend_meta_types::errors;
-use databend_meta_types::protobuf::StreamItem;
+use databend_meta_client_types::TxnReply;
+use databend_meta_client_types::TxnRequest;
+use databend_meta_client_types::errors;
+use databend_meta_client_types::protobuf::StreamItem;
 use futures_util::Stream;
 use futures_util::StreamExt;
 use futures_util::stream::BoxStream;

@@ -17,10 +17,10 @@ use std::time::Duration;
 use databend_meta_client::DEFAULT_GRPC_MESSAGE_SIZE;
 use databend_meta_client::MetaGrpcClient;
 use databend_meta_client::RpcClientTlsConfig;
+use databend_meta_client::types::MetaClientError;
+use databend_meta_client::types::MetaError;
+use databend_meta_client::types::MetaNetworkError;
 use databend_meta_runtime_api::TokioRuntime;
-use databend_meta_types::MetaClientError;
-use databend_meta_types::MetaError;
-use databend_meta_types::MetaNetworkError;
 use test_harness::test;
 
 use crate::testing::meta_service_test_harness;

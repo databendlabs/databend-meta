@@ -10,8 +10,8 @@ edition = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+databend-meta-client-types = { workspace = true }
 databend-meta-kvapi = { workspace = true }
-databend-meta-types = { workspace = true }
 display-more = { workspace = true }
 fastrace = { workspace = true }
 futures-util = { workspace = true }

@@ -12,7 +12,7 @@ edition = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 databend-base = { workspace = true }
-databend-meta-types = { workspace = true }
+databend-meta-client-types = { workspace = true }
 display-more = { workspace = true }
 futures-util = { workspace = true }
 log = { workspace = true }
