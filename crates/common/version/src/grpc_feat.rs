@@ -46,8 +46,17 @@ pub enum GrpcFeature {
     /// TTL support in `TxnPutRequest`.
     TransactionPutWithTtl,
 
-    /// `TxnPutRequest.prev_value` and `TxnDeleteRequest.prev_value`: always return previous value in put response, without considering the flag in TxnPutRequest or TxnDeleteRequest
+    /// `TxnPutRequest.prev_value` and `TxnDeleteRequest.prev_value`:
+    /// always return previous value in put response,
+    /// without considering the flag in TxnPutRequest or TxnDeleteRequest.
+    ///
+    /// This is a behavior about how to respond. not about how to parse the request.
     TransactionPrevValue,
+
+    /// On the server side, it is used to indicate if the server accepts `prev_value` field,
+    /// which means the client can send or not send this value.
+    /// On the client side, it means if the client set such a field `prev_value` in `TxnPutRequest` and `TxnDeleteRequest`.
+    TransactionRequestPrevValueFlag,
 
     /// Prefix-count condition in `TxnCondition`.
     TransactionConditionKeysPrefix,
@@ -132,6 +141,7 @@ impl GrpcFeature {
             GrpcFeature::TransactionReplyError,
             GrpcFeature::TransactionPutWithTtl,
             GrpcFeature::TransactionPrevValue,
+            GrpcFeature::TransactionRequestPrevValueFlag,
             GrpcFeature::TransactionConditionKeysPrefix,
             GrpcFeature::TransactionOperations,
             GrpcFeature::OperationAsIs,
@@ -169,6 +179,7 @@ impl GrpcFeature {
             GrpcFeature::TransactionReplyError => "transaction/reply_error",
             GrpcFeature::TransactionPutWithTtl => "transaction/put_with_ttl",
             GrpcFeature::TransactionPrevValue => "transaction/prev_value",
+            GrpcFeature::TransactionRequestPrevValueFlag => "transaction/request_prev_value_flag",
             GrpcFeature::TransactionConditionKeysPrefix => "transaction/condition_keys_prefix",
             GrpcFeature::TransactionOperations => "transaction/operations",
             GrpcFeature::OperationAsIs => "operation/as_is",
