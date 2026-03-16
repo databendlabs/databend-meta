@@ -50,7 +50,7 @@ pub enum GrpcFeature {
     /// always return previous value in put response,
     /// without considering the flag in TxnPutRequest or TxnDeleteRequest.
     ///
-    /// This is a behavior about how to respond. not about how to parse the request.
+    /// This is a behavior about how to respond, not about how to parse the request.
     TransactionPrevValue,
 
     /// On the server side, it is used to indicate if the server accepts `prev_value` field,
