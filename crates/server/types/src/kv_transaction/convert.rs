@@ -276,12 +276,14 @@ impl From<Operation> for pb::TxnOp {
             Operation::Put(p) => Some(txn_op::Request::Put(pb::TxnPutRequest {
                 key: p.target.key,
                 value: p.payload.value,
+                prev_value: true,
                 expire_at: p.payload.expire_at_ms,
                 ttl_ms: p.payload.ttl_ms,
                 match_seq: p.target.match_seq,
             })),
             Operation::Delete(d) => Some(txn_op::Request::Delete(pb::TxnDeleteRequest {
                 key: d.target.key,
+                prev_value: true,
                 match_seq: d.target.match_seq,
             })),
             Operation::DeleteByPrefix(d) => Some(txn_op::Request::DeleteByPrefix(

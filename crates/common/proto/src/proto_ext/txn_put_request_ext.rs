@@ -29,6 +29,7 @@ impl pb::TxnPutRequest {
         Self {
             key: key.to_string(),
             value,
+            prev_value: true,
             expire_at,
             ttl_ms,
             match_seq: None,
