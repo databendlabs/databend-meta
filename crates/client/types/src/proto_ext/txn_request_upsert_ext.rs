@@ -103,7 +103,7 @@ mod tests {
                         request: Some(pb::txn_op::Request::Put(pb::TxnPutRequest {
                             key: "test_key".to_string(),
                             value: b"test_value".to_vec(),
-
+                            prev_value: true,
                             expire_at: None,
                             ttl_ms: None,
                             match_seq: None,
@@ -131,7 +131,7 @@ mod tests {
                         request: Some(pb::txn_op::Request::Put(pb::TxnPutRequest {
                             key: "test_key".to_string(),
                             value: b"test_value".to_vec(),
-
+                            prev_value: true,
                             expire_at: None,
                             ttl_ms: None,
                             match_seq: None,
@@ -159,7 +159,7 @@ mod tests {
                         request: Some(pb::txn_op::Request::Put(pb::TxnPutRequest {
                             key: "test_key".to_string(),
                             value: b"test_value".to_vec(),
-
+                            prev_value: true,
                             expire_at: None,
                             ttl_ms: None,
                             match_seq: None,
@@ -182,7 +182,7 @@ mod tests {
                     if_then: vec![pb::TxnOp {
                         request: Some(pb::txn_op::Request::Delete(pb::TxnDeleteRequest {
                             key: "test_key".to_string(),
-
+                            prev_value: true,
                             match_seq: None,
                         })),
                     }],
@@ -207,7 +207,7 @@ mod tests {
                         request: Some(pb::txn_op::Request::Put(pb::TxnPutRequest {
                             key: "test_key".to_string(),
                             value: b"test_value".to_vec(),
-
+                            prev_value: true,
                             expire_at: Some(1_234_567_890_000),
                             ttl_ms: Some(3600 * 1000), // 3600 seconds in milliseconds
                             match_seq: None,
@@ -231,7 +231,7 @@ mod tests {
                         request: Some(pb::txn_op::Request::Put(pb::TxnPutRequest {
                             key: "test_key".to_string(),
                             value: b"test_value".to_vec(),
-
+                            prev_value: true,
                             expire_at: None,
                             ttl_ms: Some(500),
                             match_seq: None,
@@ -255,7 +255,7 @@ mod tests {
                         request: Some(pb::txn_op::Request::Put(pb::TxnPutRequest {
                             key: "test_key".to_string(),
                             value: b"test_value".to_vec(),
-
+                            prev_value: true,
                             expire_at: Some(9_876_543_210_000),
                             ttl_ms: None,
                             match_seq: None,
@@ -282,7 +282,7 @@ mod tests {
                     if_then: vec![pb::TxnOp {
                         request: Some(pb::txn_op::Request::Delete(pb::TxnDeleteRequest {
                             key: "complex_key".to_string(),
-
+                            prev_value: true,
                             match_seq: None,
                         })),
                     }],

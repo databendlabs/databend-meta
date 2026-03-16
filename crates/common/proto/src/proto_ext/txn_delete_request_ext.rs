@@ -20,6 +20,7 @@ impl pb::TxnDeleteRequest {
     pub fn new(key: impl ToString, match_seq: Option<u64>) -> Self {
         Self {
             key: key.to_string(),
+            prev_value: true,
             match_seq,
         }
     }
