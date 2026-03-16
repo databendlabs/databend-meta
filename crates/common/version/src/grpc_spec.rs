@@ -230,6 +230,11 @@ impl GrpcSpec {
             // Client starts relying on this feature for removing `prev_value`.
             // In this version we removed KVApi::upsert, and provide a default impl upon transaction(), which require it to always return prev_value
             add(&mut cli, F::TransactionPrevValue, ver(260214, 0, 0));
+            remove(
+                &mut cli,
+                F::TransactionRequestPrevValueFlag,
+                ver(260214, 0, 0),
+            );
 
             // 2026-02-17: since 260217.0.0
             // 🖥 server: add kv_transaction gRPC API with Rust-native storage types
