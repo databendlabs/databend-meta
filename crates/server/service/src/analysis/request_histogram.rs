@@ -25,8 +25,6 @@ use chrono::Utc;
 use databend_base::histogram::Histogram;
 use databend_base::histogram::PercentileStats;
 use databend_meta_client::MetaGrpcReadReq;
-use databend_meta_types::Cmd;
-use databend_meta_types::LogEntry;
 use databend_meta_types::TxnRequest;
 use databend_meta_types::UpsertKV;
 
@@ -57,18 +55,6 @@ pub fn label_for_read(req: &MetaGrpcReadReq) -> Cow<'static, str> {
 /// Return the histogram label for a transaction request.
 pub fn label_for_txn(_txn: &TxnRequest) -> Cow<'static, str> {
     Cow::Borrowed("TxnRequest")
-}
-
-/// Return the histogram label for a forwarded write request.
-pub fn label_for_write(entry: &LogEntry) -> Cow<'static, str> {
-    match &entry.cmd {
-        Cmd::AddNode { .. } => Cow::Borrowed("Write-AddNode"),
-        Cmd::RemoveNode { .. } => Cow::Borrowed("Write-RemoveNode"),
-        Cmd::SetFeature { feature, .. } => Cow::Owned(format!("Write-SetFeature-{}", feature)),
-        Cmd::UpsertKV(_) => Cow::Borrowed("Write-UpsertKV"),
-        Cmd::Transaction(_) => Cow::Borrowed("Write-Transaction"),
-        Cmd::KvTransaction(_) => Cow::Borrowed("Write-KvTransaction"),
-    }
 }
 
 /// Record a request latency sample.

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod meta_raft_log;
-pub mod meta_raft_state_machine;
+pub(crate) mod meta_raft_log;
+pub(crate) mod meta_raft_state_machine;
 #[allow(clippy::module_inception)]
 mod store;
 

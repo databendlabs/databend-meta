@@ -26,7 +26,6 @@ use crate::metrics::raft_metrics;
 #[derive(Debug)]
 pub struct PeerCounter {
     target: NodeId,
-    endpoint: Endpoint,
     endpoint_str: String,
 }
 
@@ -42,7 +41,6 @@ pub type RaftClient = counter::Counted<PeerCounter, RaftServiceClient<Channel>>;
 /// Defines the API of the client to a raft node.
 pub trait RaftClientApi {
     fn new(target: NodeId, endpoint: Endpoint, channel: Channel, config: &RaftConfig) -> Self;
-    fn endpoint(&self) -> &Endpoint;
 }
 
 impl RaftClientApi for RaftClient {
@@ -60,12 +58,7 @@ impl RaftClientApi for RaftClient {
             .max_encoding_message_size(max_msg_size);
         counter::Counted::new(cli, PeerCounter {
             target,
-            endpoint,
             endpoint_str,
         })
-    }
-
-    fn endpoint(&self) -> &Endpoint {
-        &self.counter().endpoint
     }
 }

@@ -13,21 +13,19 @@
 // limitations under the License.
 
 pub(crate) mod errors;
-pub mod forward_rpc_error;
+pub(crate) mod forward_rpc_error;
 mod forwarder;
-pub mod meta_operation_error;
+pub(crate) mod meta_operation_error;
 
 pub mod meta_leader;
-pub mod raft_service_impl;
-pub mod runtime_config;
-pub mod watcher;
+pub(crate) mod raft_service_impl;
+pub(crate) mod runtime_config;
+pub(crate) mod watcher;
 
-pub use forwarder::MetaForwarder;
-pub use raft_service_impl::RaftServiceImpl;
+pub(crate) use forwarder::MetaForwarder;
 
 pub use crate::message::ForwardRequest;
 pub use crate::message::ForwardRequestBody;
 pub use crate::message::JoinRequest;
 pub use crate::message::LeaveRequest;
 pub use crate::meta_node::meta_node::MetaNode;
-pub use crate::meta_node::meta_node_builder::MetaNodeBuilder;
