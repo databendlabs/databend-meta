@@ -73,13 +73,13 @@ use log::debug;
 use tonic::Request;
 use tonic::codegen::BoxStream;
 
-use crate::InitFlag;
 use crate::established_client::EstablishedClient;
 use crate::message::ExportReq;
 use crate::message::GetClientInfo;
 use crate::message::GetClusterStatus;
 use crate::message::GetEndpoints;
 use crate::message::GetMemberList;
+use crate::message::InitFlag;
 use crate::message::MakeEstablishedClient;
 use crate::message::Streamed;
 
