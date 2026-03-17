@@ -14,12 +14,12 @@
 
 //! MetaNode is the container of all meta service logic, without the service layer.
 
-pub mod errors;
+pub(crate) mod errors;
 pub mod meta_handle;
-pub mod meta_management_error;
+pub(crate) mod meta_management_error;
 #[allow(clippy::module_inception)]
 pub mod meta_node;
-pub mod meta_node_builder;
-pub mod meta_node_status;
+pub(crate) mod meta_node_builder;
+pub(crate) mod meta_node_status;
 pub mod meta_worker;
-pub mod request_handler_error;
+pub(crate) mod request_handler_error;

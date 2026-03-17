@@ -58,7 +58,6 @@ use log::debug;
 use log::error;
 use log::info;
 use log::warn;
-use openraft;
 use openraft::MessageSummary;
 use openraft::RaftNetworkFactory;
 use openraft::error::ReplicationClosed;

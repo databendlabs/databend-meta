@@ -13,19 +13,6 @@
 // limitations under the License.
 
 use feature_set::FeatureSet;
-use semver::Version;
-
-/// The min meta-server version that can be deployed together in a cluster,
-/// i.e., the network APIs are compatible.
-///
-/// - since 0.9.41
-///   Add vote_v0
-///   Add append_v0
-///   Add install_snapshot_v0
-///
-/// - 2023-11-16: since 1.2.212:
-///   Add install_snapshot_v1
-pub static MIN_META_SEMVER: Version = Version::new(0, 9, 41);
 
 /// Defines the feature set provided and required by raft server and client.
 ///

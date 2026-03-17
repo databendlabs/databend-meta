@@ -923,15 +923,6 @@ pub mod network_metrics {
 
     static NETWORK_METRICS: LazyLock<NetworkMetrics> = LazyLock::new(NetworkMetrics::init);
 
-    /// Sample RPC delay for operations where read/write type is unknown.
-    /// Prefer using `sample_rpc_read_delay` or `sample_rpc_write_delay` when the operation type is known.
-    #[deprecated(
-        note = "Use sample_rpc_read_delay or sample_rpc_write_delay for better metrics granularity"
-    )]
-    pub fn sample_rpc_delay(d: Duration) {
-        NETWORK_METRICS.rpc_delay_ms.observe(d.as_millis() as f64);
-    }
-
     pub fn sample_rpc_read_delay(d: Duration) {
         let delay_ms = d.as_millis() as f64;
         NETWORK_METRICS.rpc_delay_ms.observe(delay_ms);

@@ -40,7 +40,6 @@ prometheus-client = { workspace = true }
 prost = { workspace = true }
 raft-log = { workspace = true }
 rustls = { workspace = true }
-semver = { workspace = true }
 seq-marked = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

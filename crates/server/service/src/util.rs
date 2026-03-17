@@ -39,7 +39,7 @@ where T: DeserializeOwned {
 /// A struct that implements the Drop trait to log a message when it is dropped.
 ///
 /// It can be used to track the lifetime. For example, use it a struct field of as a local variable of a closure.
-pub struct DropDebug {
+pub(crate) struct DropDebug {
     message: String,
 }
 
