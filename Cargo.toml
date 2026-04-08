@@ -45,7 +45,8 @@ databend-meta-types = { path = "crates/server/types" }
 databend-meta-version = { path = "crates/common/version" }
 
 # External dependencies from databendlabs forks
-databend-base = "0.2.10"
+base2histogram = "0.2.3"
+databend-base = "0.3.0"
 map-api = "0.4.2"
 openraft = { version = "=0.10.0-alpha.17", features = ["serde", "tracing-log"] }
 sled = { version = "0.34", default-features = false }
@@ -155,7 +156,7 @@ rpath = true
 
 [patch.crates-io]
 async-backtrace = { git = "https://github.com/datafuse-extras/async-backtrace.git", rev = "dea4553" }
-databend-base = { git = "https://github.com/databendlabs/databend-base", tag = "v0.2.10" }
+databend-base = { git = "https://github.com/databendlabs/databend-base", tag = "v0.3.0" }
 map-api = { git = "https://github.com/databendlabs/map-api", tag = "v0.4.2" }
 sled = { git = "https://github.com/datafuse-extras/sled", tag = "v0.34.7-datafuse.1" }
 state-machine-api = { git = "https://github.com/databendlabs/state-machine-api.git", tag = "v0.3.4" }
