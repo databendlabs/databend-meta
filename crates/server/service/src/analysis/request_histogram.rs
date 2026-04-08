@@ -20,10 +20,10 @@ use std::sync::Mutex;
 use std::time::Duration;
 use std::time::SystemTime;
 
+use base2histogram::Histogram;
+use base2histogram::PercentileStats;
 use chrono::DateTime;
 use chrono::Utc;
-use databend_base::histogram::Histogram;
-use databend_base::histogram::PercentileStats;
 use databend_meta_client::MetaGrpcReadReq;
 use databend_meta_types::TxnRequest;
 use databend_meta_types::UpsertKV;
