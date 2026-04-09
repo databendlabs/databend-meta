@@ -44,7 +44,6 @@ use log::info;
 use maplit::btreeset;
 use openraft::LogIdOptionExt;
 use openraft::ServerState;
-use openraft::async_runtime::WatchReceiver;
 use openraft::testing::log_id;
 use test_harness::test;
 
@@ -227,9 +226,11 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
     assert_eq!(resp.vote, Vote::new_committed(10, 2));
 
     let meta_node = tc0.meta_node.as_ref().unwrap();
-    let m = meta_node.raft.metrics().borrow_watched().clone();
-
-    assert_eq!(Some(last_log_id), m.snapshot);
+    meta_node
+        .raft
+        .wait(timeout())
+        .snapshot(last_log_id, "snapshot is installed")
+        .await?;
 
     // Incomplete
 
@@ -318,9 +319,11 @@ async fn test_raft_service_install_snapshot_v004() -> anyhow::Result<()> {
     assert_eq!(vote, Vote::new_committed(10, 2));
 
     let meta_node = tc0.meta_node.as_ref().unwrap();
-    let m = meta_node.raft.metrics().borrow_watched().clone();
-
-    assert_eq!(Some(last_log_id), m.snapshot);
+    meta_node
+        .raft
+        .wait(timeout())
+        .snapshot(last_log_id, "snapshot is installed")
+        .await?;
 
     let (_endpoint, strm) = meta_node
         .handle_forwardable_request(ForwardRequest::<MetaGrpcReadReq> {
