@@ -26,7 +26,6 @@ use databend_meta_raft_store::state_machine::MetaSnapshotId;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_sled_store::openraft::LogIdOptionExt;
 use databend_meta_sled_store::openraft::ServerState;
-use databend_meta_sled_store::openraft::async_runtime::WatchReceiver;
 use databend_meta_sled_store::openraft::testing::log_id;
 use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
@@ -226,9 +225,11 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
     assert_eq!(resp.vote, Vote::new_committed(10, 2));
 
     let meta_node = tc0.meta_node.as_ref().unwrap();
-    let m = meta_node.raft.metrics().borrow_watched().clone();
-
-    assert_eq!(Some(last_log_id), m.snapshot);
+    meta_node
+        .raft
+        .wait(timeout())
+        .snapshot(last_log_id, "snapshot is installed")
+        .await?;
 
     // Incomplete
 
@@ -316,9 +317,11 @@ async fn test_raft_service_install_snapshot_v004() -> anyhow::Result<()> {
     assert_eq!(vote, Vote::new_committed(10, 2));
 
     let meta_node = tc0.meta_node.as_ref().unwrap();
-    let m = meta_node.raft.metrics().borrow_watched().clone();
-
-    assert_eq!(Some(last_log_id), m.snapshot);
+    meta_node
+        .raft
+        .wait(timeout())
+        .snapshot(last_log_id, "snapshot is installed")
+        .await?;
 
     let (_endpoint, strm) = meta_node
         .handle_forwardable_request(ForwardRequest::<MetaGrpcReadReq> {
