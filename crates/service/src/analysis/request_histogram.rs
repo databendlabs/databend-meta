@@ -22,8 +22,8 @@ use std::time::SystemTime;
 
 use chrono::DateTime;
 use chrono::Utc;
-use databend_base::histogram::Histogram;
-use databend_base::histogram::PercentileStats;
+use base2histogram::Histogram;
+use base2histogram::PercentileStats;
 use databend_meta_client::MetaGrpcReadReq;
 use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
