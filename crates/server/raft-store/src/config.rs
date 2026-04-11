@@ -120,15 +120,11 @@ pub struct RaftConfig {
     /// Default: 8000 keys per block.
     pub snapshot_db_block_keys: u64,
 
-    /// Number of blocks to cache in snapshot database.
-    ///
-    /// Higher values improve read performance but use more memory.
-    /// Default: 1024 blocks.
-    pub snapshot_db_block_cache_item: u64,
-
     /// Total cache size for snapshot blocks in bytes.
     ///
-    /// Controls memory usage for snapshot block caching.
+    /// Controls memory usage for snapshot block caching. Since rotbl 0.2.10
+    /// the block cache is weight-bounded by bytes (`moka::sync::Cache` with
+    /// a weigher), so this is the only cache sizing knob.
     /// Default: 1GB (1,073,741,824 bytes).
     pub snapshot_db_block_cache_size: u64,
 
@@ -211,7 +207,6 @@ impl Default for RaftConfig {
 
             snapshot_db_debug_check: true,
             snapshot_db_block_keys: 8000,
-            snapshot_db_block_cache_item: 1024,
             snapshot_db_block_cache_size: GB,
 
             compact_immutables_ms: None,
@@ -253,7 +248,6 @@ impl RaftConfig {
             )
             .with_block_cache_config(
                 rotbl::v001::BlockCacheConfig::default()
-                    .with_max_items(self.snapshot_db_block_cache_item as usize)
                     .with_capacity(self.snapshot_db_block_cache_size as usize),
             )
     }
