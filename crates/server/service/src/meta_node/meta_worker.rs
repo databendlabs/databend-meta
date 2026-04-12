@@ -100,7 +100,11 @@ impl<RT: RuntimeApi> MetaWorker<RT> {
 
     pub async fn run(mut self) {
         while let Some(box_fn) = self.worker_rx.recv().await {
-            (box_fn)(self.meta_node.clone()).await;
+            let meta_node = self.meta_node.clone();
+            RT::spawn(
+                async move { (box_fn)(meta_node).await },
+                Some("meta-request".to_string()),
+            );
         }
 
         info!(
