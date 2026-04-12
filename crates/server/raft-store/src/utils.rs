@@ -37,13 +37,10 @@ where
     T: Send + 'static,
 {
     stream.enumerate().then(move |(index, item)| {
-        // Yield control every n items to prevent blocking other tasks
-        let to_yield = if index > 0 && index % 5000 == 0 {
-            info!("{stream_name} yield control to allow other tasks to run: index={index}");
-            true
-        } else {
-            false
-        };
+        if index > 0 && index % 10_000 == 0 {
+            info!("{stream_name} processed {index} items");
+        }
+        let to_yield = index > 0 && index % 100 == 0;
 
         async move {
             if to_yield {
