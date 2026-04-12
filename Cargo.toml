@@ -23,6 +23,7 @@ members = [
     "crates/server/sled-store",
     "crates/server/raft-store",
     "crates/server/service",
+    "benchmark",
 ]
 
 # Workspace dependencies
