@@ -18,6 +18,7 @@ use databend_meta_raft_store::MetaStartupError;
 use databend_meta_runtime_api::RuntimeApi;
 use log::error;
 use log::info;
+use tokio::sync::Semaphore;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -98,9 +99,26 @@ impl<RT: RuntimeApi> MetaWorker<RT> {
         Ok(meta_handle)
     }
 
+    const MAX_IN_FLIGHT: usize = 4096;
+
     pub async fn run(mut self) {
+        let semaphore = Arc::new(Semaphore::new(Self::MAX_IN_FLIGHT));
+
         while let Some(box_fn) = self.worker_rx.recv().await {
-            (box_fn)(self.meta_node.clone()).await;
+            let permit = semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .expect("semaphore closed");
+
+            let meta_node = self.meta_node.clone();
+            RT::spawn(
+                async move {
+                    (box_fn)(meta_node).await;
+                    drop(permit);
+                },
+                Some("meta-request".to_string()),
+            );
         }
 
         info!(
