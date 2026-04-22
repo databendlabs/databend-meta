@@ -120,6 +120,9 @@ impl RaftTypeConfig for TypeConfig {
     type Responder<T>
         = OneshotResponder<Self, T>
     where T: openraft::OptionalSend + 'static;
+    type Batch<T>
+        = openraft::impls::InlineBatch<T>
+    where T: openraft::OptionalSend + 'static;
     type ErrorSource = anyerror::AnyError;
 }
 
