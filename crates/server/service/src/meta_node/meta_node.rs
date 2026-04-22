@@ -467,6 +467,37 @@ impl<SP: SpawnApi> MetaNode<SP> {
             if last_histogram_report.elapsed() >= HISTOGRAM_REPORT_INTERVAL {
                 let histogram_report = request_histogram::report();
                 info!("request latency: {}", histogram_report);
+
+                // Log openraft per-entry stage latency (proposed -> applied)
+                // histograms for debugging where time is spent in the log
+                // lifecycle. Formatted as a single line so line-wise grep
+                // captures the whole report.
+                match meta_node.raft.runtime_stats().await {
+                    Ok(mut stats) => {
+                        stats.build_log_stage_histograms();
+                        let h = &stats.log_stage_histograms;
+                        let stages = [
+                            ("proposed->received", &h.proposed_to_received),
+                            ("received->submitted", &h.received_to_submitted),
+                            ("submitted->persisted", &h.submitted_to_persisted),
+                            ("persisted->committed", &h.persisted_to_committed),
+                            ("committed->applied", &h.committed_to_applied),
+                            ("proposed->applied", &h.proposed_to_applied),
+                        ];
+                        let line = stages
+                            .iter()
+                            .map(|(name, hist)| {
+                                let s = hist.percentile_stats();
+                                format!("{}(n={} p90={}us p99={}us)", name, s.samples, s.p90, s.p99)
+                            })
+                            .join(", ");
+                        info!("raft log stage latency: {}", line);
+                    }
+                    Err(e) => {
+                        warn!("failed to fetch openraft runtime stats: {}", e);
+                    }
+                }
+
                 last_histogram_report = Instant::now();
             }
 
