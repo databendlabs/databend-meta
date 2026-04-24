@@ -1450,6 +1450,14 @@ impl<SP: SpawnApi> MetaNode<SP> {
 
     /// Try to get the leader from the latest metrics of the local raft node.
     /// If leader is absent, wait for an metrics update in which a leader is set.
+    ///
+    /// databend-meta requires every node (including the leader) to be in the
+    /// effective membership. openraft 0.10-alpha.18 changed
+    /// `RaftMetrics::current_leader` to expose the raw vote leader id without
+    /// validating it against the membership, which is valid in openraft's
+    /// model but violates our invariant. Treat a leader that is not a voter
+    /// as "no known leader" so the node can self-elect (single-voter
+    /// clusters) or wait for a real leader to emerge.
     #[fastrace::trace]
     pub async fn get_leader(&self) -> Result<Option<NodeId>, RecvError> {
         let mut rx = self.raft.metrics();
@@ -1457,7 +1465,13 @@ impl<SP: SpawnApi> MetaNode<SP> {
         let mut expire_at: Option<Instant> = None;
 
         loop {
-            if let Some(l) = rx.borrow_watched().current_leader {
+            let leader_id = {
+                let m = rx.borrow_watched();
+                m.current_leader
+                    .filter(|id| m.membership_config.voter_ids().any(|v| &v == id))
+            };
+
+            if let Some(l) = leader_id {
                 return Ok(Some(l));
             }
 
