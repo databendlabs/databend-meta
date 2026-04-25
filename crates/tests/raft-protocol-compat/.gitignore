@@ -1,0 +1,13 @@
+# Test artifacts written by test_meta_meta.py (raft dirs, node logs, exports).
+.test-data/
+
+# Python bytecode for the orchestrator.
+__pycache__/
+
+# Override the root .gitignore (which excludes `Cargo.lock` workspace-wide):
+# each bin-*/Cargo.lock pins the transitive deps that the corresponding
+# version was tested against. Without these locked, CI re-resolves to the
+# latest minor of every dep — which routinely breaks API-locked old
+# versions (e.g. openraft 0.10.0-alpha.17 vs rand 0.10's `random_range`
+# trait move). Reproducibility for compat tests is the point.
+!Cargo.lock

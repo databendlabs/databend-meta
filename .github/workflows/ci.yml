@@ -17,9 +17,15 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            crates/tests/raft-protocol-compat/bin-current
+            crates/tests/raft-protocol-compat/bin-v260205.4.0
       - run: sudo apt-get update && sudo apt-get install -y mold protobuf-compiler
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: make raft-protocol-compat-lint
       - run: cargo install taplo-cli --locked
       - run: taplo fmt --check
       - run: cargo doc --workspace --no-deps
@@ -35,6 +41,26 @@ jobs:
       - uses: taiki-e/install-action@nextest
       - run: sudo apt-get update && sudo apt-get install -y mold protobuf-compiler
       - run: cargo nextest run --no-fail-fast --workspace
+
+  raft-protocol-compat:
+    # Cross-version raft protocol & on-disk format compatibility. Builds
+    # bin-current (working tree) plus every pinned bin-v<TAG> workspace and
+    # runs the orchestrator against the full matrix. See
+    # crates/tests/raft-protocol-compat/README.md.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Each compat workspace has its own target/ — list them explicitly
+          # so the cache scopes correctly. Add a new line when introducing a
+          # new bin-v<TAG>/ workspace.
+          workspaces: |
+            crates/tests/raft-protocol-compat/bin-current
+            crates/tests/raft-protocol-compat/bin-v260205.4.0
+      - run: sudo apt-get update && sudo apt-get install -y mold protobuf-compiler
+      - run: make test-raft-protocol-compat
 
   typos:
     runs-on: ubuntu-latest
