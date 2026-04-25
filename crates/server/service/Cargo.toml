@@ -36,6 +36,7 @@ logcall = { workspace = true }
 map-api = { workspace = true }
 maplit = { workspace = true }
 openraft = { workspace = true }
+openraft-rt = { workspace = true }
 peel-off = { workspace = true }
 prometheus-client = { workspace = true }
 prost = { workspace = true }
