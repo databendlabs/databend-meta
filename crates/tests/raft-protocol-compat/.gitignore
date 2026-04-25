@@ -1,0 +1,5 @@
+# Test artifacts written by test_meta_meta.py (raft dirs, node logs, exports).
+.test-data/
+
+# Python bytecode for the orchestrator.
+__pycache__/

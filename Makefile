@@ -1,6 +1,6 @@
 CARGO_TARGET_DIR ?= $(CURDIR)/target
 
-.PHONY: all setup fmt lint build build-release check test unit-test miri coverage coverage-html clean doc doc-open compat-history
+.PHONY: all setup fmt lint build build-release check test unit-test miri coverage coverage-html clean doc doc-open compat-history raft-protocol-compat-lint raft-protocol-compat-build test-raft-protocol-compat
 
 all: lint test
 
@@ -19,7 +19,7 @@ fmt:
 	taplo fmt
 
 # Linting
-lint: fmt compat-history
+lint: fmt compat-history raft-protocol-compat-lint
 	cargo clippy --workspace --all-targets -- -D warnings
 	cargo machete
 	cargo doc --workspace --no-deps
@@ -60,6 +60,29 @@ miri:
 compat-history:
 	python3 docs/update-compat-history.py
 
+# Raft protocol backward compatibility test
+#
+# Builds bin-current/ (the working source tree) plus every bin-v*/ workspace
+# (each pinned to a released tag). New old versions added under
+# crates/tests/raft-protocol-compat/bin-v<TAG>/ are picked up automatically.
+raft-protocol-compat-lint:
+	@set -e; for d in crates/tests/raft-protocol-compat/bin-current crates/tests/raft-protocol-compat/bin-v*; do \
+		[ -d "$$d" ] || continue; \
+		echo "==> Linting $$d"; \
+		cargo fmt --manifest-path $$d/Cargo.toml -- --check; \
+		cargo clippy --manifest-path $$d/Cargo.toml --all-targets -- -D warnings; \
+	done
+
+raft-protocol-compat-build:
+	@set -e; for d in crates/tests/raft-protocol-compat/bin-current crates/tests/raft-protocol-compat/bin-v*; do \
+		[ -d "$$d" ] || continue; \
+		echo "==> Building $$d"; \
+		cargo build --manifest-path $$d/Cargo.toml; \
+	done
+
+test-raft-protocol-compat: raft-protocol-compat-build
+	python3 crates/tests/raft-protocol-compat/test_meta_meta.py --skip-build
+
 # Cleanup
 clean:
 	cargo clean
@@ -71,4 +94,3 @@ doc:
 
 doc-open:
 	cargo doc --workspace --no-deps --open
-
