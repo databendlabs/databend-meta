@@ -12,7 +12,6 @@ databend-meta-client = { workspace = true }
 databend-meta-runtime-api = { workspace = true }
 databend-meta-test-harness = { workspace = true }
 env_logger = { workspace = true }
-log = { workspace = true }
 rand = { workspace = true }
 tokio = { workspace = true }
 
