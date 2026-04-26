@@ -1,0 +1,45 @@
+[package]
+name = "databend-meta-compat-v1-2-873"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "databend-meta-compat"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+databend-meta = { git = "https://github.com/databendlabs/databend-meta.git", tag = "v1.2.873" }
+databend-meta-client = { git = "https://github.com/databendlabs/databend-meta.git", tag = "v1.2.873" }
+databend-meta-runtime-api = { git = "https://github.com/databendlabs/databend-meta.git", tag = "v1.2.873" }
+databend-meta-types = { git = "https://github.com/databendlabs/databend-meta.git", tag = "v1.2.873" }
+databend-meta-version = { git = "https://github.com/databendlabs/databend-meta.git", tag = "v1.2.873" }
+env_logger = "0.11"
+log = "0.4"
+openraft = { version = "0.10.0", features = ["serde", "tracing-log"] }
+rotbl = "=0.2.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1.35", features = ["full"] }
+tokio-stream = { version = "0.1.11", features = ["net"] }
+tonic = "0.13"
+
+[package.metadata.cargo-machete]
+# `rotbl = "=0.2.9"` is a transitive-version anchor for databend-meta v1.2.873,
+# not directly imported by `src/main.rs`. Keeping it forces cargo to resolve
+# the exact rotbl this tag was built against; cargo-machete cannot tell that
+# from source alone, so declare the intent here.
+ignored = ["rotbl"]
+
+[patch.crates-io]
+async-backtrace = { git = "https://github.com/datafuse-extras/async-backtrace.git", rev = "dea4553" }
+databend-base = { git = "https://github.com/databendlabs/databend-base", tag = "v0.2.10" }
+map-api = { git = "https://github.com/databendlabs/map-api", tag = "v0.4.2" }
+openraft = { git = "https://github.com/databendlabs/openraft", tag = "v0.10.0-alpha.13" }
+sled = { git = "https://github.com/datafuse-extras/sled", tag = "v0.34.7-datafuse.1" }
+state-machine-api = { git = "https://github.com/databendlabs/state-machine-api.git", tag = "v0.3.4" }
+watcher = { git = "https://github.com/databendlabs/watcher", tag = "v0.5.0" }
