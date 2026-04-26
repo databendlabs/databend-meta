@@ -3,19 +3,22 @@
 E2E raft-protocol backward compatibility test for databend-meta.
 
 Verifies that the current-source binary stays interoperable with one or
-more released versions across the raft wire protocol (AppendEntries,
-InstallSnapshot) and persisted on-disk formats (raft log, state-machine
-snapshot). Each pinned old version lives in its own `bin-<tag>/`
+more released versions across the raft wire protocol (RequestVote,
+AppendEntries, InstallSnapshot) and persisted on-disk formats (raft log,
+state-machine snapshot). Each pinned old version lives in its own `bin-<tag>/`
 workspace; the current source tree is built in `bin-current/`.
 
 For every `(test, old_version, direction)` triple, the orchestrator brings
-up a 2-node cluster with current↔old playing leader/follower (and the
-inverse), then verifies internal raft events via `/v1/ctrl/status` plus an
-absolute content assertion on the exported state machine.
+up a cluster with current↔old assigned to the raft roles required by that
+scenario. Most tests use a 2-node leader/follower cluster; election tests add
+a third voter. The test observes raft state through `/v1/ctrl/status` and
+asserts exported state-machine content instead of checking that a specific
+RPC endpoint was invoked.
 
-Adding a new old version is purely a directory creation: copy
-`bin-v260205.4.0/` to `bin-v<NEW_TAG>/`, edit `Cargo.toml` to point at the
-new tag, fix any divergent API in `src/main.rs`. The orchestrator
+Adding a new old version is a standalone workspace creation: create
+`bin-v<NEW_TAG>/`, write an independent `src/main.rs` for that tag, edit
+`Cargo.toml` to point at the new tag, and fix any divergent API locally. Do
+not use `include!` to share shim code between versions. The orchestrator
 auto-discovers `bin-v*` directories at startup.
 
 Usage:
@@ -23,7 +26,9 @@ Usage:
     python3 test_meta_meta.py --skip-build                             # skip cargo build
     python3 test_meta_meta.py --test SnapshotReplication               # one test, all old versions
     python3 test_meta_meta.py --test RestartReplication
-    python3 test_meta_meta.py --old-version v260205.4.0                # one old version, both directions
+    python3 test_meta_meta.py --test ElectionAfterLeaderLoss
+    python3 test_meta_meta.py --test LaggedFollowerLogCatchup
+    python3 test_meta_meta.py --old-version v1.2.873                   # one old version, both directions
     python3 test_meta_meta.py --direction current-to-old               # only one direction
     python3 test_meta_meta.py --direction old-to-current
     python3 test_meta_meta.py --keep-data                              # preserve .test-data
@@ -337,17 +342,18 @@ class Node:
 
 
 class TestContext:
-    """Two-node test environment with version assignment per raft role.
+    """Test environment with version assignment per raft role.
 
     Node 1 is always the leader; node 2 always joins as follower. Their
     binary versions are parameterized by `leader_version` /
     `follower_version`, so the same test exercises both `current→<old>` and
     `<old>→current` by instantiating two contexts with the assignment
-    swapped. Test bodies refer to `ctx.leader` / `ctx.follower` and stay
-    agnostic to which version is on each side.
+    swapped. Tests that need a third voter can create it with `make_node()`;
+    the extra node is tracked for cleanup but does not change the direction
+    label.
 
-    Both nodes share `data_dir` for their per-node raft directories and log
-    files. `cleanup()` stops both processes and wipes `data_dir`.
+    All nodes share `data_dir` for their per-node raft directories and log
+    files. `cleanup()` stops tracked processes and wipes `data_dir`.
     """
 
     def __init__(self, leader_version: str, follower_version: str):
@@ -368,6 +374,7 @@ class TestContext:
             raft_dir=self.data_dir / "meta_2",
             log_path=self.data_dir / "meta_log_2.txt",
         )
+        self._nodes = [self.leader, self.follower]
 
     @property
     def direction(self) -> str:
@@ -375,7 +382,18 @@ class TestContext:
         return f"{self.leader_version}→{self.follower_version}"
 
     def nodes(self) -> list[Node]:
-        return [self.leader, self.follower]
+        return list(self._nodes)
+
+    def make_node(self, node_id: int, version: str) -> Node:
+        node = Node(
+            node_id=node_id,
+            version=version,
+            binary=BINARIES[version],
+            raft_dir=self.data_dir / f"meta_{node_id}",
+            log_path=self.data_dir / f"meta_log_{node_id}.txt",
+        )
+        self._nodes.append(node)
+        return node
 
     def stop_all(self) -> None:
         for n in self.nodes():
@@ -505,6 +523,48 @@ def diff_files(file1: Path, file2: Path) -> None:
     step("verify", f"{file1.name} vs {file2.name}: identical ✓")
 
 
+def format_cluster_status(status_by_node: dict[int, dict]) -> str:
+    parts = []
+    for node_id in sorted(status_by_node):
+        s = status_by_node[node_id]
+        leader = s["current_leader"] if s["current_leader"] is not None else "-"
+        applied = s["last_applied_index"] if s["last_applied_index"] is not None else "-"
+        parts.append(
+            f"n{node_id}:{s['state']}/term={s['current_term']}/"
+            f"leader={leader}/applied={applied}"
+        )
+    return ", ".join(parts)
+
+
+def wait_cluster_status(
+    nodes: list[Node],
+    predicate: Callable[[dict[int, dict]], bool],
+    desc: str,
+    timeout: int = 60,
+) -> dict[int, dict]:
+    """Poll status from several nodes until a cluster-level predicate holds."""
+    step("cluster", f"wait: {desc}")
+    deadline = time.time() + timeout
+    last: dict[int, dict] = {}
+    while time.time() < deadline:
+        current: dict[int, dict] = {}
+        for node in nodes:
+            try:
+                current[node.node_id] = node.get_status()
+            except (urllib.error.URLError, ConnectionError, json.JSONDecodeError):
+                pass
+        if current:
+            last = current
+        if predicate(current):
+            detail(format_cluster_status(current))
+            return current
+        time.sleep(0.2)
+    raise TimeoutError(
+        f"cluster timeout after {timeout}s waiting for: {desc}; "
+        f"last status: {last}"
+    )
+
+
 def filter_and_compare_exports(
     raw1: Path,
     raw2: Path,
@@ -553,6 +613,36 @@ def export_both_and_compare(ctx: TestContext, expected: dict[str, str]) -> tuple
     assert_kv_present(raw2, expected)
     filter_and_compare_exports(raw1, raw2, include="state_machine", exclude=["DataHeader"])
     return raw1, raw2
+
+
+def export_nodes_and_compare(
+    nodes: list[Node],
+    data_dir: Path,
+    expected: dict[str, str],
+) -> list[Path]:
+    """Export several live nodes and compare their reconstructed KV views."""
+    exports: list[Path] = []
+    views: dict[int, dict[str, str]] = {}
+
+    for node in nodes:
+        raw = data_dir / f"node{node.node_id}-raw"
+        node.export(raw)
+        assert_kv_present(raw, expected)
+        exports.append(raw)
+        views[node.node_id] = parse_kv_state(raw)
+
+    first_id = nodes[0].node_id
+    first_view = views[first_id]
+    for node in nodes[1:]:
+        if views[node.node_id] != first_view:
+            raise AssertionError(
+                f"KV views differ: node{first_id} vs node{node.node_id}\n"
+                f"  node{first_id}: {first_view}\n"
+                f"  node{node.node_id}: {views[node.node_id]}"
+            )
+        step("verify", f"node{first_id}-raw vs node{node.node_id}-raw: KV view identical ✓")
+
+    return exports
 
 
 class TestCase:
@@ -714,9 +804,143 @@ class RestartReplication(TestCase):
         return fed
 
 
+class ElectionAfterLeaderLoss(TestCase):
+    """A mixed-version 3-voter cluster elects a new leader after leader loss.
+
+    The test only observes cluster state and KV convergence. It does not call
+    or assert a vote RPC directly; successful post-failover writes require the
+    two surviving nodes, one current and one old, to complete a cross-version
+    election and then replicate new log entries.
+    """
+
+    def execute(self, ctx: TestContext) -> None:
+        hr(f"TEST: {self.label(ctx)}")
+        ctx.cleanup()
+        ctx.data_dir.mkdir(parents=True)
+        fed, live_nodes = self.run(ctx)
+        export_nodes_and_compare(live_nodes, ctx.data_dir, fed)
+        ctx.stop_all()
+        banner(f"PASSED: {self.label(ctx)}")
+
+    def run(self, ctx: TestContext) -> tuple[dict[str, str], list[Node]]:
+        third = ctx.make_node(3, ctx.leader_version)
+        voters = [1, 2, 3]
+
+        ctx.leader.start(["--single"])
+        ctx.follower.start(["--join", ctx.leader.raft_addr])
+        third.start(["--join", ctx.leader.raft_addr])
+
+        formed = wait_cluster_status(
+            [ctx.leader, ctx.follower, third],
+            lambda ss: len(ss) == 3
+            and all(sorted(s["voters"]) == voters for s in ss.values())
+            and all(s["current_leader"] == 1 for s in ss.values()),
+            "initial 3-voter mixed-version cluster formed",
+        )
+        initial_term = formed[1]["current_term"]
+
+        fed = ctx.leader.feed_data(range(0, 5))
+        initial_applied = ctx.leader.wait_status(
+            lambda s: (s["last_applied_index"] or 0) >= 5,
+            "initial leader applied pre-failover writes",
+        )["last_applied_index"]
+        wait_cluster_status(
+            [ctx.follower, third],
+            lambda ss: len(ss) == 2
+            and all((s["last_applied_index"] or 0) >= initial_applied for s in ss.values()),
+            f"survivors replicated pre-failover writes up to {initial_applied}",
+        )
+
+        ctx.leader.stop()
+        survivors = [ctx.follower, third]
+
+        elected = wait_cluster_status(
+            survivors,
+            lambda ss: len(ss) == 2
+            and any(
+                s["state"] == "Leader"
+                and s["current_leader"] == node_id
+                and s["current_term"] > initial_term
+                for node_id, s in ss.items()
+            )
+            and all(s["current_leader"] in [2, 3] for s in ss.values()),
+            "surviving current/old voters elected a new leader",
+            timeout=90,
+        )
+        new_leader_id = next(
+            node_id
+            for node_id, s in elected.items()
+            if s["state"] == "Leader" and s["current_leader"] == node_id
+        )
+        new_leader = next(n for n in survivors if n.node_id == new_leader_id)
+
+        fed.update(new_leader.feed_data(range(5, 10)))
+        post_failover_applied = new_leader.wait_status(
+            lambda s: (s["last_applied_index"] or 0) >= initial_applied + 5,
+            "new leader applied post-failover writes",
+        )["last_applied_index"]
+        wait_cluster_status(
+            [n for n in survivors if n.node_id != new_leader_id],
+            lambda ss: len(ss) == 1
+            and all((s["last_applied_index"] or 0) >= post_failover_applied for s in ss.values()),
+            f"remaining survivor replicated post-failover writes up to {post_failover_applied}",
+        )
+
+        return fed, survivors
+
+
+class LaggedFollowerLogCatchup(TestCase):
+    """A follower joins after many writes and catches up without a snapshot.
+
+    This keeps the leader below the snapshot threshold and never triggers a
+    snapshot manually. Therefore final KV convergence for the late follower is
+    explained by historical AppendEntries log replay plus normal live
+    replication after it joins.
+    """
+
+    def run(self, ctx: TestContext) -> dict[str, str]:
+        ctx.leader.start(["--single"])
+        ctx.leader.wait_status(
+            lambda s: s["state"] == "Leader"
+            and s["current_leader"] == 1
+            and s["voters"] == [1],
+            "leader is up as a single-voter cluster",
+        )
+
+        fed = ctx.leader.feed_data(range(0, 30))
+        leader_applied_before_join = ctx.leader.wait_status(
+            lambda s: (s["last_applied_index"] or 0) >= 30
+            and (s["snapshot_index"] or 0) == 0,
+            "leader has pre-join writes in raft log without snapshot",
+        )["last_applied_index"]
+
+        ctx.follower.start(["--join", ctx.leader.raft_addr])
+        ctx.follower.wait_status(
+            lambda s: sorted(s["voters"]) == [1, 2]
+            and (s["snapshot_index"] or 0) == 0
+            and (s["last_applied_index"] or 0) >= leader_applied_before_join,
+            "lagged follower replayed pre-join raft logs without snapshot",
+        )
+
+        fed.update(ctx.leader.feed_data(range(30, 40)))
+        leader_applied_after_join = ctx.leader.wait_status(
+            lambda s: (s["last_applied_index"] or 0) >= leader_applied_before_join + 10
+            and (s["snapshot_index"] or 0) == 0,
+            "leader applied live writes after follower joined",
+        )["last_applied_index"]
+        ctx.follower.wait_status(
+            lambda s: (s["snapshot_index"] or 0) == 0
+            and (s["last_applied_index"] or 0) >= leader_applied_after_join,
+            "follower received live AppendEntries after log catch-up",
+        )
+        return fed
+
+
 TESTS: list[TestCase] = [
     SnapshotReplication(),
     RestartReplication(),
+    ElectionAfterLeaderLoss(),
+    LaggedFollowerLogCatchup(),
 ]
 
 

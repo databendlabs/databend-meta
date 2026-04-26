@@ -21,6 +21,7 @@ jobs:
           workspaces: |
             .
             crates/tests/raft-protocol-compat/bin-current
+            crates/tests/raft-protocol-compat/bin-v1.2.873
             crates/tests/raft-protocol-compat/bin-v260205.4.0
       - run: sudo apt-get update && sudo apt-get install -y mold protobuf-compiler
       - run: cargo fmt --all -- --check
@@ -58,6 +59,7 @@ jobs:
           # new bin-v<TAG>/ workspace.
           workspaces: |
             crates/tests/raft-protocol-compat/bin-current
+            crates/tests/raft-protocol-compat/bin-v1.2.873
             crates/tests/raft-protocol-compat/bin-v260205.4.0
       - run: sudo apt-get update && sudo apt-get install -y mold protobuf-compiler
       - run: make test-raft-protocol-compat
