@@ -43,6 +43,7 @@ use databend_meta_types::raft_types::RaftError;
 use databend_meta_types::raft_types::Snapshot;
 use databend_meta_types::raft_types::SnapshotResponse;
 use databend_meta_types::raft_types::StorageError;
+use databend_meta_types::raft_types::StreamAppendResult;
 use databend_meta_types::raft_types::StreamingError;
 use databend_meta_types::raft_types::TransferLeaderRequest;
 use databend_meta_types::raft_types::TypeConfig;
@@ -52,6 +53,7 @@ use databend_meta_types::raft_types::VoteRequest;
 use databend_meta_types::raft_types::VoteResponse;
 use fastrace::func_name;
 use futures::FutureExt;
+use futures::Stream;
 use futures::StreamExt;
 use futures::TryStreamExt;
 use log::debug;
@@ -60,9 +62,17 @@ use log::info;
 use log::warn;
 use openraft::MessageSummary;
 use openraft::RaftNetworkFactory;
+use openraft::base::BoxFuture;
+use openraft::base::BoxStream;
 use openraft::error::ReplicationClosed;
+use openraft::network::NetAppend;
+use openraft::network::NetBackoff;
+use openraft::network::NetSnapshot;
+use openraft::network::NetStreamAppend;
+use openraft::network::NetTransferLeader;
+use openraft::network::NetVote;
 use openraft::network::RPCOption;
-use openraft::network::v2::RaftNetworkV2;
+use openraft::network::stream_append_sequential;
 use seq_marked::SeqData;
 use seq_marked::SeqV;
 use state_machine_api::MetaValue;
@@ -723,7 +733,19 @@ impl<SP: SpawnApi> Network<SP> {
     }
 }
 
-impl<SP: SpawnApi> RaftNetworkV2<TypeConfig> for Network<SP> {
+// === Sub-trait impls ===
+//
+// We implement openraft's split network sub-traits directly instead of the
+// umbrella `RaftNetworkV2`. This is required because `NetStreamAppend` is
+// blanket-implemented for any `RaftNetworkV2` impl, so to provide a custom
+// `stream_append` we cannot also impl `RaftNetworkV2`.
+
+/// Unary AppendEntries via the legacy single-RPC endpoint.
+///
+/// Used by [`stream_append_sequential`] in the [`NetStreamAppend`] impl below
+/// as the per-request adapter. A subsequent commit will add an `AppendV001`
+/// fast path on top of this.
+impl<SP: SpawnApi> NetAppend<TypeConfig> for Network<SP> {
     /// Send AppendEntries RPC with automatic payload size management.
     ///
     /// If the payload exceeds gRPC size limit, reduces entry count and retries.
@@ -816,7 +838,27 @@ impl<SP: SpawnApi> RaftNetworkV2<TypeConfig> for Network<SP> {
             }
         }
     }
+}
 
+/// Streaming AppendEntries.
+///
+/// Adapts the unary [`NetAppend::append_entries`] into a stream by delegating
+/// to openraft's [`stream_append_sequential`] helper, which sends one request
+/// at a time and yields a stream of [`StreamAppendResult`]s.
+impl<SP: SpawnApi> NetStreamAppend<TypeConfig> for Network<SP> {
+    fn stream_append<'s, S>(
+        &'s mut self,
+        input: S,
+        option: RPCOption,
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult, RPCError>>, RPCError>>
+    where
+        S: Stream<Item = AppendEntriesRequest> + Send + Unpin + 'static,
+    {
+        stream_append_sequential(self, input, option)
+    }
+}
+
+impl<SP: SpawnApi> NetSnapshot<TypeConfig> for Network<SP> {
     /// Send snapshot to target node. Currently uses V004 streaming protocol.
     /// TODO: Add version negotiation to choose between V003/V004 based on target capabilities.
     #[logcall::logcall(err = "error", input = "")]
@@ -889,7 +931,9 @@ impl<SP: SpawnApi> RaftNetworkV2<TypeConfig> for Network<SP> {
             Err(err)
         }
     }
+}
 
+impl<SP: SpawnApi> NetVote<TypeConfig> for Network<SP> {
     #[logcall::logcall(err = "debug")]
     #[fastrace::trace]
     async fn vote(
@@ -954,7 +998,9 @@ impl<SP: SpawnApi> RaftNetworkV2<TypeConfig> for Network<SP> {
 
         self.parse_grpc_resp::<_, openraft::error::Infallible>(grpc_res)
     }
+}
 
+impl<SP: SpawnApi> NetTransferLeader<TypeConfig> for Network<SP> {
     async fn transfer_leader(
         &mut self,
         req: TransferLeaderRequest,
@@ -991,7 +1037,9 @@ impl<SP: SpawnApi> RaftNetworkV2<TypeConfig> for Network<SP> {
         grpc_res.map_err(|e| RPCError::Unreachable(self.status_to_unreachable(e)))?;
         Ok(())
     }
+}
 
+impl<SP: SpawnApi> NetBackoff<TypeConfig> for Network<SP> {
     /// When a `Unreachable` error is returned from the `Network`,
     /// Openraft will call this method to build a backoff instance.
     fn backoff(&self) -> openraft::network::Backoff {
