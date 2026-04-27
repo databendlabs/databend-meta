@@ -303,6 +303,8 @@ message LogEntry {
     CmdAddNode add_node = 10;
     CmdRemoveNode remove_node = 11;
     CmdSetFeature set_feature = 12;
+    CmdUpsertKV upsert_kv = 13;
+    TxnRequest transaction = 14;
     KvTransactionRequest kv_transaction = 15;
     Membership membership = 21;
   }

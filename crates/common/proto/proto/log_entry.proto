@@ -52,3 +52,34 @@ message CmdSetFeature {
   string feature = 1;
   bool enable = 2;
 }
+
+// Sequence-number precondition for `Cmd::UpsertKV.seq`.
+//
+// - ge=false: CAS, match seq exactly equal to `value` (value=0 == put-if-absent)
+// - ge=true:  match seq >= `value` (e.g. update-existing)
+//
+// Native `MatchSeq::Any` is equivalent to `ge=true, value=0`
+// and is sent as such on the wire.
+message MatchSeq {
+  // If true, match seq >= value. Otherwise match seq == value.
+  bool ge = 1;
+  uint64 value = 2;
+}
+
+// Upsert (or delete) a single KV pair (Cmd::UpsertKV).
+//
+// `Operation::AsIs` is deprecated and not transported.
+message CmdUpsertKV {
+  string key = 1;
+  MatchSeq seq = 2;
+
+  // Present => update with these bytes; absent => delete.
+  optional bytes value = 3;
+
+  // Absolute expire time since Unix epoch.
+  // Treated as milliseconds when > 100_000_000_000, otherwise seconds.
+  optional uint64 expire_at = 4;
+
+  // Relative time-to-live in milliseconds (applied at raft-log apply time).
+  optional uint64 ttl_ms = 5;
+}

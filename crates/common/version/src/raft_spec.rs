@@ -94,6 +94,20 @@ impl RaftSpec {
             // 📡 raft client: optionally used since 260217.0.0; falls back to
             // legacy AppendEntries if peer doesn't support it.
             add_optional(&mut cli, F::AppendV001, ver(260217, 0, 0));
+
+            // 2026-04-28: since 260428.0.0 (this repo):
+            // AppendV001 wire format extended to carry the legacy `Cmd::UpsertKV`
+            // and `Cmd::Transaction` variants. Without these, AppendV001 could only
+            // carry node/feature/membership/kv-transaction entries.
+            //
+            // 🖥 raft server: decodes both variants from the AppendV001 stream.
+            add(&mut srv, F::AppendV001UpsertKv, ver(260428, 0, 0));
+            add(&mut srv, F::AppendV001Transaction, ver(260428, 0, 0));
+            // 📡 raft client: capability is registered but no client version uses it
+            // yet — the v001 wiring lands in a follow-up commit. Pinned at
+            // `Version::max()` so it does not affect compatibility math today.
+            add(&mut cli, F::AppendV001UpsertKv, Version::max());
+            add(&mut cli, F::AppendV001Transaction, Version::max());
         }
 
         FeatureSpec::build(version, srv, cli)
