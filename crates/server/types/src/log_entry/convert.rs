@@ -20,9 +20,14 @@ use openraft::entry::RaftEntry;
 
 use crate::Cmd;
 use crate::LogEntry;
+use crate::MatchSeq;
+use crate::MetaSpec;
+use crate::Operation;
+use crate::UpsertKV;
 use crate::proto_ext::PbNodeExt;
 use crate::protobuf as pb;
 use crate::raft_types;
+use crate::time::Interval;
 
 // === Entry ↔ pb::LogEntry (extension traits) ===
 
@@ -59,16 +64,8 @@ impl PbLogEntryExt for pb::LogEntry {
                         pb::log_entry::Cmd::SetFeature(pb::CmdSetFeature { feature, enable })
                     }
                     Cmd::KvTransaction(txn) => pb::log_entry::Cmd::KvTransaction(txn.into()),
-                    Cmd::UpsertKV(_) => {
-                        panic!(
-                            "UpsertKV is a legacy variant and cannot be converted to protobuf LogEntry"
-                        )
-                    }
-                    Cmd::Transaction(_) => {
-                        panic!(
-                            "Transaction is a legacy variant and cannot be converted to protobuf LogEntry"
-                        )
-                    }
+                    Cmd::UpsertKV(u) => pb::log_entry::Cmd::UpsertKv(upsert_kv_to_pb(u)),
+                    Cmd::Transaction(txn) => pb::log_entry::Cmd::Transaction(txn),
                 };
                 pb::LogEntry {
                     log_id,
@@ -110,6 +107,8 @@ impl PbLogEntryExt for pb::LogEntry {
                         feature: c.feature,
                         enable: c.enable,
                     },
+                    pb::log_entry::Cmd::UpsertKv(c) => Cmd::UpsertKV(upsert_kv_from_pb(c)?),
+                    pb::log_entry::Cmd::Transaction(txn) => Cmd::Transaction(txn),
                     pb::log_entry::Cmd::KvTransaction(req) => Cmd::KvTransaction(req.into()),
                     pb::log_entry::Cmd::Membership(_) => unreachable!(),
                 };
@@ -122,6 +121,71 @@ impl PbLogEntryExt for pb::LogEntry {
 
         Ok(raft_types::Entry::new(log_id, payload))
     }
+}
+
+// === UpsertKV ↔ pb::CmdUpsertKv ===
+
+// Native `MatchSeq::Any` is equivalent to `ge=true, value=0` and is sent as such on the wire.
+fn match_seq_to_pb(seq: MatchSeq) -> pb::MatchSeq {
+    let (ge, value) = match seq {
+        MatchSeq::Any => (true, 0),
+        MatchSeq::Exact(n) => (false, n),
+        MatchSeq::GE(n) => (true, n),
+    };
+    pb::MatchSeq { ge, value }
+}
+
+fn match_seq_from_pb(p: pb::MatchSeq) -> MatchSeq {
+    if p.ge {
+        MatchSeq::GE(p.value)
+    } else {
+        MatchSeq::Exact(p.value)
+    }
+}
+
+// `Operation::AsIs` is deprecated and not transported.
+fn value_to_pb(op: Operation<Vec<u8>>) -> Option<Vec<u8>> {
+    match op {
+        Operation::Update(v) => Some(v),
+        Operation::Delete => None,
+        #[allow(deprecated)]
+        Operation::AsIs => panic!("Operation::AsIs is deprecated and must not appear in raft logs"),
+    }
+}
+
+fn value_from_pb(value: Option<Vec<u8>>) -> Operation<Vec<u8>> {
+    match value {
+        Some(v) => Operation::Update(v),
+        None => Operation::Delete,
+    }
+}
+
+fn upsert_kv_to_pb(u: UpsertKV) -> pb::CmdUpsertKv {
+    let (expire_at, ttl_ms) = match u.value_meta {
+        Some(m) => (m.expire_at(), m.ttl().map(|i| i.millis())),
+        None => (None, None),
+    };
+    pb::CmdUpsertKv {
+        key: u.key,
+        seq: Some(match_seq_to_pb(u.seq)),
+        value: value_to_pb(u.value),
+        expire_at,
+        ttl_ms,
+    }
+}
+
+fn upsert_kv_from_pb(p: pb::CmdUpsertKv) -> Result<UpsertKV, String> {
+    let seq = p.seq.ok_or_else(|| "CmdUpsertKV missing seq".to_string())?;
+    let value_meta = match (p.expire_at, p.ttl_ms) {
+        (None, None) => None,
+        (e, t) => Some(MetaSpec::new(e, t.map(Interval::from_millis))),
+    };
+    Ok(UpsertKV {
+        key: p.key,
+        seq: match_seq_from_pb(seq),
+        value: value_from_pb(p.value),
+        value_meta,
+    })
 }
 
 // === AppendEntriesRequest ↔ pb::AppendRequest (extension traits) ===
@@ -280,8 +344,14 @@ mod tests {
         }
     }
 
+    // The transport-level tests below feed each Cmd variant (with full content
+    // coverage) through `pb::LogEntry::from_raft` -> `try_into_raft` and assert
+    // semantic equality. This is the same path as receiving a `LogEntry` over
+    // the wire and converting back to native types.
+
     #[test]
     fn test_log_payload_add_node() {
+        // overriding=true + grpc_api_advertise_address present + time_ms set.
         round_trip_log_entry(LogEntry::new_with_time(
             Cmd::AddNode {
                 node_id: 1,
@@ -291,23 +361,138 @@ mod tests {
             },
             Some(1234567890),
         ));
+
+        // overriding=false + no grpc_api_advertise_address + no time_ms.
+        round_trip_log_entry(LogEntry::new(Cmd::AddNode {
+            node_id: 2,
+            node: Node::new("n2", Endpoint::new("10.0.0.2", 9191)),
+            overriding: false,
+        }));
     }
 
     #[test]
     fn test_log_payload_remove_node() {
         round_trip_log_entry(LogEntry::new(Cmd::RemoveNode { node_id: 42 }));
+        round_trip_log_entry(LogEntry::new_with_time(
+            Cmd::RemoveNode { node_id: 0 },
+            Some(7),
+        ));
     }
 
     #[test]
     fn test_log_payload_set_feature() {
         round_trip_log_entry(LogEntry::new(Cmd::SetFeature {
-            feature: "test_feature".to_string(),
+            feature: "feat_a".to_string(),
             enable: true,
+        }));
+        round_trip_log_entry(LogEntry::new(Cmd::SetFeature {
+            feature: "feat_b".to_string(),
+            enable: false,
         }));
     }
 
     #[test]
+    fn test_log_payload_upsert_kv() {
+        use std::time::Duration;
+
+        use crate::MatchSeq;
+        use crate::UpsertKV;
+
+        // Update + Exact(0) (insert), no meta.
+        round_trip_log_entry(LogEntry::new(Cmd::UpsertKV(UpsertKV::insert("k", b"v"))));
+
+        // Delete + GE(1), no meta.
+        round_trip_log_entry(LogEntry::new(Cmd::UpsertKV(UpsertKV::delete("k"))));
+
+        // Update with empty bytes — distinct from Delete on the wire.
+        round_trip_log_entry(LogEntry::new(Cmd::UpsertKV(UpsertKV::update("k", b""))));
+
+        // Update + Exact(5) (CAS) + expire_at-only meta.
+        round_trip_log_entry(LogEntry::new(Cmd::UpsertKV(UpsertKV::new(
+            "k",
+            MatchSeq::Exact(5),
+            crate::Operation::Update(b"v".to_vec()),
+            Some(crate::MetaSpec::new_expire(1700000000)),
+        ))));
+
+        // Update + GE(0) + ttl-only meta.
+        round_trip_log_entry(LogEntry::new(Cmd::UpsertKV(
+            UpsertKV::update("k", b"v").with_ttl(Duration::from_millis(5000)),
+        )));
+
+        // Update + GE(7) + both expire_at and ttl.
+        round_trip_log_entry(LogEntry::new(Cmd::UpsertKV(UpsertKV::new(
+            "k",
+            MatchSeq::GE(7),
+            crate::Operation::Update(b"v".to_vec()),
+            Some(MetaSpec::new(
+                Some(1700000000),
+                Some(Interval::from_millis(5000)),
+            )),
+        ))));
+    }
+
+    #[test]
+    fn test_log_payload_upsert_kv_any_normalizes_to_ge_zero() {
+        // Native `MatchSeq::Any` is equivalent to `GE(0)` and is sent as such on
+        // the wire. The reverse direction always rebuilds `GE(0)`, so this round
+        // trip is intentionally asymmetric — assert the normalized result rather
+        // than byte-equality.
+        use crate::MatchSeq;
+        use crate::UpsertKV;
+
+        let any_kv = UpsertKV::new(
+            "k",
+            MatchSeq::Any,
+            crate::Operation::Update(b"v".to_vec()),
+            None,
+        );
+        let pb_entry = pb::LogEntry::from_raft(raft_types::Entry::new(
+            raft_types::new_log_id(1, 0, 1),
+            openraft::EntryPayload::Normal(LogEntry::new(Cmd::UpsertKV(any_kv))),
+        ));
+        let back = pb_entry.try_into_raft().unwrap();
+        let openraft::EntryPayload::Normal(LogEntry {
+            cmd: Cmd::UpsertKV(back_kv),
+            ..
+        }) = back.payload
+        else {
+            panic!("expected Cmd::UpsertKV");
+        };
+        assert_eq!(back_kv.seq, MatchSeq::GE(0));
+    }
+
+    #[test]
+    fn test_log_payload_transaction() {
+        use crate::TxnCondition;
+        use crate::TxnOp;
+        use crate::TxnRequest;
+
+        // Empty TxnRequest (default): all four lists empty.
+        round_trip_log_entry(LogEntry::new(Cmd::Transaction(TxnRequest::default())));
+
+        // condition + if_then.
+        let txn = TxnRequest::new(vec![TxnCondition::eq_value("k", b"v".to_vec())], vec![
+            TxnOp::put("k", b"v".to_vec()),
+        ]);
+        round_trip_log_entry(LogEntry::new_with_time(Cmd::Transaction(txn), Some(42)));
+
+        // condition + if_then + else_then with multiple ops.
+        let txn = TxnRequest {
+            condition: vec![
+                TxnCondition::eq_value("k", b"v".to_vec()),
+                TxnCondition::eq_seq("k", 3),
+            ],
+            if_then: vec![TxnOp::put("k", b"v2".to_vec()), TxnOp::get("other")],
+            else_then: vec![TxnOp::delete("k")],
+            operations: vec![],
+        };
+        round_trip_log_entry(LogEntry::new_with_time(Cmd::Transaction(txn), Some(99)));
+    }
+
+    #[test]
     fn test_log_payload_kv_transaction() {
+        // Two branches: an `if` with a predicate and an `else`.
         let txn = Transaction {
             branches: vec![
                 Branch::if_(Predicate::eq_seq("k", 0))
@@ -316,32 +501,12 @@ mod tests {
             ],
         };
         round_trip_log_entry(LogEntry::new_with_time(Cmd::KvTransaction(txn), Some(999)));
-    }
 
-    #[test]
-    #[should_panic(expected = "UpsertKV is a legacy variant")]
-    fn test_log_payload_upsert_kv_panics() {
-        use crate::UpsertKV;
-
-        let entry = LogEntry::new(Cmd::UpsertKV(UpsertKV::insert("k", b"v")));
-        let raft_entry = raft_types::Entry::new(
-            raft_types::new_log_id(1, 0, 1),
-            openraft::EntryPayload::Normal(entry),
-        );
-        let _ = pb::LogEntry::from_raft(raft_entry);
-    }
-
-    #[test]
-    #[should_panic(expected = "Transaction is a legacy variant")]
-    fn test_log_payload_transaction_panics() {
-        use crate::TxnRequest;
-
-        let entry = LogEntry::new(Cmd::Transaction(TxnRequest::default()));
-        let raft_entry = raft_types::Entry::new(
-            raft_types::new_log_id(1, 0, 1),
-            openraft::EntryPayload::Normal(entry),
-        );
-        let _ = pb::LogEntry::from_raft(raft_entry);
+        // Single unconditional branch.
+        let txn = Transaction {
+            branches: vec![Branch::else_().then([Operation::put("k", b"v")])],
+        };
+        round_trip_log_entry(LogEntry::new(Cmd::KvTransaction(txn)));
     }
 
     #[test]

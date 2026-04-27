@@ -186,6 +186,8 @@ fn build_proto() {
         .type_attribute("CmdAddNode", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("CmdRemoveNode", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("CmdSetFeature", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("MatchSeq", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("CmdUpsertKV", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("LogEntry", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("LogEntry.cmd", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("Membership", "#[derive(Eq, deepsize::DeepSizeOf)]")
