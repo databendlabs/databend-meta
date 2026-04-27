@@ -885,7 +885,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta"
-version = "260312.9.0"
+version = "260312.10.0"
 dependencies = [
  "anyerror",
  "anyhow",
@@ -934,7 +934,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-base"
-version = "260312.9.0"
+version = "260312.10.0"
 dependencies = [
  "anyerror",
  "deepsize",
@@ -949,7 +949,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-client"
-version = "260312.9.0"
+version = "260312.10.0"
 dependencies = [
  "anyerror",
  "arrow-flight",
@@ -982,7 +982,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-client-types"
-version = "260312.9.0"
+version = "260312.10.0"
 dependencies = [
  "anyerror",
  "databend-meta-proto",
@@ -1019,7 +1019,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-kvapi"
-version = "260312.9.0"
+version = "260312.10.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1034,7 +1034,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-kvapi-test-suite"
-version = "260312.9.0"
+version = "260312.10.0"
 dependencies = [
  "anyhow",
  "databend-meta-client-types",
@@ -1049,7 +1049,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-proto"
-version = "260312.9.0"
+version = "260312.10.0"
 dependencies = [
  "anyerror",
  "databend-meta-base",
@@ -1071,7 +1071,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-raft-store"
-version = "260312.9.0"
+version = "260312.10.0"
 dependencies = [
  "anyerror",
  "anyhow",
@@ -1111,7 +1111,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-runtime-api"
-version = "260312.9.0"
+version = "260312.10.0"
 dependencies = [
  "env_logger",
  "hickory-resolver",
@@ -1123,7 +1123,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-sled-store"
-version = "260312.9.0"
+version = "260312.10.0"
 dependencies = [
  "anyerror",
  "byteorder",
@@ -1140,7 +1140,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-types"
-version = "260312.9.0"
+version = "260312.10.0"
 dependencies = [
  "anyerror",
  "databend-meta-base",
@@ -1167,7 +1167,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-version"
-version = "260312.9.0"
+version = "260312.10.0"
 dependencies = [
  "semver",
 ]
