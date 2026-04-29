@@ -12,34 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate as kvapi;
 use crate::Key;
 use crate::KeyCodec;
-use crate::KeyError;
-use crate::KeyParser;
+use crate::StructKey;
 use crate::Value;
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, KeyCodec)]
 pub(crate) struct FooKey {
     pub(crate) a: u64,
     pub(crate) b: String,
     pub(crate) c: u64,
 }
 
-impl KeyCodec for FooKey {
-    fn encode_key(&self, b: kvapi::KeyBuilder) -> kvapi::KeyBuilder {
-        b.push_u64(self.a).push_str(&self.b).push_u64(self.c)
-    }
-
-    fn decode_key(parser: &mut KeyParser) -> Result<Self, KeyError>
-    where Self: Sized {
-        let a = parser.next_u64()?;
-        let b = parser.next_str()?;
-        let c = parser.next_u64()?;
-
-        Ok(FooKey { a, b, c })
-    }
+impl StructKey for FooKey {
+    const PREFIX: &'static str = "pref";
 }
 
 #[allow(dead_code)]
@@ -47,7 +34,6 @@ impl KeyCodec for FooKey {
 pub(crate) struct FooValue;
 
 impl Key for FooKey {
-    const PREFIX: &'static str = "pref";
     type ValueType = FooValue;
 
     fn parent(&self) -> Option<String> {

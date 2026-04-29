@@ -1025,11 +1025,22 @@ dependencies = [
  "async-trait",
  "databend-base",
  "databend-meta-client-types",
+ "databend-meta-kvapi-derive",
  "display-more 0.2.6",
  "futures-util",
  "log",
  "serde",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "databend-meta-kvapi-derive"
+version = "260428.0.0"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]

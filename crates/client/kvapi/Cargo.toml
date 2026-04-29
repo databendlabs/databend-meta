@@ -17,6 +17,7 @@ display-more = { workspace = true }
 futures-util = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
+structkey = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
