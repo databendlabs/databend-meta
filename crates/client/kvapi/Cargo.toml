@@ -11,13 +11,12 @@ edition = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
-databend-base = { workspace = true }
 databend-meta-client-types = { workspace = true }
 display-more = { workspace = true }
 futures-util = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
-thiserror = { workspace = true }
+structkey = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

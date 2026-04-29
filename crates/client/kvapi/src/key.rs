@@ -15,68 +15,32 @@
 //! Defines kvapi::KVApi key behaviors.
 
 use std::fmt::Debug;
-use std::string::FromUtf8Error;
 
 use crate as kvapi;
-use crate::key_codec::KeyCodec;
+use crate::DirName;
+use crate::StructKey;
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum KeyError {
-    #[error(transparent)]
-    FromUtf8Error(#[from] FromUtf8Error),
-
-    #[error("Expect {i}-th segment to be '{expect}', but: '{got}'")]
-    InvalidSegment {
-        i: usize,
-        expect: String,
-        got: String,
-    },
-
-    #[error("Expect {i}-th segment to be non-empty")]
-    EmptySegment { i: usize },
-
-    #[error("Expect {expect} segments, but: '{got}'")]
-    WrongNumberOfSegments { expect: usize, got: String },
-
-    #[error("Expect at least {expect} segments, but {actual} segments found")]
-    AtleastSegments { expect: usize, actual: usize },
-
-    #[error("Invalid id string: '{s}': {reason}")]
-    InvalidId { s: String, reason: String },
-
-    #[error("Unknown kvapi::Key prefix: '{prefix}'")]
-    UnknownPrefix { prefix: String },
-
-    #[error("Invalid percent-encoded sequence at byte {pos} in '{input}'")]
-    InvalidEscape { pos: usize, input: String },
-}
-
-/// Convert structured key to a string key used by kvapi::KVApi and backwards
-pub trait Key: KeyCodec + Debug
+/// A `kvapi::KVApi` key: a `StructKey` paired with the value type stored at it.
+///
+/// `StructKey` provides the encoding (`PREFIX`, `to_string_key`, `from_str_key`);
+/// this trait layers on the kvapi-specific `ValueType` association and the
+/// `parent()` relation between hierarchical keys.
+pub trait Key: StructKey + Debug
 where Self: Sized
 {
-    const PREFIX: &'static str;
-
     type ValueType: kvapi::Value;
 
     /// Return the parent key of this key.
     ///
     /// For example, a table name's(`(database_id, table_name)`) parent is the database id.
     fn parent(&self) -> Option<String>;
+}
 
-    /// Encode structured key into a string.
-    fn to_string_key(&self) -> String {
-        let b = kvapi::KeyBuilder::new_prefixed(Self::PREFIX);
-        self.encode_key(b).done()
-    }
+impl<K: Key> Key for DirName<K> {
+    type ValueType = K::ValueType;
 
-    /// Decode str into a structured key.
-    fn from_str_key(s: &str) -> Result<Self, kvapi::KeyError> {
-        let mut p = kvapi::KeyParser::new_prefixed(s, Self::PREFIX)?;
-        let k = Self::decode_key(&mut p)?;
-        p.done()?;
-
-        Ok(k)
+    fn parent(&self) -> Option<String> {
+        unimplemented!("DirName is not a record thus it has no parent")
     }
 }
 
@@ -84,7 +48,7 @@ where Self: Sized
 mod tests {
 
     use crate::DirName;
-    use crate::Key;
+    use crate::StructKey;
     use crate::testing::FooKey;
 
     #[test]
