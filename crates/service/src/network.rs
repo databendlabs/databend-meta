@@ -995,9 +995,9 @@ impl<SP: SpawnApi> RaftNetworkV2<TypeConfig> for Network<SP> {
 
     /// When a `Unreachable` error is returned from the `Network`,
     /// Openraft will call this method to build a backoff instance.
-    fn backoff(&self) -> openraft::network::Backoff {
+    fn backoff(&self) -> Option<openraft::network::Backoff> {
         warn!("backoff is required: target={}", self.target);
-        openraft::network::Backoff::new(self.back_off())
+        Some(openraft::network::Backoff::new(self.back_off()))
     }
 }
 
