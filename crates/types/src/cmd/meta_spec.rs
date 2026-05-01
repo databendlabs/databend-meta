@@ -29,7 +29,15 @@ use crate::time::flexible_timestamp_to_duration;
 /// This is similar to [`KVMeta`] but differs, [`KVMeta`] is used in storage,
 /// as this instance is employed for transport purposes.
 /// When an `upsert` cmd is applied, this instance is evaluated and a `KVMeta` is built.
-#[derive(serde::Serialize, serde::Deserialize, Debug, Default, Clone, Eq, PartialEq)]
+#[derive(
+    serde::Serialize,
+    serde::Deserialize,
+    Debug,
+    Default,
+    Clone,
+    Eq,
+    PartialEq
+)]
 pub struct MetaSpec {
     /// Expiration time in **seconds or milliseconds** since Unix epoch (1970-01-01).
     ///

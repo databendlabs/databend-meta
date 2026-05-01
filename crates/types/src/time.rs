@@ -32,7 +32,7 @@ use std::time::Duration;
     Eq,
     PartialEq,
     PartialOrd,
-    Ord,
+    Ord
 )]
 pub struct Interval {
     pub(crate) millis: u64,
@@ -101,7 +101,7 @@ impl Sub for Interval {
     Eq,
     PartialEq,
     PartialOrd,
-    Ord,
+    Ord
 )]
 pub struct Time {
     pub(crate) time: Interval,

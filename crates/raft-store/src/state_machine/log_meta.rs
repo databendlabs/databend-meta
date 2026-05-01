@@ -32,7 +32,15 @@ pub enum LogMetaKey {
     /// Because raft replication requires logs to be consecutive.
     LastPurged,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, derive_more::TryInto)]
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    derive_more::TryInto
+)]
 pub enum LogMetaValue {
     LogId(LogId),
 }

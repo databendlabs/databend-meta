@@ -25,7 +25,15 @@ use crate::raft_types::StoredMembership;
 /// Snapshot System data(non-user data).
 ///
 /// System data is **NOT** leveled. At each level, there is a complete copy of the system data.
-#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize
+)]
 pub struct SysData {
     /// The last applied log id.
     last_applied: Option<LogId>,

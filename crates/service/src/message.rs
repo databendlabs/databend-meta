@@ -28,7 +28,15 @@ use databend_meta_types::MetaAPIError;
 use databend_meta_types::protobuf::RaftRequest;
 use databend_meta_types::raft_types::NodeId;
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Default, Clone, PartialEq, Eq)]
+#[derive(
+    serde::Serialize,
+    serde::Deserialize,
+    Debug,
+    Default,
+    Clone,
+    PartialEq,
+    Eq
+)]
 pub struct JoinRequest {
     pub node_id: NodeId,
     pub endpoint: Endpoint,
@@ -89,7 +97,7 @@ pub struct LeaveRequest {
     PartialEq,
     Eq,
     derive_more::From,
-    derive_more::TryInto,
+    derive_more::TryInto
 )]
 pub enum ForwardRequestBody {
     Ping,
@@ -154,7 +162,13 @@ impl<T> ForwardRequest<T> {
 }
 
 #[derive(
-    serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq, derive_more::TryInto,
+    serde::Serialize,
+    serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    derive_more::TryInto
 )]
 #[allow(clippy::large_enum_variant)]
 pub enum ForwardResponse {

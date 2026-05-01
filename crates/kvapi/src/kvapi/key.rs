@@ -15,73 +15,48 @@
 //! Defines kvapi::KVApi key behaviors.
 
 use std::fmt::Debug;
-use std::string::FromUtf8Error;
+
+use structkey::DirName;
+use structkey::StructKey;
 
 use crate::kvapi;
-use crate::kvapi::key_codec::KeyCodec;
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum KeyError {
-    #[error(transparent)]
-    FromUtf8Error(#[from] FromUtf8Error),
-
-    #[error("Expect {i}-th segment to be '{expect}', but: '{got}'")]
-    InvalidSegment {
-        i: usize,
-        expect: String,
-        got: String,
-    },
-
-    #[error("Expect {i}-th segment to be non-empty")]
-    EmptySegment { i: usize },
-
-    #[error("Expect {expect} segments, but: '{got}'")]
-    WrongNumberOfSegments { expect: usize, got: String },
-
-    #[error("Expect at least {expect} segments, but {actual} segments found")]
-    AtleastSegments { expect: usize, actual: usize },
-
-    #[error("Invalid id string: '{s}': {reason}")]
-    InvalidId { s: String, reason: String },
-
-    #[error("Unknown kvapi::Key prefix: '{prefix}'")]
-    UnknownPrefix { prefix: String },
-}
-
-/// Convert structured key to a string key used by kvapi::KVApi and backwards
-pub trait Key: KeyCodec + Debug
+/// Convert structured key to a string key used by kvapi::KVApi and backwards.
+///
+/// Extends `structkey::StructKey` with the kvapi-specific contract:
+/// an associated `ValueType` and a hierarchical `parent()`. The codec
+/// layer (PREFIX, encode/decode, segment counting) is inherited from
+/// `StructKey`.
+pub trait Key: StructKey + Debug
 where Self: Sized
 {
-    const PREFIX: &'static str;
-
     type ValueType: kvapi::Value;
 
     /// Return the parent key of this key.
     ///
     /// For example, a table name's(`(database_id, table_name)`) parent is the database id.
     fn parent(&self) -> Option<String>;
+}
 
-    /// Encode structured key into a string.
-    fn to_string_key(&self) -> String {
-        let b = kvapi::KeyBuilder::new_prefixed(Self::PREFIX);
-        self.encode_key(b).done()
-    }
+/// `DirName<K>` participates in `Key` whenever the inner `K` does.
+///
+/// It carries the inner key's `ValueType` and forwards `parent()` as
+/// `unimplemented!`, matching the original kvapi behavior: a directory
+/// view is not a record and has no parent of its own.
+impl<K: Key> Key for DirName<K> {
+    type ValueType = K::ValueType;
 
-    /// Decode str into a structured key.
-    fn from_str_key(s: &str) -> Result<Self, kvapi::KeyError> {
-        let mut p = kvapi::KeyParser::new_prefixed(s, Self::PREFIX)?;
-        let k = Self::decode_key(&mut p)?;
-        p.done()?;
-
-        Ok(k)
+    fn parent(&self) -> Option<String> {
+        unimplemented!("DirName is not a record thus it has no parent")
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use crate::kvapi::DirName;
-    use crate::kvapi::Key;
+    use structkey::DirName;
+    use structkey::StructKey;
+
     use crate::kvapi::testing::FooKey;
 
     #[test]

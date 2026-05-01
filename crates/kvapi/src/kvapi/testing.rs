@@ -12,42 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::kvapi;
+// Re-export structkey's test helpers under `kvapi::testing` so application
+// crates that depend on `databend_meta_client::kvapi` do not need an extra
+// dev-dependency on `structkey`.
+pub use structkey::testing::*;
+
 use crate::kvapi::Key;
 use crate::kvapi::KeyCodec;
-use crate::kvapi::KeyError;
-use crate::kvapi::KeyParser;
+use crate::kvapi::StructKey;
 use crate::kvapi::Value;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(KeyCodec)]
 pub(crate) struct FooKey {
     pub(crate) a: u64,
     pub(crate) b: String,
     pub(crate) c: u64,
 }
 
-impl KeyCodec for FooKey {
-    fn encode_key(&self, b: kvapi::KeyBuilder) -> kvapi::KeyBuilder {
-        b.push_u64(self.a).push_str(&self.b).push_u64(self.c)
-    }
-
-    fn decode_key(parser: &mut KeyParser) -> Result<Self, KeyError>
-    where Self: Sized {
-        let a = parser.next_u64()?;
-        let b = parser.next_str()?;
-        let c = parser.next_u64()?;
-
-        Ok(FooKey { a, b, c })
-    }
-}
-
 #[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct FooValue;
 
-impl Key for FooKey {
+impl StructKey for FooKey {
     const PREFIX: &'static str = "pref";
+}
+
+impl Key for FooKey {
     type ValueType = FooValue;
 
     fn parent(&self) -> Option<String> {

@@ -22,7 +22,14 @@ use std::fmt::Formatter;
 pub type MetaId = u64;
 
 /// An operation that updates a field, delete it, or leave it as is.
-#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq, deepsize::DeepSizeOf)]
+#[derive(
+    serde::Serialize,
+    serde::Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    deepsize::DeepSizeOf
+)]
 pub enum Operation<T> {
     Update(T),
     Delete,

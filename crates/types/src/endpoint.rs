@@ -18,7 +18,16 @@ use anyerror::AnyError;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq, Eq, deepsize::DeepSizeOf)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Debug,
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    deepsize::DeepSizeOf
+)]
 pub struct Endpoint {
     addr: String,
     port: u16,

@@ -13,13 +13,8 @@
 // limitations under the License.
 
 mod api;
-mod dir_name;
-mod helper;
 mod item;
 mod key;
-mod key_builder;
-mod key_codec;
-mod key_parser;
 mod kv_api_ext;
 mod list_options;
 mod message;
@@ -27,21 +22,16 @@ mod pair;
 mod value;
 mod value_with_name;
 
-pub(crate) mod testing;
+pub mod testing;
 
 pub use api::ApiBuilder;
 pub use api::KVApi;
 pub use api::KVStream;
 pub use api::fail_fast;
 pub use api::limit_stream;
-pub use dir_name::DirName;
 pub use item::Item;
 pub use item::NonEmptyItem;
 pub use key::Key;
-pub use key::KeyError;
-pub use key_builder::KeyBuilder;
-pub use key_codec::KeyCodec;
-pub use key_parser::KeyParser;
 pub use kv_api_ext::KvApiExt;
 pub use list_options::ListOptions;
 pub use message::GetKVReply;
@@ -54,5 +44,16 @@ pub use message::UpsertKVReply;
 pub use pair::BasicPair;
 pub use pair::Pair;
 pub use pair::SeqPair;
+// Re-export structkey types under `Key*` aliases. Within `kvapi` -- a
+// crate that mixes Key, Value, and API concepts -- the prefix tells
+// the reader which concept each type belongs to. (`structkey` itself
+// has no such ambiguity, so the underlying types are unprefixed.)
+pub use structkey::Builder as KeyBuilder;
+pub use structkey::Codec as KeyCodec;
+pub use structkey::DirName;
+pub use structkey::Error as KeyError;
+pub use structkey::Parser as KeyParser;
+pub use structkey::Raw;
+pub use structkey::StructKey;
 pub use value::Value;
 pub use value_with_name::ValueWithName;

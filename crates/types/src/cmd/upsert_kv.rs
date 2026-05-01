@@ -25,7 +25,15 @@ use crate::With;
 use crate::match_seq::MatchSeq;
 
 /// Update or insert a general purpose kv store
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, deepsize::DeepSizeOf)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    deepsize::DeepSizeOf
+)]
 pub struct UpsertKV {
     pub key: String,
 

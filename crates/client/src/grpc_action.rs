@@ -141,7 +141,7 @@ impl MetaGrpcReq {
     PartialEq,
     Eq,
     derive_more::From,
-    derive_more::TryInto,
+    derive_more::TryInto
 )]
 pub enum MetaGrpcReadReq {
     GetKV(GetKVReq),

@@ -23,7 +23,15 @@ use serde::Serialize;
 use crate::Cmd;
 
 /// The application data request type which the `metasrv` works with.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, deepsize::DeepSizeOf)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    deepsize::DeepSizeOf
+)]
 pub struct LogEntry {
     /// The time in millisecond when this log is proposed by the leader.
     ///
@@ -66,7 +74,15 @@ mod tests {
     use super::*;
 
     /// With txid before 2025-07-19
-    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, deepsize::DeepSizeOf)]
+    #[derive(
+        Serialize,
+        Deserialize,
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        deepsize::DeepSizeOf
+    )]
     pub struct LogEntryWithTxid {
         pub txid: Option<()>,
 

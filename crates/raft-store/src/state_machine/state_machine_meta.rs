@@ -37,7 +37,15 @@ pub enum StateMachineMetaKey {
     /// The last membership config
     LastMembership,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, derive_more::TryInto)]
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    derive_more::TryInto
+)]
 pub enum StateMachineMetaValue {
     LogId(LogId),
     Bool(bool),

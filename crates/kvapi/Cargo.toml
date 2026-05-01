@@ -9,15 +9,13 @@ edition = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = { workspace = true }
 async-trait = { workspace = true }
-databend-base = { workspace = true }
 databend-meta-types = { workspace = true }
 display-more = { workspace = true }
 futures-util = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
-thiserror = { workspace = true }
+structkey = { workspace = true }
 
 [lints]
 workspace = true

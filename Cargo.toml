@@ -41,6 +41,7 @@ map-api = "0.4.2"
 openraft = { version = "0.10.0-alpha.18", features = ["serde", "tracing-log"] }
 sled = { version = "0.34", default-features = false }
 state-machine-api = "0.3.4"
+structkey = "0.1.0"
 
 # Standard crates
 anyerror = "=0.1.13"

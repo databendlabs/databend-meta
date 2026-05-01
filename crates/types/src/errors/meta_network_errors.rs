@@ -120,7 +120,15 @@ impl InvalidArgument {
     }
 }
 
-#[derive(thiserror::Error, serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    thiserror::Error,
+    serde::Serialize,
+    serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq
+)]
 pub struct InvalidReply {
     msg: String,
     #[source]

@@ -24,7 +24,16 @@ use strum::IntoEnumIterator;
 ///
 /// To enable/disable a feature with:
 /// `POST /api/v1/feature?feature=dummy_feature2&enable=true`
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, strum_macros::EnumIter)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Deserialize,
+    Serialize,
+    strum_macros::EnumIter
+)]
 #[serde(rename_all = "snake_case")]
 pub enum StateMachineFeature {
     /// Enables nothing, for testing only.

@@ -29,7 +29,15 @@ use crate::raft_types::ForwardToLeader;
 use crate::raft_types::RaftError;
 
 /// Errors raised when meta-service handling a request.
-#[derive(thiserror::Error, serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    thiserror::Error,
+    serde::Serialize,
+    serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq
+)]
 pub enum MetaAPIError {
     /// If a request can only be dealt with by a leader, it informs the caller to forward the request to a leader.
     #[error(transparent)]
@@ -101,7 +109,15 @@ impl MetaAPIError {
 }
 
 /// Errors raised when handling a request by raft node.
-#[derive(thiserror::Error, serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    thiserror::Error,
+    serde::Serialize,
+    serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq
+)]
 pub enum MetaOperationError {
     /// If a request can only be dealt by a leader, it informs the caller to forward the request to a leader it knows of.
     #[error(transparent)]
@@ -121,7 +137,15 @@ impl From<MetaOperationError> for MetaAPIError {
 }
 
 /// Errors raised when read or write meta data locally.
-#[derive(thiserror::Error, serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    thiserror::Error,
+    serde::Serialize,
+    serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq
+)]
 pub enum MetaDataError {
     /// Error occurred when writing a raft log.
     #[error(transparent)]
@@ -137,7 +161,15 @@ pub enum MetaDataError {
 }
 
 /// Error occurred when a meta-node reads data.
-#[derive(thiserror::Error, serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    thiserror::Error,
+    serde::Serialize,
+    serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq
+)]
 #[error("fail to {action}: {msg}, source: {source}")]
 pub struct MetaDataReadError {
     action: String,

@@ -19,7 +19,17 @@ use std::str::FromStr;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Default)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Default
+)]
 pub enum NodeType {
     #[default]
     SelfManaged,
@@ -27,7 +37,17 @@ pub enum NodeType {
 }
 
 /// Query node
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Default)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Default
+)]
 #[serde(default)]
 pub struct NodeInfo {
     pub id: String,

@@ -30,7 +30,7 @@ use crate::protobuf::RaftReply;
     PartialEq,
     Eq,
     derive_more::From,
-    derive_more::TryInto,
+    derive_more::TryInto
 )]
 pub enum AppliedState {
     Node {

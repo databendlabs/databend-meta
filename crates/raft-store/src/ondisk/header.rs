@@ -22,7 +22,16 @@ use crate::ondisk::DATA_VERSION;
 use crate::ondisk::DataVersion;
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize
 )]
 pub struct Header {
     /// Current data version

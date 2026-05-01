@@ -22,7 +22,15 @@ use crate::ondisk::version_info::VersionInfo;
 /// It is store in a standalone `sled::Tree`. In this tree there are two `DataVersion` record: the current version of the on-disk data, and the version to upgrade to.
 /// The `upgrading` is `Some` only when the upgrading progress is shut down before finishing.
 #[derive(
-    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize
 )]
 pub enum DataVersion {
     /// The first version.

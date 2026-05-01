@@ -19,7 +19,16 @@ use serde::Serialize;
 
 use crate::Endpoint;
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq, Eq, deepsize::DeepSizeOf)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Debug,
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    deepsize::DeepSizeOf
+)]
 pub struct Node {
     /// Node name for display.
     pub name: String,
