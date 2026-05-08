@@ -186,7 +186,6 @@ impl RaftLogStorage<TypeConfig> for MetaRaftLog {
         {
             let mut log = self.write().await;
             log.commit(Cw(committed))?;
-            log.flush(None)?;
         }
 
         debug!(
