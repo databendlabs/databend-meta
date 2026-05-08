@@ -464,7 +464,7 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
 
         SP::trace_request(func_path!(), request, |request| async move {
             let in_flight = InFlightRequest::new(
-                "kv_list",
+                "list",
                 format!(
                     "KvList: prefix={}, limit={}",
                     request.get_ref().prefix,
@@ -501,7 +501,7 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
         let query_id = get_query_id(&request).map(|s| s.to_owned());
 
         SP::trace_request(func_path!(), request, |request| async move {
-            let in_flight = InFlightRequest::new("kv_get_many", "KvGetMany".to_string());
+            let in_flight = InFlightRequest::new("mget", "KvGetMany".to_string());
             let input = request
                 .into_inner()
                 .inspect_ok(|req| network_metrics::incr_recv_bytes(req.encoded_len() as u64));
