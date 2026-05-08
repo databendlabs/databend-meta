@@ -18,6 +18,7 @@ use databend_meta::meta_node::meta_node::LogStore;
 use databend_meta::meta_node::meta_node::SMStore;
 use databend_meta::store::RaftStore;
 use databend_meta_raft_store::leveled_store::db_exporter::DBExporter;
+use databend_meta_raft_store::raft_log_v004::util::blocking_flush;
 use databend_meta_raft_store::state_machine::testing::snapshot_logs;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_types::raft_types::Entry;
@@ -179,6 +180,16 @@ async fn test_meta_store_restart() -> anyhow::Result<()> {
             .clone()
             .save_committed(Some(log_id::<TypeConfig>(1, 2, 2)))
             .await?;
+
+        // save_committed only updates the in-memory state and does not flush
+        // the WAL. Force a flush here so the committed marker is durable
+        // across the close/reopen cycle below; otherwise the worker queue is
+        // dropped before fsync completes and read_committed() returns None
+        // after reopen.
+        {
+            let mut log = sto.log().write().await;
+            blocking_flush(&mut log).await?;
+        }
 
         sto.state_machine()
             .clone()
