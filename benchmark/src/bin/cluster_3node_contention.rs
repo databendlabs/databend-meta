@@ -1,29 +1,25 @@
 //! 3-node Raft cluster contention benchmark.
 //!
-//! Step 1 of investigating the AppendEntries delay regression observed in
-//! production after upgrading one follower to v1.2.896 (raft-log 0.3.0).
+//! Spins up a full 3-voter meta-service cluster, warms the state
+//! machine, and runs concurrent write+read load against the leader for
+//! 60s. Reports per-RPC latency percentiles (p50/p90/p99/p99.9) and
+//! throughput.
 //!
-//! This benchmark spins up a complete 3-voter meta-service cluster, all
-//! running the current code (raft-log 0.3.0 with the `WriteRequest`-based
-//! flush worker and the `save_committed` `log.flush(None)` line), warms up
-//! the state machine, and runs concurrent write+read load against the
-//! leader for 60s. It reports per-RPC latency percentiles (p50/p90/p99
-//! /p99.9) and throughput.
-//!
-//! Goal: produce a reproducible baseline number that later revert
-//! experiments can be compared against:
-//!   - Step 1 (this run): all-current code, no fixes applied.
-//!   - Step 2: drop `log.flush(None)` from `save_committed`. Re-run.
-//!   - Step 3: also revert the write-in-worker WAL change. Re-run.
-//!
-//! Compare write p50/p99 across the three runs to attribute latency to
-//! each commit.
+//! Written to investigate the AppendEntries write-tail regression that
+//! surfaced in production after upgrading one follower to raft-log
+//! 0.3.0. The fix for that regression — dropping the redundant
+//! `log.flush(None)` in `save_committed` — lands together with this
+//! benchmark, so the numbers reported here reflect the post-fix code.
+//! The bench is kept as a regression watch for the same write-tail
+//! path: run before/after a candidate WAL change and diff write
+//! p50/p99/p999.
 //!
 //! Note on disk: `MetaSrvTestContext` uses a temp dir on the developer's
-//! local disk. Local NVMe fsync is fast enough (~30-80us) that the 0.3.0
-//! architectural change may be hard to see. To better mimic production
-//! (EBS-class storage with ~1-3ms fsync baseline), point the temp dir at a
-//! slower volume or inject artificial fsync latency before running.
+//! local disk. Local NVMe fsync is fast enough (~30-80us) that
+//! architectural changes around the WAL flush callback may be hard to
+//! see. To better mimic production (EBS-class storage with ~1-3ms
+//! fsync baseline), point the temp dir at a slower volume or inject
+//! artificial fsync latency before running.
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
