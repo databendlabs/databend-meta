@@ -189,19 +189,17 @@ impl RaftLogStorage<TypeConfig> for MetaRaftLog {
         {
             let mut log = self.write().await;
             log.commit(Cw(committed))?;
-            // Push the commit record to the worker without forcing an
-            // fsync. The committed log id is best-effort durability:
-            // worth getting into the OS page cache (so a process crash
-            // preserves it via kernel writeback) but not worth a real
-            // fsync per commit advance. The next `append`'s sync flush
-            // carries this record to disk along with its own batch.
-            log.flush(false, None)?;
         }
 
-        debug!(
-            "{}; flush without waiting: best-effort persist committed log id",
-            io.ok_submit()
-        );
+        // commit() updates the in-memory `RaftLogState::committed`, which
+        // is what `read_committed()` returns, so callers see the new
+        // committed value immediately. The Commit record sits in
+        // `pending_data` until the next `append` flushes it along with
+        // its own batch — no separate worker request needed. Persisting
+        // the committed id is optional per the openraft contract; if a
+        // crash drops the record before the next append, startup just
+        // re-applies a few entries to the state machine.
+        debug!("{}; persist deferred to next append", io.ok_submit());
         Ok(())
     }
 
