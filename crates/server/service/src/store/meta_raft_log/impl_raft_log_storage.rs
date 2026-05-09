@@ -162,7 +162,10 @@ impl RaftLogStorage<TypeConfig> for MetaRaftLog {
             let mut log = self.write().await;
 
             log.save_vote(Cw(*vote))?;
-            log.flush(Some(raft_log_v004::Callback::new_oneshot(tx, io.clone())))?;
+            log.flush(
+                true,
+                Some(raft_log_v004::Callback::new_oneshot(tx, io.clone())),
+            )?;
         }
 
         rx.await.map_err(io::Error::other)??;
@@ -186,6 +189,13 @@ impl RaftLogStorage<TypeConfig> for MetaRaftLog {
         {
             let mut log = self.write().await;
             log.commit(Cw(committed))?;
+            // Push the commit record to the worker without forcing an
+            // fsync. The committed log id is best-effort durability:
+            // worth getting into the OS page cache (so a process crash
+            // preserves it via kernel writeback) but not worth a real
+            // fsync per commit advance. The next `append`'s sync flush
+            // carries this record to disk along with its own batch.
+            log.flush(false, None)?;
         }
 
         debug!(
@@ -227,10 +237,13 @@ impl RaftLogStorage<TypeConfig> for MetaRaftLog {
 
         debug!("{}", io.ok_submit());
 
-        log.flush(Some(raft_log_v004::Callback::new_io_flushed(
-            callback,
-            io.clone(),
-        )))?;
+        log.flush(
+            true,
+            Some(raft_log_v004::Callback::new_io_flushed(
+                callback,
+                io.clone(),
+            )),
+        )?;
 
         info!("{}", io.ok_submit_flush());
 
