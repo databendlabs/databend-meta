@@ -32,13 +32,13 @@ pub enum RaftFeature {
     VoteV001,
 
     /// Typed streaming append RPC with `LogEntry` entries.
-    AppendV001,
-
-    /// `AppendV001` carries `Cmd::UpsertKV` entries (legacy variant).
-    AppendV001UpsertKv,
-
-    /// `AppendV001` carries `Cmd::Transaction` entries (legacy variant).
-    AppendV001Transaction,
+    ///
+    /// Carries the full `Cmd` schema (including the legacy `UpsertKV` and
+    /// `Transaction` variants) from the start. Replaces the never-shipped
+    /// `AppendV001`, which exposed a streaming endpoint without the legacy
+    /// variants and could not be safely used by any client (older servers
+    /// silently dropped unknown oneof tags rather than rejecting them).
+    AppendV002,
 
     /// Binary chunk snapshot transfer.
     SnapshotV003,
@@ -57,9 +57,7 @@ impl RaftFeature {
             RaftFeature::AppendEntries,
             RaftFeature::Vote,
             RaftFeature::VoteV001,
-            RaftFeature::AppendV001,
-            RaftFeature::AppendV001UpsertKv,
-            RaftFeature::AppendV001Transaction,
+            RaftFeature::AppendV002,
             RaftFeature::SnapshotV003,
             RaftFeature::SnapshotV004,
             RaftFeature::TransferLeader,
@@ -72,9 +70,7 @@ impl RaftFeature {
             RaftFeature::AppendEntries => "raft/append_entries",
             RaftFeature::Vote => "raft/vote",
             RaftFeature::VoteV001 => "raft/vote_v001",
-            RaftFeature::AppendV001 => "raft/append_v001",
-            RaftFeature::AppendV001UpsertKv => "raft/append_v001/upsert_kv",
-            RaftFeature::AppendV001Transaction => "raft/append_v001/transaction",
+            RaftFeature::AppendV002 => "raft/append_v002",
             RaftFeature::SnapshotV003 => "raft/snapshot_v003",
             RaftFeature::SnapshotV004 => "raft/snapshot_v004",
             RaftFeature::TransferLeader => "raft/transfer_leader",

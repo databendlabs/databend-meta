@@ -369,8 +369,8 @@ async fn test_raft_service_install_snapshot_v004() -> anyhow::Result<()> {
 
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
 #[fastrace::trace]
-async fn test_raft_service_append_v001() -> anyhow::Result<()> {
-    // Test the AppendV001 bidirectional streaming gRPC endpoint.
+async fn test_raft_service_append_v002() -> anyhow::Result<()> {
+    // Test the AppendV002 bidirectional streaming gRPC endpoint.
     //
     // Start a single-node leader (node 0, term 1, committed vote) with 3
     // initial log entries. To test `stream_append` we must act as a leader
@@ -410,7 +410,7 @@ async fn test_raft_service_append_v001() -> anyhow::Result<()> {
             leader_commit: Some(prev_log_id_3),
         };
 
-        let resp = client0.append_v001(stream::iter(vec![heartbeat])).await?;
+        let resp = client0.append_v002(stream::iter(vec![heartbeat])).await?;
         let mut output = resp.into_inner();
 
         let first = output.next().await;
@@ -455,7 +455,7 @@ async fn test_raft_service_append_v001() -> anyhow::Result<()> {
             leader_commit: Some(prev_log_id_3),
         };
 
-        let resp = client0.append_v001(stream::iter(vec![append_req])).await?;
+        let resp = client0.append_v002(stream::iter(vec![append_req])).await?;
         let mut output = resp.into_inner();
 
         let first = output.next().await.unwrap()?;
@@ -487,7 +487,7 @@ async fn test_raft_service_append_v001() -> anyhow::Result<()> {
             leader_commit: None,
         };
 
-        let resp = client0.append_v001(stream::iter(vec![stale_req])).await?;
+        let resp = client0.append_v002(stream::iter(vec![stale_req])).await?;
         let mut output = resp.into_inner();
 
         let first = output.next().await.unwrap()?;
@@ -505,8 +505,8 @@ async fn test_raft_service_append_v001() -> anyhow::Result<()> {
 
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
 #[fastrace::trace]
-async fn test_raft_service_append_v001_multi_item_stream() -> anyhow::Result<()> {
-    // Test AppendV001 with a single stream containing multiple requests,
+async fn test_raft_service_append_v002_multi_item_stream() -> anyhow::Result<()> {
+    // Test AppendV002 with a single stream containing multiple requests,
     // each carrying multiple log entries. Verifies that:
     // - All requests in one stream produce corresponding responses
     // - Each response's `last_log_id` reflects the last entry of that batch
@@ -564,7 +564,7 @@ async fn test_raft_service_append_v001_multi_item_stream() -> anyhow::Result<()>
         leader_commit: Some(make_log_id(5)),
     };
 
-    let resp = client0.append_v001(stream::iter(vec![req1, req2])).await?;
+    let resp = client0.append_v002(stream::iter(vec![req1, req2])).await?;
     let results: Vec<pb::AppendResponse> = resp.into_inner().try_collect().await?;
 
     assert_eq!(results, vec![
@@ -579,6 +579,180 @@ async fn test_raft_service_append_v001_multi_item_stream() -> anyhow::Result<()>
             last_log_id: Some(make_log_id(8)),
         },
     ]);
+
+    Ok(())
+}
+
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_raft_service_append_v002_upsert_kv() -> anyhow::Result<()> {
+    // End-to-end check that AppendV002 round-trips `Cmd::UpsertKV` all the way
+    // through the follower's state-machine apply path. The never-shipped
+    // `AppendV001` silently dropped this oneof tag at the proto layer; the new
+    // endpoint exists precisely to make the trip safe.
+    //
+    // Setup:
+    // - Bootstrap a 2-node cluster: voter node 0 (leader) + learner node 1.
+    // - Stop the leader so it stops replicating; the learner now receives logs
+    //   only via our hand-crafted AppendRequest below.
+    // - Send an AppendRequest carrying one `Cmd::UpsertKV` entry directly to
+    //   the learner's gRPC endpoint, with `leader_commit` advanced to the new
+    //   entry's LogId so the learner commits-and-applies it on the spot.
+    // - Read the learner's state machine and verify the upserted key/value.
+    //
+    // Using a learner (not a voter) for node 1 sidesteps election timing: a
+    // learner cannot start an election when the leader disappears, so the
+    // node's vote stays at the bootstrap value and our AppendRequest's vote
+    // matches without bumping the term.
+
+    let (log_index, tcs) = start_meta_node_cluster(btreeset![0], btreeset![1]).await?;
+    assert_eq!(log_index, 5, "init=3 + add-node-1=2");
+
+    let leader = tcs[0].meta_node();
+    leader.stop().await?;
+
+    let follower = tcs[1].meta_node();
+    let mut client = tcs[1].raft_client().await?;
+
+    // Bootstrap leaves the cluster's last log id at (term=1, node=0, index=5).
+    // We extend the log with one new entry at index 6 written under the same
+    // vote, and commit through that index so the learner applies it.
+    let leader_vote = pb::Vote {
+        term: 1,
+        node_id: 0,
+        committed: true,
+    };
+    let prev_log_id = pb::LogId {
+        term: 1,
+        node_id: 0,
+        index: 5,
+    };
+    let new_log_id = pb::LogId {
+        term: 1,
+        node_id: 0,
+        index: 6,
+    };
+
+    let key = "v002-upsert-apply";
+    let value = b"applied-value".to_vec();
+
+    let entry = pb::LogEntry {
+        log_id: Some(new_log_id),
+        proposed_at_ms: None,
+        cmd: Some(pb::log_entry::Cmd::UpsertKv(pb::CmdUpsertKv {
+            key: key.to_string(),
+            seq: Some(pb::MatchSeq { ge: true, value: 0 }),
+            value: Some(value.clone()),
+            expire_at: None,
+            ttl_ms: None,
+        })),
+    };
+
+    let append_req = pb::AppendRequest {
+        vote: Some(leader_vote),
+        prev_log_id: Some(prev_log_id),
+        entries: vec![entry],
+        leader_commit: Some(new_log_id),
+    };
+
+    let resp = client.append_v002(stream::iter(vec![append_req])).await?;
+    let first = resp.into_inner().next().await.unwrap()?;
+    assert_eq!(first, pb::AppendResponse {
+        rejected_by: None,
+        conflict_log_id: None,
+        last_log_id: Some(new_log_id),
+    });
+
+    // The AppendV002 response only confirms the entry was stored; apply happens
+    // asynchronously. Wait for the learner's state machine to catch up.
+    follower
+        .raft
+        .wait(timeout())
+        .applied_index(Some(6), "learner applied UpsertKV via append_v002")
+        .await?;
+
+    let sm = follower.raft_store.get_sm_v003();
+    let got = sm.get_maybe_expired_kv(key).await?;
+    let seq_v = got.unwrap_or_else(|| panic!("expected key {} after apply", key));
+    assert_eq!(seq_v.data, value);
+
+    Ok(())
+}
+
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_raft_service_append_v002_transaction() -> anyhow::Result<()> {
+    // End-to-end check that AppendV002 round-trips `Cmd::Transaction` (the
+    // legacy `TxnRequest` variant) through the follower's apply path. Like
+    // `UpsertKV`, this oneof tag was silently dropped by the never-shipped
+    // `AppendV001`.
+    //
+    // Setup mirrors `test_raft_service_append_v002_upsert_kv`: bootstrap a
+    // voter+learner cluster, stop the leader, then drive the learner's apply
+    // path directly via AppendV002.
+
+    let (log_index, tcs) = start_meta_node_cluster(btreeset![0], btreeset![1]).await?;
+    assert_eq!(log_index, 5, "init=3 + add-node-1=2");
+
+    let leader = tcs[0].meta_node();
+    leader.stop().await?;
+
+    let follower = tcs[1].meta_node();
+    let mut client = tcs[1].raft_client().await?;
+
+    let leader_vote = pb::Vote {
+        term: 1,
+        node_id: 0,
+        committed: true,
+    };
+    let prev_log_id = pb::LogId {
+        term: 1,
+        node_id: 0,
+        index: 5,
+    };
+    let new_log_id = pb::LogId {
+        term: 1,
+        node_id: 0,
+        index: 6,
+    };
+
+    let key = "v002-txn-apply";
+    let value = b"txn-applied-value".to_vec();
+
+    // Empty conditions => trivially-true branch => `if_then` runs.
+    let txn = pb::TxnRequest::new(vec![], vec![pb::TxnOp::put(key, value.clone())]);
+
+    let entry = pb::LogEntry {
+        log_id: Some(new_log_id),
+        proposed_at_ms: None,
+        cmd: Some(pb::log_entry::Cmd::Transaction(txn)),
+    };
+
+    let append_req = pb::AppendRequest {
+        vote: Some(leader_vote),
+        prev_log_id: Some(prev_log_id),
+        entries: vec![entry],
+        leader_commit: Some(new_log_id),
+    };
+
+    let resp = client.append_v002(stream::iter(vec![append_req])).await?;
+    let first = resp.into_inner().next().await.unwrap()?;
+    assert_eq!(first, pb::AppendResponse {
+        rejected_by: None,
+        conflict_log_id: None,
+        last_log_id: Some(new_log_id),
+    });
+
+    follower
+        .raft
+        .wait(timeout())
+        .applied_index(Some(6), "learner applied Transaction via append_v002")
+        .await?;
+
+    let sm = follower.raft_store.get_sm_v003();
+    let got = sm.get_maybe_expired_kv(key).await?;
+    let seq_v = got.unwrap_or_else(|| panic!("expected key {} after apply", key));
+    assert_eq!(seq_v.data, value);
 
     Ok(())
 }

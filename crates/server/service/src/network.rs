@@ -743,7 +743,7 @@ impl<SP: SpawnApi> Network<SP> {
 /// Unary AppendEntries via the legacy single-RPC endpoint.
 ///
 /// Used by [`stream_append_sequential`] in the [`NetStreamAppend`] impl below
-/// as the per-request adapter. A subsequent commit will add an `AppendV001`
+/// as the per-request adapter. A subsequent commit will add an `AppendV002`
 /// fast path on top of this.
 impl<SP: SpawnApi> NetAppend<TypeConfig> for Network<SP> {
     /// Send AppendEntries RPC with automatic payload size management.

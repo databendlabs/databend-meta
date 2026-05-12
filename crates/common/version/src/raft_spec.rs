@@ -88,26 +88,24 @@ impl RaftSpec {
             // if peer doesn't support it.
             add_optional(&mut cli, F::SnapshotV004, ver(1, 2, 818));
 
-            // 2026-02-26: since 260217.0.0 (this repo):
-            // 🖥 raft server: accept streaming AppendV001 RPC
-            add(&mut srv, F::AppendV001, ver(260217, 0, 0));
-            // 📡 raft client: optionally used since 260217.0.0; falls back to
-            // legacy AppendEntries if peer doesn't support it.
-            add_optional(&mut cli, F::AppendV001, ver(260217, 0, 0));
-
             // 2026-04-28: since 260428.0.0 (this repo):
-            // AppendV001 wire format extended to carry the legacy `Cmd::UpsertKV`
-            // and `Cmd::Transaction` variants. Without these, AppendV001 could only
-            // carry node/feature/membership/kv-transaction entries.
+            // Streaming AppendV002 RPC carrying the full `Cmd` schema.
             //
-            // 🖥 raft server: decodes both variants from the AppendV001 stream.
-            add(&mut srv, F::AppendV001UpsertKv, ver(260428, 0, 0));
-            add(&mut srv, F::AppendV001Transaction, ver(260428, 0, 0));
-            // 📡 raft client: capability is registered but no client version uses it
-            // yet — the v001 wiring lands in a follow-up commit. Pinned at
-            // `Version::max()` so it does not affect compatibility math today.
-            add(&mut cli, F::AppendV001UpsertKv, Version::max());
-            add(&mut cli, F::AppendV001Transaction, Version::max());
+            // Replaces the never-shipped `AppendV001`. AppendV001 exposed a
+            // streaming endpoint without the legacy `UpsertKV`/`Transaction`
+            // variants; servers in 260217.x.x..260427.x.x silently dropped
+            // unknown oneof tags rather than rejecting them, so a client could
+            // not safely detect schema completeness from the endpoint alone.
+            // AppendV002 is a new RPC name with the complete schema baked in,
+            // making capability detection unambiguous.
+            //
+            // 🖥 raft server: handles AppendV002.
+            add(&mut srv, F::AppendV002, ver(260428, 0, 0));
+            // 📡 raft client: capability is registered but no client version
+            // uses it yet — the v002 streaming wiring lands in a follow-up
+            // commit. Pinned at `Version::max()` so it does not affect
+            // compatibility math today.
+            add(&mut cli, F::AppendV002, Version::max());
         }
 
         FeatureSpec::build(version, srv, cli)

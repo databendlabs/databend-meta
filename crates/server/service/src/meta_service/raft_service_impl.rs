@@ -472,14 +472,14 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
         .await
     }
 
-    type AppendV001Stream = BoxStream<pb::AppendResponse>;
+    type AppendV002Stream = BoxStream<pb::AppendResponse>;
 
-    async fn append_v001(
+    async fn append_v002(
         &self,
         request: Request<Streaming<pb::AppendRequest>>,
-    ) -> Result<Response<Self::AppendV001Stream>, Status> {
+    ) -> Result<Response<Self::AppendV002Stream>, Status> {
         let remote_addr = remote_addr(&request);
-        info!("RaftServiceImpl::append_v001: from:{remote_addr}");
+        info!("RaftServiceImpl::append_v002: from:{remote_addr}");
 
         let input = request.into_inner();
 
@@ -495,7 +495,7 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
             })
             .take_while(move |r| {
                 if let Err(e) = r {
-                    warn!("append_v001: from:{} input error: {}", addr, e);
+                    warn!("append_v002: from:{} input error: {}", addr, e);
                 }
                 futures::future::ready(r.is_ok())
             })
