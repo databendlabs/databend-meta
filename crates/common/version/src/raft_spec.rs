@@ -88,7 +88,7 @@ impl RaftSpec {
             // if peer doesn't support it.
             add_optional(&mut cli, F::SnapshotV004, ver(1, 2, 818));
 
-            // 2026-04-28: since 260428.0.0 (this repo):
+            // 2026-05-12: since 260512.0.0 (this repo):
             // Streaming AppendV002 RPC carrying the full `Cmd` schema.
             //
             // Replaces the never-shipped `AppendV001`. AppendV001 exposed a
@@ -100,7 +100,7 @@ impl RaftSpec {
             // making capability detection unambiguous.
             //
             // 🖥 raft server: handles AppendV002.
-            add(&mut srv, F::AppendV002, ver(260428, 0, 0));
+            add(&mut srv, F::AppendV002, ver(260512, 0, 0));
             // 📡 raft client: capability is registered but no client version
             // uses it yet — the v002 streaming wiring lands in a follow-up
             // commit. Pinned at `Version::max()` so it does not affect
