@@ -101,11 +101,9 @@ impl RaftSpec {
             //
             // 🖥 raft server: handles AppendV002.
             add(&mut srv, F::AppendV002, ver(260512, 0, 0));
-            // 📡 raft client: capability is registered but no client version
-            // uses it yet — the v002 streaming wiring lands in a follow-up
-            // commit. Pinned at `Version::max()` so it does not affect
-            // compatibility math today.
-            add(&mut cli, F::AppendV002, Version::max());
+            // 📡 raft client: optionally used since 260428.3.0; falls back to
+            // legacy AppendEntries if the peer doesn't support it.
+            add_optional(&mut cli, F::AppendV002, ver(260512, 0, 0));
         }
 
         FeatureSpec::build(version, srv, cli)

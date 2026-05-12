@@ -29,6 +29,8 @@ use databend_meta_runtime_api::SpawnApi;
 use databend_meta_types::Endpoint;
 use databend_meta_types::GrpcHelper;
 use databend_meta_types::MetaNetworkError;
+use databend_meta_types::PbAppendRequestExt;
+use databend_meta_types::PbAppendResponseExt;
 use databend_meta_types::protobuf as pb;
 use databend_meta_types::protobuf::InstallEntryV004;
 use databend_meta_types::protobuf::RaftReply;
@@ -73,6 +75,7 @@ use openraft::network::NetTransferLeader;
 use openraft::network::NetVote;
 use openraft::network::RPCOption;
 use openraft::network::stream_append_sequential;
+use prost::Message;
 use seq_marked::SeqData;
 use seq_marked::SeqV;
 use state_machine_api::MetaValue;
@@ -85,6 +88,8 @@ use crate::metrics::raft_metrics;
 use crate::raft_client::RaftClient;
 use crate::raft_client::RaftClientApi;
 use crate::store::RaftStore;
+
+const APPEND_V002_CHANNEL_SIZE: usize = 64;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Backoff {
@@ -358,15 +363,49 @@ impl<SP: SpawnApi> Network<SP> {
 
     /// Convert gRPC status to `Unreachable`
     fn status_to_unreachable(&self, status: tonic::Status) -> Unreachable {
+        Self::status_to_unreachable_at(self.target, &self.endpoint, status)
+    }
+
+    /// Convert gRPC status to `Unreachable` without borrowing `self`.
+    fn status_to_unreachable_at(
+        target: NodeId,
+        endpoint: &Endpoint,
+        status: tonic::Status,
+    ) -> Unreachable {
         warn!(
             "target={}, endpoint={} gRPC error: {:?}",
-            self.target, self.endpoint, status
+            target, endpoint, status
         );
 
         let any_err = AnyError::new(&status)
-            .add_context(|| format!("gRPC target={}, endpoint={}", self.target, self.endpoint));
+            .add_context(|| format!("gRPC target={}, endpoint={}", target, endpoint));
 
         Unreachable::new(&any_err)
+    }
+
+    /// Forward OpenRaft append requests into the already established AppendV002
+    /// request stream.
+    async fn send_append_requests_v002<S>(
+        target: NodeId,
+        mut input: S,
+        tx: mpsc::Sender<pb::AppendRequest>,
+    ) where
+        S: Stream<Item = AppendEntriesRequest> + Send + Unpin + 'static,
+    {
+        while let Some(req) = input.next().await {
+            let pb_req = pb::AppendRequest::from_raft(req);
+            let bytes = pb_req.encoded_len() as u64;
+
+            if tx.send(pb_req).await.is_err() {
+                debug!(
+                    "append_v002: target={} request stream closed before input was exhausted",
+                    target
+                );
+                break;
+            }
+
+            raft_metrics::network::incr_sendto_bytes(&target, bytes);
+        }
     }
 
     /// Split V003 snapshot `DB` into chunks and send them via the given channel.
@@ -842,9 +881,9 @@ impl<SP: SpawnApi> NetAppend<TypeConfig> for Network<SP> {
 
 /// Streaming AppendEntries.
 ///
-/// Adapts the unary [`NetAppend::append_entries`] into a stream by delegating
-/// to openraft's [`stream_append_sequential`] helper, which sends one request
-/// at a time and yields a stream of [`StreamAppendResult`]s.
+/// Uses the typed AppendV002 streaming RPC when it can be established. If the
+/// peer rejects the stream at establishment time, no input item has been
+/// consumed yet, so it can fall back to the legacy unary append adapter.
 impl<SP: SpawnApi> NetStreamAppend<TypeConfig> for Network<SP> {
     fn stream_append<'s, S>(
         &'s mut self,
@@ -854,7 +893,56 @@ impl<SP: SpawnApi> NetStreamAppend<TypeConfig> for Network<SP> {
     where
         S: Stream<Item = AppendEntriesRequest> + Send + Unpin + 'static,
     {
-        stream_append_sequential(self, input, option)
+        Box::pin(async move {
+            let target = self.target;
+
+            let (tx, rx) = mpsc::channel(APPEND_V002_CHANNEL_SIZE);
+            let strm = ReceiverStream::new(rx);
+            let req = SP::prepare_request(tonic::Request::new(strm));
+
+            let mut client = self
+                .take_client()
+                .log_elapsed_debug("Raft NetworkConnection append_v002 take_client()")
+                .await?;
+
+            let grpc_res = client
+                .append_v002(req)
+                .inspect_elapsed(observe_append_send_spent(target))
+                .await;
+
+            let response = match grpc_res {
+                Ok(response) => {
+                    self.client.lock().await.replace(client);
+                    response
+                }
+                Err(status) => {
+                    drop(tx);
+
+                    warn!(
+                        target = self.target;
+                        "append_v002 failed while establishing stream, falling back to append_entries: {}",
+                        status
+                    );
+
+                    return stream_append_sequential(self, input, option).await;
+                }
+            };
+
+            SP::spawn(
+                Self::send_append_requests_v002(target, input, tx),
+                Some("append_v002_request_stream".into()),
+            );
+
+            let endpoint = self.endpoint.clone();
+            let response_stream = response.into_inner().map(move |resp| match resp {
+                Ok(pb_resp) => Ok(pb_resp.into_stream_result()),
+                Err(status) => Err(RPCError::Unreachable(Self::status_to_unreachable_at(
+                    target, &endpoint, status,
+                ))),
+            });
+
+            Ok(Box::pin(response_stream) as BoxStream<'s, Result<StreamAppendResult, RPCError>>)
+        })
     }
 }
 
