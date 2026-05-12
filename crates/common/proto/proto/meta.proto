@@ -469,7 +469,7 @@ service RaftService {
 
   rpc VoteV001(VoteRequest) returns (VoteResponse);
 
-  rpc AppendV001(stream AppendRequest) returns (stream AppendResponse);
+  rpc AppendV002(stream AppendRequest) returns (stream AppendResponse);
 
   rpc TransferLeader(TransferLeaderRequest) returns (Empty);
 }
