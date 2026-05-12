@@ -125,8 +125,6 @@ pub fn grpc_changelog() -> BTreeMap<Version, GrpcVersionCompat> {
     });
 
     // 260428.0.0: no grpc compatibility change.
-    // Raft-side `AppendV002` RPC introduced (replacing the never-shipped
-    // `AppendV001`); grpc client/server compat is unchanged.
     m.insert(ver(260428, 0, 0), GrpcVersionCompat {
         min_client: ver(1, 2, 676),
         min_server: ver(260217, 0, 0),
@@ -146,6 +144,14 @@ pub fn grpc_changelog() -> BTreeMap<Version, GrpcVersionCompat> {
 
     // 260428.3.0: no compatibility change
     m.insert(ver(260428, 3, 0), GrpcVersionCompat {
+        min_client: ver(1, 2, 676),
+        min_server: ver(260217, 0, 0),
+    });
+
+    // 260512.0.0: no grpc compatibility change.
+    // Raft-side `AppendV002` RPC introduced (replacing the never-shipped
+    // `AppendV001`); grpc client/server compat is unchanged.
+    m.insert(ver(260512, 0, 0), GrpcVersionCompat {
         min_client: ver(1, 2, 676),
         min_server: ver(260217, 0, 0),
     });
