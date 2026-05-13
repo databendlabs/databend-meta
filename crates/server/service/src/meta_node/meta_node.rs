@@ -241,6 +241,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
         let node_id = meta_node.raft_store.id;
 
         let srv = tonic::transport::Server::builder()
+            .tcp_nodelay(true)
             // .concurrency_limit_per_connection()
             // .timeout(Duration::from_secs(60))
             .add_service(raft_server);
