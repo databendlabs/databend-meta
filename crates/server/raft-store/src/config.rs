@@ -17,6 +17,7 @@
 use std::io;
 use std::net::Ipv4Addr;
 use std::path::Path;
+use std::time::Duration;
 
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_types::Endpoint;
@@ -269,6 +270,8 @@ impl RaftConfig {
             chunk_max_size: Some(self.log_wal_chunk_max_size as usize),
             read_buffer_size: None,
             truncate_incomplete_record: None,
+            flush_batch_wait: Some(Duration::from_millis(1)),
+            flush_batch_max_items: Some(1024),
         }
     }
 

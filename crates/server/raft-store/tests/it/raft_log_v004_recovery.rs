@@ -78,6 +78,8 @@ async fn test_truncation_recovery(bytes_to_truncate: u64) -> anyhow::Result<()> 
         chunk_max_size: Some(1024 * 1024),
         read_buffer_size: None,
         truncate_incomplete_record: Some(true),
+        flush_batch_wait: None,
+        flush_batch_max_items: None,
     });
 
     let num_entries: u64 = 10;

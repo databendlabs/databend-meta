@@ -419,10 +419,8 @@ impl<SP: SpawnApi> MetaNode<SP> {
             server_metrics::set_proposals_applied(mm.last_applied.map(|id| id.index).unwrap_or(0));
             server_metrics::set_last_seq(meta_node.get_last_seq().await);
 
-            {
-                let st = meta_node.get_raft_log_stat().await;
-                server_metrics::set_raft_log_stat(st);
-            }
+            let raft_log_stat = meta_node.get_raft_log_stat().await;
+            server_metrics::set_raft_log_stat(&raft_log_stat);
 
             // metrics about server storage
             server_metrics::set_raft_log_size(meta_node.get_raft_log_size().await);
@@ -467,6 +465,10 @@ impl<SP: SpawnApi> MetaNode<SP> {
             if last_histogram_report.elapsed() >= HISTOGRAM_REPORT_INTERVAL {
                 let histogram_report = request_histogram::report();
                 info!("request latency: {}", histogram_report);
+                info!(
+                    "raft log stats: {}",
+                    Self::raft_log_stat_to_json(&raft_log_stat)
+                );
 
                 // Log openraft per-entry stage latency (proposed -> applied)
                 // histograms for debugging where time is spent in the log
@@ -475,6 +477,8 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 match meta_node.raft.runtime_stats().await {
                     Ok(mut stats) => {
                         stats.build_log_stage_histograms();
+                        info!("openraft runtime stats: {}", stats.display().compact());
+
                         let h = &stats.log_stage_histograms;
                         let stages = [
                             ("proposed->received", &h.proposed_to_received),
@@ -624,6 +628,66 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 .map(|(k, v)| (k, Value::Object(v)))
                 .collect(),
         )
+    }
+
+    fn raft_log_stat_to_json(st: &RaftLogStat) -> serde_json::Value {
+        let closed_chunk_total_size = st.closed_chunks.iter().map(|c| c.size).sum::<u64>();
+        let fm = &st.flush_metrics;
+
+        serde_json::json!({
+            "payload_cache": {
+                "items": st.payload_cache_item_count,
+                "max_items": st.payload_cache_max_item,
+                "size": st.payload_cache_size,
+                "capacity": st.payload_cache_capacity,
+                "miss": st.payload_cache_miss,
+                "hit": st.payload_cache_hit,
+            },
+            "wal": {
+                "open_chunk_size": st.open_chunk.size,
+                "offset": st.open_chunk.global_end,
+                "closed_chunk_count": st.closed_chunks.len(),
+                "closed_chunk_total_size": closed_chunk_total_size,
+                "total_size": closed_chunk_total_size + st.open_chunk.size,
+            },
+            "flush": {
+                "batch_count": fm.batch_count,
+                "sync_batch_count": fm.sync_batch_count,
+                "write_request_count": fm.write_request_count,
+                "write_bytes": fm.write_bytes,
+                "callback_count": fm.callback_count,
+                "group_wait_count": fm.group_wait_count,
+                "group_wait_us": fm.group_wait_us,
+                "group_wait_max_us": fm.group_wait_max_us,
+                "queued_wait_us": fm.queued_wait_us,
+                "queued_wait_max_us": fm.queued_wait_max_us,
+                "write_us": fm.write_us,
+                "write_max_us": fm.write_max_us,
+                "sync_us": fm.sync_us,
+                "sync_max_us": fm.sync_max_us,
+                "batch_us": fm.batch_us,
+                "batch_max_us": fm.batch_max_us,
+                "batch_size_max": fm.batch_size_max,
+                "batch_bytes_max": fm.batch_bytes_max,
+                "last_batch_size": fm.last_batch_size,
+                "last_batch_bytes": fm.last_batch_bytes,
+                "last_callback_count": fm.last_callback_count,
+                "last_sync_us": fm.last_sync_us,
+                "last_queued_wait_max_us": fm.last_queued_wait_max_us,
+                "avg_batch_size": Self::avg_u64(fm.write_request_count, fm.batch_count),
+                "avg_batch_bytes": Self::avg_u64(fm.write_bytes, fm.batch_count),
+                "avg_callbacks_per_batch": Self::avg_u64(fm.callback_count, fm.batch_count),
+                "avg_group_wait_us": Self::avg_u64(fm.group_wait_us, fm.group_wait_count),
+                "avg_queued_wait_us_per_write": Self::avg_u64(fm.queued_wait_us, fm.write_request_count),
+                "avg_write_us_per_batch": Self::avg_u64(fm.write_us, fm.batch_count),
+                "avg_sync_us_per_sync_batch": Self::avg_u64(fm.sync_us, fm.sync_batch_count),
+                "avg_batch_us": Self::avg_u64(fm.batch_us, fm.batch_count),
+            },
+        })
+    }
+
+    fn avg_u64(total: u64, count: u64) -> Option<u64> {
+        (count > 0).then_some(total / count)
     }
 
     /// Handle a labeled or unlabeled metric by organizing it into the categories structure.
