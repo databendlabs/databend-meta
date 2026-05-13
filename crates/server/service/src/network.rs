@@ -91,6 +91,35 @@ use crate::store::RaftStore;
 
 const APPEND_V002_CHANNEL_SIZE: usize = 64;
 
+fn split_append_request_v002(
+    req: AppendEntriesRequest,
+    advisory_message_size: usize,
+) -> Vec<pb::AppendRequest> {
+    let full = pb::AppendRequest::from_raft(req.clone());
+
+    let should_split = !req.entries.is_empty() && full.encoded_len() > advisory_message_size;
+    if !should_split {
+        return vec![full];
+    }
+
+    (0..req.entries.len())
+        .map(|i| {
+            let prev_log_id = if i == 0 {
+                req.prev_log_id
+            } else {
+                Some(req.entries[i - 1].log_id)
+            };
+
+            pb::AppendRequest::from_raft(AppendEntriesRequest {
+                vote: req.vote,
+                prev_log_id,
+                entries: vec![req.entries[i].clone()],
+                leader_commit: req.leader_commit,
+            })
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Backoff {
     /// delay increase ratio of meta
@@ -389,23 +418,44 @@ impl<SP: SpawnApi> Network<SP> {
         target: NodeId,
         mut input: S,
         tx: mpsc::Sender<pb::AppendRequest>,
+        advisory_message_size: usize,
     ) where
         S: Stream<Item = AppendEntriesRequest> + Send + Unpin + 'static,
     {
         while let Some(req) = input.next().await {
-            let pb_req = pb::AppendRequest::from_raft(req);
-            let bytes = pb_req.encoded_len() as u64;
+            let entry_count = req.entries.len();
+            let requests = split_append_request_v002(req, advisory_message_size);
 
-            if tx.send(pb_req).await.is_err() {
-                debug!(
-                    "append_v002: target={} request stream closed before input was exhausted",
-                    target
+            if requests.len() > 1 {
+                warn!(
+                    "append_v002: target={} split oversized request: entries={}, chunks={}",
+                    target,
+                    entry_count,
+                    requests.len()
                 );
-                break;
             }
 
-            raft_metrics::network::incr_sendto_bytes(&target, bytes);
+            for pb_req in requests {
+                let bytes = pb_req.encoded_len() as u64;
+
+                if tx.send(pb_req).await.is_err() {
+                    debug!(
+                        "append_v002: target={} request stream closed before input was exhausted",
+                        target
+                    );
+                    return;
+                }
+
+                raft_metrics::network::incr_sendto_bytes(&target, bytes);
+            }
         }
+    }
+
+    fn should_reuse_client_after_append_v002_failure(status: &tonic::Status) -> bool {
+        !matches!(
+            status.code(),
+            tonic::Code::Unavailable | tonic::Code::Unknown
+        )
     }
 
     /// Split V003 snapshot `DB` into chunks and send them via the given channel.
@@ -918,6 +968,10 @@ impl<SP: SpawnApi> NetStreamAppend<TypeConfig> for Network<SP> {
                 Err(status) => {
                     drop(tx);
 
+                    if Self::should_reuse_client_after_append_v002_failure(&status) {
+                        self.client.lock().await.replace(client);
+                    }
+
                     warn!(
                         target = self.target;
                         "append_v002 failed while establishing stream, falling back to append_entries: {}",
@@ -929,7 +983,12 @@ impl<SP: SpawnApi> NetStreamAppend<TypeConfig> for Network<SP> {
             };
 
             SP::spawn(
-                Self::send_append_requests_v002(target, input, tx),
+                Self::send_append_requests_v002(
+                    target,
+                    input,
+                    tx,
+                    self.sto.config.raft_grpc_advisory_message_size(),
+                ),
                 Some("append_v002_request_stream".into()),
             );
 
@@ -943,6 +1002,87 @@ impl<SP: SpawnApi> NetStreamAppend<TypeConfig> for Network<SP> {
 
             Ok(Box::pin(response_stream) as BoxStream<'s, Result<StreamAppendResult, RPCError>>)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use databend_meta_types::raft_types::Entry;
+    use databend_meta_types::raft_types::EntryPayload;
+    use databend_meta_types::raft_types::Vote;
+    use databend_meta_types::raft_types::new_log_id;
+
+    use super::*;
+
+    fn blank_entry(index: u64) -> Entry {
+        Entry {
+            log_id: new_log_id(1, 1, index),
+            payload: EntryPayload::Blank,
+        }
+    }
+
+    #[test]
+    fn test_split_append_request_v002_uses_single_entry_chunks() {
+        let req = AppendEntriesRequest {
+            vote: Vote::new_committed(1, 1),
+            prev_log_id: Some(new_log_id(1, 1, 9)),
+            entries: (10..=13).map(blank_entry).collect(),
+            leader_commit: Some(new_log_id(1, 1, 13)),
+        };
+        let advisory_message_size = pb::AppendRequest::from_raft(AppendEntriesRequest {
+            vote: req.vote,
+            prev_log_id: req.prev_log_id,
+            entries: vec![req.entries[0].clone()],
+            leader_commit: req.leader_commit,
+        })
+        .encoded_len();
+
+        let chunks = split_append_request_v002(req, advisory_message_size);
+
+        assert_eq!(chunks.len(), 4);
+        assert!(
+            chunks
+                .iter()
+                .all(|chunk| chunk.encoded_len() <= advisory_message_size)
+        );
+
+        let mut expected_prev_log_id = Some(new_log_id(1, 1, 9));
+        let mut expected_index = 10;
+
+        for chunk in chunks {
+            let chunk = chunk.try_into_raft().unwrap();
+
+            assert_eq!(chunk.prev_log_id, expected_prev_log_id);
+            assert_eq!(chunk.leader_commit, Some(new_log_id(1, 1, 13)));
+            assert!(!chunk.entries.is_empty());
+
+            for entry in chunk.entries {
+                assert_eq!(entry.log_id, new_log_id(1, 1, expected_index));
+                expected_prev_log_id = Some(entry.log_id);
+                expected_index += 1;
+            }
+        }
+
+        assert_eq!(expected_index, 14);
+    }
+
+    #[test]
+    fn test_split_append_request_v002_keeps_heartbeat() {
+        let req = AppendEntriesRequest {
+            vote: Vote::new_committed(1, 1),
+            prev_log_id: Some(new_log_id(1, 1, 9)),
+            entries: vec![],
+            leader_commit: Some(new_log_id(1, 1, 9)),
+        };
+
+        let chunks = split_append_request_v002(req, 1);
+
+        assert_eq!(chunks.len(), 1);
+
+        let chunk = chunks.into_iter().next().unwrap().try_into_raft().unwrap();
+        assert_eq!(chunk.prev_log_id, Some(new_log_id(1, 1, 9)));
+        assert!(chunk.entries.is_empty());
+        assert_eq!(chunk.leader_commit, Some(new_log_id(1, 1, 9)));
     }
 }
 

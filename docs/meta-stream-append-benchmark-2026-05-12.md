@@ -4,9 +4,9 @@
 
 ## 范围
 
-- Benchmark 脚本：`/Users/drdrxp/xp/vcs/github.com/drmingdrmer/databend/scripts/benchmark/meta-cluster-bench.py`
-- Databend 仓库：`/Users/drdrxp/xp/vcs/github.com/drmingdrmer/databend`
-- Databend-meta 仓库：`/Users/drdrxp/xp/vcs/github.com/drmingdrmer/databend-meta-1`
+- Benchmark 脚本：`scripts/benchmark/meta-cluster-bench.py`（位于 Databend 仓库）
+- Databend 仓库：本地 checkout
+- Databend-meta 仓库：本地 checkout
 - Baseline meta 版本：`260428.3.0`
 - Patched meta 版本：`260512.0.0`
 - Patched commit：`09decba feat: use AppendV002 for stream append`
