@@ -683,7 +683,24 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 "avg_write_us_per_batch": Self::avg_u64(fm.write_us, fm.batch_count),
                 "avg_sync_us_per_sync_batch": Self::avg_u64(fm.sync_us, fm.sync_batch_count),
                 "avg_batch_us": Self::avg_u64(fm.batch_us, fm.batch_count),
+                "latency_percentiles_us": {
+                    "group_wait": Self::latency_percentiles_to_json(&fm.group_wait_percentiles),
+                    "queued_wait": Self::latency_percentiles_to_json(&fm.queued_wait_percentiles),
+                    "write": Self::latency_percentiles_to_json(&fm.write_percentiles),
+                    "sync": Self::latency_percentiles_to_json(&fm.sync_percentiles),
+                    "batch": Self::latency_percentiles_to_json(&fm.batch_percentiles),
+                },
             },
+        })
+    }
+
+    fn latency_percentiles_to_json(
+        percentiles: &raft_log::FlushLatencyPercentiles,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "p50": percentiles.p50_us,
+            "p90": percentiles.p90_us,
+            "p99": percentiles.p99_us,
         })
     }
 
