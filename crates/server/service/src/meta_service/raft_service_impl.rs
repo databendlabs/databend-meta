@@ -486,6 +486,7 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
         // Convert pb stream → native AppendEntriesRequest stream.
         // On receive or conversion error, log and terminate the input stream.
         let addr = remote_addr.clone();
+        let mut running_rx = self.meta_node.running_rx.clone();
         let input_stream = input
             .map(move |r| match r {
                 Ok(pb_req) => pb_req
@@ -500,6 +501,14 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
                 futures::future::ready(r.is_ok())
             })
             .map(|r| r.unwrap());
+
+        let input_stream = input_stream.take_until(async move {
+            let _ = running_rx.changed().await;
+            info!(
+                "append_v002: from:{} shutting down input stream",
+                remote_addr
+            );
+        });
 
         let raft = &self.meta_node.raft;
         let output = raft.stream_append(input_stream);
