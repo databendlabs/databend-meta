@@ -327,7 +327,7 @@ pub mod server_metrics {
         &SERVER_METRICS.snapshot_stat
     }
 
-    pub fn set_raft_log_stat(st: RaftLogStat) {
+    pub fn set_raft_log_stat(st: &RaftLogStat) {
         SERVER_METRICS
             .raft_log_cache_items
             .set(st.payload_cache_item_count as i64);
