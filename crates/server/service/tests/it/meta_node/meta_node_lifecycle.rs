@@ -457,11 +457,11 @@ async fn test_meta_node_join_with_state() -> anyhow::Result<()> {
             .to_string(),
     ];
 
-    let n1 = MetaNode::<TokioRuntime>::start(&tc0.config).await?;
+    let n0 = MetaNode::<TokioRuntime>::start(&tc0.config).await?;
     // Initial membership log, leader blank log, add node-0 log.
     let mut log_index = 3;
 
-    let res = n1.join_cluster(&tc0.config).await?;
+    let res = n0.join_cluster(&tc0.config).await?;
     assert_eq!(Err("Did not join: --join is empty".to_string()), res);
 
     let n1 = MetaNode::<TokioRuntime>::start(&tc1.config).await?;
@@ -518,6 +518,9 @@ async fn test_meta_node_join_with_state() -> anyhow::Result<()> {
 
         n2.stop().await?;
     }
+
+    n1.stop().await?;
+    n0.stop().await?;
     Ok(())
 }
 
