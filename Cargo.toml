@@ -91,7 +91,7 @@ prometheus-client = "0.22"
 prost = "0.13"
 prost-build = "0.13"
 raft-log = "0.4.2"
-rand = { version = "0.8.5", features = ["small_rng", "serde1"] }
+rand = { version = "0.10.1", features = ["small_rng", "serde1"] }
 regex = "1.8.1"
 rmp-serde = "1.1.1"
 rotbl = { version = "0.2.10", features = [] }
