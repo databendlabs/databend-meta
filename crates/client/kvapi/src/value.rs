@@ -19,13 +19,4 @@ use crate as kvapi;
 /// A value that can be stored in kvapi::KVApi.
 pub trait Value: Debug {
     type KeyType: kvapi::Key;
-
-    /// Return keys this value depends on.
-    ///
-    /// For example, the name-to-id record `database-name -> a database-id`
-    /// depends on the `database-id -> database-meta` record.
-    /// Thus `DatabaseId::dependency_keys()` returns itself for further traversing.
-    ///
-    /// It accepts the key bound to this value as an argument.
-    fn dependency_keys(&self, _key: &Self::KeyType) -> impl IntoIterator<Item = String>;
 }
