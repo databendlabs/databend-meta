@@ -24,31 +24,19 @@ use crate::kvapi;
 /// Convert structured key to a string key used by kvapi::KVApi and backwards.
 ///
 /// Extends `structkey::StructKey` with the kvapi-specific contract:
-/// an associated `ValueType` and a hierarchical `parent()`. The codec
-/// layer (PREFIX, encode/decode, segment counting) is inherited from
-/// `StructKey`.
+/// an associated `ValueType`. The codec layer (PREFIX, encode/decode,
+/// segment counting) is inherited from `StructKey`.
 pub trait Key: StructKey + Debug
 where Self: Sized
 {
     type ValueType: kvapi::Value;
-
-    /// Return the parent key of this key.
-    ///
-    /// For example, a table name's(`(database_id, table_name)`) parent is the database id.
-    fn parent(&self) -> Option<String>;
 }
 
 /// `DirName<K>` participates in `Key` whenever the inner `K` does.
 ///
-/// It carries the inner key's `ValueType` and forwards `parent()` as
-/// `unimplemented!`, matching the original kvapi behavior: a directory
-/// view is not a record and has no parent of its own.
+/// It carries the inner key's `ValueType`.
 impl<K: Key> Key for DirName<K> {
     type ValueType = K::ValueType;
-
-    fn parent(&self) -> Option<String> {
-        unimplemented!("DirName is not a record thus it has no parent")
-    }
 }
 
 #[cfg(test)]
