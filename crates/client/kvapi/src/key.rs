@@ -23,25 +23,18 @@ use crate::StructKey;
 /// A `kvapi::KVApi` key: a `StructKey` paired with the value type stored at it.
 ///
 /// `StructKey` provides the encoding (`PREFIX`, `to_string_key`, `from_str_key`);
-/// this trait layers on the kvapi-specific `ValueType` association and the
-/// `parent()` relation between hierarchical keys.
+/// this trait layers on the kvapi-specific `ValueType` association.
 pub trait Key: StructKey + Debug
 where Self: Sized
 {
     type ValueType: kvapi::Value;
-
-    /// Return the parent key of this key.
-    ///
-    /// For example, a table name's(`(database_id, table_name)`) parent is the database id.
-    fn parent(&self) -> Option<String>;
 }
 
+/// `DirName<K>` participates in `Key` whenever the inner `K` does.
+///
+/// It carries the inner key's `ValueType`.
 impl<K: Key> Key for DirName<K> {
     type ValueType = K::ValueType;
-
-    fn parent(&self) -> Option<String> {
-        unimplemented!("DirName is not a record thus it has no parent")
-    }
 }
 
 #[cfg(test)]

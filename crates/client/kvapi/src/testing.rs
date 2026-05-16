@@ -35,18 +35,10 @@ pub(crate) struct FooValue;
 
 impl Key for FooKey {
     type ValueType = FooValue;
-
-    fn parent(&self) -> Option<String> {
-        None
-    }
 }
 
 impl Value for FooValue {
     type KeyType = FooKey;
-
-    fn dependency_keys(&self, _key: &Self::KeyType) -> impl IntoIterator<Item = String> {
-        []
-    }
 }
 
 #[cfg(test)]
