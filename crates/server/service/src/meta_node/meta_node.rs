@@ -704,8 +704,12 @@ impl<SP: SpawnApi> MetaNode<SP> {
         })
     }
 
-    fn avg_u64(total: u64, count: u64) -> Option<u64> {
-        (count > 0).then_some(total / count)
+    fn avg_u64(total: u64, count: u64) -> u64 {
+        if count == 0 {
+            return 0;
+        }
+
+        total / count
     }
 
     /// Handle a labeled or unlabeled metric by organizing it into the categories structure.
@@ -1844,9 +1848,65 @@ pub(crate) fn event_filter_from_filter_type(filter_type: FilterType) -> EventFil
 
 #[cfg(test)]
 mod tests {
+    use databend_meta_raft_store::raft_log_v004::RaftLogTypes;
     use databend_meta_runtime_api::TokioRuntime;
 
     use super::*;
+
+    fn empty_chunk_stat() -> raft_log::ChunkStat<RaftLogTypes> {
+        raft_log::ChunkStat {
+            chunk_id: raft_log::ChunkId(0),
+            records_count: 0,
+            global_start: 0,
+            global_end: 0,
+            size: 0,
+            log_state: Default::default(),
+        }
+    }
+
+    fn empty_raft_log_stat() -> RaftLogStat {
+        RaftLogStat {
+            closed_chunks: vec![],
+            open_chunk: empty_chunk_stat(),
+            payload_cache_last_evictable: None,
+            payload_cache_item_count: 0,
+            payload_cache_max_item: 0,
+            payload_cache_size: 0,
+            payload_cache_capacity: 0,
+            payload_cache_miss: 0,
+            payload_cache_hit: 0,
+            flush_metrics: Default::default(),
+        }
+    }
+
+    #[test]
+    fn test_raft_log_stat_to_json_zero_flush_counts() {
+        let result = MetaNode::<TokioRuntime>::raft_log_stat_to_json(&empty_raft_log_stat());
+        let flush = &result["flush"];
+
+        assert_eq!(
+            serde_json::json!({
+                "avg_batch_size": flush["avg_batch_size"],
+                "avg_batch_bytes": flush["avg_batch_bytes"],
+                "avg_callbacks_per_batch": flush["avg_callbacks_per_batch"],
+                "avg_group_wait_us": flush["avg_group_wait_us"],
+                "avg_queued_wait_us_per_write": flush["avg_queued_wait_us_per_write"],
+                "avg_write_us_per_batch": flush["avg_write_us_per_batch"],
+                "avg_sync_us_per_sync_batch": flush["avg_sync_us_per_sync_batch"],
+                "avg_batch_us": flush["avg_batch_us"],
+            }),
+            serde_json::json!({
+                "avg_batch_size": 0,
+                "avg_batch_bytes": 0,
+                "avg_callbacks_per_batch": 0,
+                "avg_group_wait_us": 0,
+                "avg_queued_wait_us_per_write": 0,
+                "avg_write_us_per_batch": 0,
+                "avg_sync_us_per_sync_batch": 0,
+                "avg_batch_us": 0,
+            })
+        );
+    }
 
     #[test]
     fn test_parse_metrics_to_json() {
