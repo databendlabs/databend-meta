@@ -670,6 +670,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "chunked-wal"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cb4664e0ebe1a145b88ebc9973327512d3997f796ce49d41b08196cf0d51285"
+dependencies = [
+ "base2histogram",
+ "byteorder",
+ "codeq 0.6.0",
+ "fs2",
+ "log",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "clap"
 version = "4.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -714,6 +728,19 @@ name = "codeq"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a72a59f33777d39160f5b4a8a258732cb6b538607c28b65eaa3b96f7cd35b994"
+dependencies = [
+ "anyhow",
+ "byteorder",
+ "crc32fast",
+ "derive_more 1.0.0",
+ "serde",
+]
+
+[[package]]
+name = "codeq"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ed6506d61f6bd1ee4f67f589c632cd3ee6fbbf468a00c166785d466f8bae81e"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -891,7 +918,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta"
-version = "260512.2.0"
+version = "260512.3.0"
 dependencies = [
  "anyerror",
  "anyhow",
@@ -940,7 +967,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-base"
-version = "260512.2.0"
+version = "260512.3.0"
 dependencies = [
  "anyerror",
  "deepsize",
@@ -955,7 +982,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-client"
-version = "260512.2.0"
+version = "260512.3.0"
 dependencies = [
  "anyerror",
  "arrow-flight",
@@ -988,7 +1015,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-client-types"
-version = "260512.2.0"
+version = "260512.3.0"
 dependencies = [
  "anyerror",
  "databend-meta-proto",
@@ -1025,7 +1052,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-kvapi"
-version = "260512.2.0"
+version = "260512.3.0"
 dependencies = [
  "async-trait",
  "databend-meta-client-types",
@@ -1038,7 +1065,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-kvapi-test-suite"
-version = "260512.2.0"
+version = "260512.3.0"
 dependencies = [
  "anyhow",
  "databend-meta-client-types",
@@ -1053,7 +1080,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-proto"
-version = "260512.2.0"
+version = "260512.3.0"
 dependencies = [
  "anyerror",
  "databend-meta-base",
@@ -1075,7 +1102,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-raft-store"
-version = "260512.2.0"
+version = "260512.3.0"
 dependencies = [
  "anyerror",
  "anyhow",
@@ -1115,7 +1142,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-runtime-api"
-version = "260512.2.0"
+version = "260512.3.0"
 dependencies = [
  "env_logger",
  "hickory-resolver",
@@ -1127,7 +1154,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-sled-store"
-version = "260512.2.0"
+version = "260512.3.0"
 dependencies = [
  "anyerror",
  "byteorder",
@@ -1144,7 +1171,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-types"
-version = "260512.2.0"
+version = "260512.3.0"
 dependencies = [
  "anyerror",
  "databend-meta-base",
@@ -1171,7 +1198,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-version"
-version = "260512.2.0"
+version = "260512.3.0"
 dependencies = [
  "semver",
 ]
@@ -3011,15 +3038,15 @@ checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 
 [[package]]
 name = "raft-log"
-version = "0.4.2"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b38acccc1f19eac73c16dbfaf5eecf0ea4f6af71844ef06acd297d5311ab0cc"
+checksum = "4290f29c4516c8bbd0bf3ce01d59db968dfc071d056e458ff38e74457473c506"
 dependencies = [
  "base2histogram",
  "byteorder",
- "codeq",
+ "chunked-wal",
+ "codeq 0.6.0",
  "display-more 0.2.6",
- "fs2",
  "log",
  "thiserror 1.0.69",
 ]
@@ -3263,7 +3290,7 @@ dependencies = [
  "byteorder",
  "bytes",
  "clap",
- "codeq",
+ "codeq 0.5.2",
  "futures",
  "futures-async-stream",
  "log",

@@ -22,6 +22,7 @@ use std::time::Duration;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_types::Endpoint;
 use databend_meta_types::raft_types::NodeId;
+use raft_log::chunked_wal::Config as WalConfig;
 
 use crate::MetaStartupError;
 use crate::ondisk::DATA_VERSION;
@@ -263,15 +264,17 @@ impl RaftConfig {
         let dir = p.to_str().unwrap().to_string();
 
         raft_log_v004::RaftLogConfig {
-            dir,
+            wal: WalConfig {
+                dir,
+                read_buffer_size: None,
+                chunk_max_records: Some(self.log_wal_chunk_max_records as usize),
+                chunk_max_size: Some(self.log_wal_chunk_max_size as usize),
+                truncate_incomplete_record: None,
+                flush_batch_wait: Some(Duration::from_millis(1)),
+                flush_batch_max_items: Some(1024),
+            },
             log_cache_max_items: Some(self.log_cache_max_items as usize),
             log_cache_capacity: Some(self.log_cache_capacity as usize),
-            chunk_max_records: Some(self.log_wal_chunk_max_records as usize),
-            chunk_max_size: Some(self.log_wal_chunk_max_size as usize),
-            read_buffer_size: None,
-            truncate_incomplete_record: None,
-            flush_batch_wait: Some(Duration::from_millis(1)),
-            flush_batch_max_items: Some(1024),
         }
     }
 

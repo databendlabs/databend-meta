@@ -24,6 +24,7 @@ use std::fs::OpenOptions;
 use std::path::Path;
 use std::sync::Arc;
 
+use databend_meta_raft_store::raft_log::chunked_wal::Config as WalConfig;
 use databend_meta_raft_store::raft_log_v004::Cw;
 use databend_meta_raft_store::raft_log_v004::RaftLogConfig;
 use databend_meta_raft_store::raft_log_v004::RaftLogV004;
@@ -71,15 +72,17 @@ async fn test_truncation_recovery(bytes_to_truncate: u64) -> anyhow::Result<()> 
     fs::create_dir_all(&log_dir)?;
 
     let config = Arc::new(RaftLogConfig {
-        dir: log_dir.to_str().unwrap().to_string(),
+        wal: WalConfig {
+            dir: log_dir.to_str().unwrap().to_string(),
+            read_buffer_size: None,
+            chunk_max_records: Some(100),
+            chunk_max_size: Some(1024 * 1024),
+            truncate_incomplete_record: Some(true),
+            flush_batch_wait: None,
+            flush_batch_max_items: None,
+        },
         log_cache_max_items: Some(1000),
         log_cache_capacity: Some(1024 * 1024),
-        chunk_max_records: Some(100),
-        chunk_max_size: Some(1024 * 1024),
-        read_buffer_size: None,
-        truncate_incomplete_record: Some(true),
-        flush_batch_wait: None,
-        flush_batch_max_items: None,
     });
 
     let num_entries: u64 = 10;
