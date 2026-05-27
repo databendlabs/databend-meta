@@ -1848,12 +1848,11 @@ pub(crate) fn event_filter_from_filter_type(filter_type: FilterType) -> EventFil
 
 #[cfg(test)]
 mod tests {
-    use databend_meta_raft_store::raft_log_v004::RaftLogTypes;
     use databend_meta_runtime_api::TokioRuntime;
 
     use super::*;
 
-    fn empty_chunk_stat() -> raft_log::ChunkStat<RaftLogTypes> {
+    fn empty_chunk_stat<T: Default>() -> raft_log::ChunkStat<T> {
         raft_log::ChunkStat {
             chunk_id: raft_log::ChunkId(0),
             records_count: 0,
