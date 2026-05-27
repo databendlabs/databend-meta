@@ -89,7 +89,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
 
         let raft_log_config = Arc::new(config.to_raft_log_config());
 
-        let dir = &raft_log_config.dir;
+        let dir = &raft_log_config.wal.dir;
 
         fs::create_dir_all(dir).map_err(|e| {
             let err = io::Error::new(
@@ -100,7 +100,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
         })?;
 
         let mut log = RaftLogV004::open(raft_log_config.clone()).map_err(to_startup_err)?;
-        info!("RaftLog opened at: {}", raft_log_config.dir);
+        info!("RaftLog opened at: {}", raft_log_config.wal.dir);
 
         let state = log.log_state();
         info!("log_state: {:?}", state);
