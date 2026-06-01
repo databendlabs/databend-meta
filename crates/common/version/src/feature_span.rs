@@ -136,6 +136,9 @@ pub(crate) fn add_optional<F: FeatureSet>(
 }
 
 /// Record that a feature was removed at `version`.
+///
+/// `version` must be greater than `since`: an optional feature
+/// (`since = Version::max()`) was never added and therefore cannot be removed.
 pub(crate) fn remove<F: FeatureSet>(
     features: &mut BTreeMap<F, FeatureSpan<F>>,
     feature: F,
@@ -147,6 +150,12 @@ pub(crate) fn remove<F: FeatureSet>(
 
     debug_assert!(span.since != Version::min());
     debug_assert!(span.until == Version::max());
+    debug_assert!(
+        version > span.since,
+        "remove version ({}) must be > since ({}): an optional feature (since = max) was never added",
+        version,
+        span.since
+    );
 
     span.until = version;
 }

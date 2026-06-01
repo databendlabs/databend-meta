@@ -148,6 +148,13 @@ impl RaftSpec {
             let client_span = self.client_features().get(feature).unwrap();
             let server_span = self.server_features().get(feature).unwrap();
 
+            // Skip features the client never requires. `add_optional` records an
+            // optional-only capability with `since = Version::max()`: the client
+            // can fall back, so the server dropping it must not exclude any peer.
+            if client_span.since == Version::max() {
+                continue;
+            }
+
             if server_version < server_span.since {
                 hi = hi.min(client_span.since);
             } else if server_version >= server_span.until {
@@ -280,6 +287,40 @@ mod tests {
         assert_eq!(
             spec.compatible_peer_range(v(2, 5, 0)),
             (v(1, 5, 0), Version::max())
+        );
+    }
+
+    #[test]
+    fn test_compatible_peer_range_with_removed_optional_feature() {
+        use std::collections::BTreeMap;
+
+        use crate::feature_span::remove;
+
+        let v = |a, b, c| Version::new(a, b, c);
+
+        // A feature that was only ever optional for clients (add_optional, never
+        // promoted to required) and is later removed on the server must not
+        // exclude any peer: optional clients fall back. All other features stay
+        // active from 1.0.0 onward.
+        let optional = RaftFeature::AppendV002;
+        let mut srv = BTreeMap::new();
+        let mut cli = BTreeMap::new();
+        for &feature in RaftFeature::all() {
+            add(&mut srv, feature, v(1, 0, 0));
+            if feature == optional {
+                add_optional(&mut cli, feature, v(1, 0, 0));
+            } else {
+                add(&mut cli, feature, v(1, 0, 0));
+            }
+        }
+        remove(&mut srv, optional, v(2, 0, 0));
+        let spec = FeatureSpec::build(v(1, 0, 0), srv, cli);
+
+        // A server past the optional feature's removal still serves peers: the
+        // range stays [1.0.0, ∞) instead of collapsing to an empty range.
+        assert_eq!(
+            spec.compatible_peer_range(v(2, 5, 0)),
+            (v(1, 0, 0), Version::max())
         );
     }
 }
