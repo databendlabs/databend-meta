@@ -108,6 +108,69 @@ impl RaftSpec {
 
         FeatureSpec::build(version, srv, cli)
     }
+
+    /// Server versions that can serve a raft-client running `client_version`.
+    ///
+    /// The peer (as server) must provide every feature this client uses, so the
+    /// range is the intersection of the providing spans `[server.since,
+    /// server.until)` over the features active on the client at `client_version`.
+    fn compatible_server_range(&self, client_version: Version) -> (Version, Version) {
+        let mut lo = Version::min();
+        let mut hi = Version::max();
+
+        for feature in RaftFeature::all() {
+            let client_span = self.client_features().get(feature).unwrap();
+            let server_span = self.server_features().get(feature).unwrap();
+
+            if client_span.is_active_at(client_version) {
+                lo = lo.max(server_span.since);
+                hi = hi.min(server_span.until);
+            }
+        }
+
+        (lo, hi)
+    }
+
+    /// Client versions that a raft-server running `server_version` can serve.
+    ///
+    /// The peer (as client) must not use any feature this server lacks. Each
+    /// feature the server does not provide excludes the peer-client from that
+    /// feature's usage span `[client.since, client.until)`:
+    /// - not yet added (`server_version < server.since`): the peer-client must
+    ///   predate `client.since` (caps the range above).
+    /// - removed (`server_version >= server.until`): the peer-client must have
+    ///   reached `client.until` (floors the range below).
+    fn compatible_client_range(&self, server_version: Version) -> (Version, Version) {
+        let mut lo = Version::min();
+        let mut hi = Version::max();
+
+        for feature in RaftFeature::all() {
+            let client_span = self.client_features().get(feature).unwrap();
+            let server_span = self.server_features().get(feature).unwrap();
+
+            if server_version < server_span.since {
+                hi = hi.min(client_span.since);
+            } else if server_version >= server_span.until {
+                lo = lo.max(client_span.until);
+            }
+        }
+
+        (lo, hi)
+    }
+
+    /// The half-open range `[min, max)` of peer node versions that a node
+    /// running `node_version` can form a working raft connection with.
+    ///
+    /// A raft node is simultaneously a raft-server and a raft-client, so a peer
+    /// must be both a server this node's client can talk to and a client this
+    /// node's server can serve. The range is therefore the intersection of
+    /// `compatible_server_range` and `compatible_client_range` at `node_version`.
+    pub fn compatible_peer_range(&self, node_version: Version) -> (Version, Version) {
+        let (server_lo, server_hi) = self.compatible_server_range(node_version);
+        let (client_lo, client_hi) = self.compatible_client_range(node_version);
+
+        (server_lo.max(client_lo), server_hi.min(client_hi))
+    }
 }
 
 #[cfg(test)]
@@ -136,5 +199,87 @@ mod tests {
         let min_client = spec.min_compatible_client_version();
 
         assert_eq!(min_client, Version::new(0, 0, 0));
+    }
+
+    #[test]
+    fn test_compatible_peer_range() {
+        let spec = RaftSpec::load();
+        let max = Version::max();
+
+        let v = |a, b, c| Version::new(a, b, c);
+
+        // Regime 1: server does not yet provide SnapshotV003. Compatible up to
+        // (exclusive) 1.2.769, the first peer that *requires* SnapshotV003.
+        assert_eq!(
+            spec.compatible_peer_range(v(1, 0, 0)),
+            (v(0, 0, 120), v(1, 2, 769))
+        );
+        assert_eq!(
+            spec.compatible_peer_range(v(1, 2, 546)),
+            (v(0, 0, 120), v(1, 2, 769))
+        );
+
+        // Regime 2: server provides SnapshotV003 (since 1.2.547) but the client
+        // does not yet require it (before 1.2.769): compatible with any newer peer.
+        assert_eq!(
+            spec.compatible_peer_range(v(1, 2, 547)),
+            (v(0, 0, 120), max)
+        );
+        assert_eq!(
+            spec.compatible_peer_range(v(1, 2, 768)),
+            (v(0, 0, 120), max)
+        );
+
+        // Regime 3: client requires SnapshotV003 (since 1.2.769): the floor rises
+        // to the server's SnapshotV003 version (1.2.547).
+        assert_eq!(
+            spec.compatible_peer_range(v(1, 2, 769)),
+            (v(1, 2, 547), max)
+        );
+
+        // Optional features (VoteV001, SnapshotV004, AppendV002) never cap the
+        // upper bound, so every CalVer release stays in regime 3.
+        assert_eq!(
+            spec.compatible_peer_range(v(260512, 0, 0)),
+            (v(1, 2, 547), max)
+        );
+    }
+
+    #[test]
+    fn test_compatible_peer_range_with_removed_feature() {
+        use std::collections::BTreeMap;
+
+        use crate::feature_span::remove;
+
+        let v = |a, b, c| Version::new(a, b, c);
+
+        // The live raft data never removes a feature, so build a synthetic spec
+        // to exercise the `until` (removal) bounds. One feature is removed on the
+        // server at 2.0.0 and dropped by the client at 1.5.0; all others stay
+        // active from 1.0.0 onward.
+        let removed = RaftFeature::TransferLeader;
+        let mut srv = BTreeMap::new();
+        let mut cli = BTreeMap::new();
+        for &feature in RaftFeature::all() {
+            add(&mut srv, feature, v(1, 0, 0));
+            add(&mut cli, feature, v(1, 0, 0));
+        }
+        remove(&mut srv, removed, v(2, 0, 0));
+        remove(&mut cli, removed, v(1, 5, 0));
+        let spec = FeatureSpec::build(v(1, 0, 0), srv, cli);
+
+        // At 1.2.0 the node's client still uses the feature, so a peer (as server)
+        // must still provide it: peers are capped below its removal at 2.0.0.
+        assert_eq!(
+            spec.compatible_peer_range(v(1, 2, 0)),
+            (v(1, 0, 0), v(2, 0, 0))
+        );
+
+        // At 2.5.0 the node's server has removed the feature, so a peer (as client)
+        // must have dropped it: peers are floored at the client's drop at 1.5.0.
+        assert_eq!(
+            spec.compatible_peer_range(v(2, 5, 0)),
+            (v(1, 5, 0), Version::max())
+        );
     }
 }
