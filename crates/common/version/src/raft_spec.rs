@@ -109,62 +109,6 @@ impl RaftSpec {
         FeatureSpec::build(version, srv, cli)
     }
 
-    /// Server versions that can serve a raft-client running `client_version`.
-    ///
-    /// The peer (as server) must provide every feature this client uses, so the
-    /// range is the intersection of the providing spans `[server.since,
-    /// server.until)` over the features active on the client at `client_version`.
-    fn compatible_server_range(&self, client_version: Version) -> (Version, Version) {
-        let mut lo = Version::min();
-        let mut hi = Version::max();
-
-        for feature in RaftFeature::all() {
-            let client_span = self.client_features().get(feature).unwrap();
-            let server_span = self.server_features().get(feature).unwrap();
-
-            if client_span.is_active_at(client_version) {
-                lo = lo.max(server_span.since);
-                hi = hi.min(server_span.until);
-            }
-        }
-
-        (lo, hi)
-    }
-
-    /// Client versions that a raft-server running `server_version` can serve.
-    ///
-    /// The peer (as client) must not use any feature this server lacks. Each
-    /// feature the server does not provide excludes the peer-client from that
-    /// feature's usage span `[client.since, client.until)`:
-    /// - not yet added (`server_version < server.since`): the peer-client must
-    ///   predate `client.since` (caps the range above).
-    /// - removed (`server_version >= server.until`): the peer-client must have
-    ///   reached `client.until` (floors the range below).
-    fn compatible_client_range(&self, server_version: Version) -> (Version, Version) {
-        let mut lo = Version::min();
-        let mut hi = Version::max();
-
-        for feature in RaftFeature::all() {
-            let client_span = self.client_features().get(feature).unwrap();
-            let server_span = self.server_features().get(feature).unwrap();
-
-            // Skip features the client never requires. `add_optional` records an
-            // optional-only capability with `since = Version::max()`: the client
-            // can fall back, so the server dropping it must not exclude any peer.
-            if client_span.since == Version::max() {
-                continue;
-            }
-
-            if server_version < server_span.since {
-                hi = hi.min(client_span.since);
-            } else if server_version >= server_span.until {
-                lo = lo.max(client_span.until);
-            }
-        }
-
-        (lo, hi)
-    }
-
     /// The half-open range `[min, max)` of peer node versions that a node
     /// running `node_version` can form a working raft connection with.
     ///
