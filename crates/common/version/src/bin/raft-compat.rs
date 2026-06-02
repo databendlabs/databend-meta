@@ -54,7 +54,7 @@ fn candidate_versions() -> Vec<Version> {
     for patch in 0..=76 {
         versions.push(Version::new(1, 1, patch));
     }
-    for patch in 0..=915 {
+    for patch in 0..=879 {
         versions.push(Version::new(1, 2, patch));
     }
 
