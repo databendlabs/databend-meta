@@ -226,40 +226,72 @@ impl<F: FeatureSet> FeatureSpec<F> {
 
     /// Minimum server version that can serve this client.
     ///
-    /// Returns `max(server.since)` across all features the client requires
-    /// at `self.version`.
+    /// The lower bound of `compatible_server_range` at `self.version`.
     pub fn min_compatible_server_version(&self) -> Version {
-        let mut min_server = Version::min();
+        self.compatible_server_range(self.version).0
+    }
+
+    /// Server versions that can serve a client running `client_version`.
+    ///
+    /// The server must provide every feature the client uses, so the range is
+    /// the intersection of the providing spans `[server.since, server.until)`
+    /// over the features active on the client at `client_version`.
+    pub fn compatible_server_range(&self, client_version: Version) -> (Version, Version) {
+        let mut lo = Version::min();
+        let mut hi = Version::max();
 
         for feature in F::all() {
-            let client_lt = self.client_features.get(feature).unwrap();
-            let server_lt = self.server_features.get(feature).unwrap();
+            let client_span = self.client_features.get(feature).unwrap();
+            let server_span = self.server_features.get(feature).unwrap();
 
-            if client_lt.is_active_at(self.version) {
-                min_server = min_server.max(server_lt.since);
+            if client_span.is_active_at(client_version) {
+                lo = lo.max(server_span.since);
+                hi = hi.min(server_span.until);
             }
         }
 
-        min_server
+        (lo, hi)
     }
 
     /// Minimum client version that can connect to this server.
     ///
-    /// Returns `max(client.until)` across all features the server has
-    /// removed at `self.version`.
+    /// The lower bound of `compatible_client_range` at `self.version`.
     pub fn min_compatible_client_version(&self) -> Version {
-        let mut min_client = Version::min();
+        self.compatible_client_range(self.version).0
+    }
+
+    /// Client versions that a server running `server_version` can serve.
+    ///
+    /// The client must not require a feature the server lacks. Each feature the
+    /// server does not provide excludes the client from that feature's usage
+    /// span `[client.since, client.until)`:
+    /// - not yet added (`server_version < server.since`): the client must
+    ///   predate `client.since` (caps the range above).
+    /// - removed (`server_version >= server.until`): the client must have
+    ///   reached `client.until` (floors the range below).
+    pub fn compatible_client_range(&self, server_version: Version) -> (Version, Version) {
+        let mut lo = Version::min();
+        let mut hi = Version::max();
 
         for feature in F::all() {
-            let client_lt = self.client_features.get(feature).unwrap();
-            let server_lt = self.server_features.get(feature).unwrap();
+            let client_span = self.client_features.get(feature).unwrap();
+            let server_span = self.server_features.get(feature).unwrap();
 
-            if !server_lt.is_active_at(self.version) {
-                min_client = min_client.max(client_lt.until);
+            // Skip features the client never requires. `add_optional` records an
+            // optional-only capability with `since = Version::max()`: the client
+            // can fall back, so the server dropping it must not exclude any peer.
+            if client_span.since == Version::max() {
+                continue;
+            }
+
+            if server_version < server_span.since {
+                hi = hi.min(client_span.since);
+            } else if server_version >= server_span.until {
+                lo = lo.max(client_span.until);
             }
         }
 
-        min_client
+        (lo, hi)
     }
 }
 
