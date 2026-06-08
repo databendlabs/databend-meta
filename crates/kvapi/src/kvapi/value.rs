@@ -14,9 +14,7 @@
 
 use std::fmt::Debug;
 
-use crate::kvapi;
-
 /// A value that can be stored in kvapi::KVApi.
-pub trait Value: Debug {
-    type KeyType: kvapi::Key;
-}
+pub trait Value: Debug {}
+
+impl<V> Value for V where V: Debug {}

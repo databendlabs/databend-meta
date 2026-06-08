@@ -20,7 +20,6 @@ pub use structkey::testing::*;
 use crate::kvapi::Key;
 use crate::kvapi::KeyCodec;
 use crate::kvapi::StructKey;
-use crate::kvapi::Value;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,8 +40,4 @@ impl StructKey for FooKey {
 
 impl Key for FooKey {
     type ValueType = FooValue;
-}
-
-impl Value for FooValue {
-    type KeyType = FooKey;
 }
