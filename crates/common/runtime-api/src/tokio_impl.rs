@@ -21,6 +21,7 @@ use std::thread::JoinHandle as ThreadJoinHandle;
 use std::time::Duration;
 
 use hickory_resolver::TokioResolver;
+use hickory_resolver::config::LookupIpStrategy;
 use tokio::runtime::Handle;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -40,7 +41,14 @@ use crate::TrackingData;
 /// Global DNS resolver instance for TokioRuntime.
 static DNS_RESOLVER: LazyLock<io::Result<TokioResolver>> =
     LazyLock::new(|| match TokioResolver::builder_tokio() {
-        Ok(builder) => Ok(builder.build()),
+        Ok(mut builder) => {
+            // hickory 0.26 changed the default lookup strategy to `Ipv6AndIpv4`
+            // (AAAA before A). Pin the pre-0.26 `Ipv4thenIpv6` order so that
+            // `localhost` resolves to 127.0.0.1 first, matching IPv4-bound
+            // listeners.
+            builder.options_mut().ip_strategy = LookupIpStrategy::Ipv4thenIpv6;
+            builder.build().map_err(io::Error::other)
+        }
         Err(e) => Err(io::Error::other(e)),
     });
 
@@ -252,7 +260,7 @@ impl SpawnApi for TokioRuntime {
                 .lookup_ip(&hostname)
                 .await
                 .map_err(|e| io::Error::other(e.to_string()))?;
-            Ok(lookup.into_iter().collect())
+            Ok(lookup.iter().collect())
         })
     }
 
