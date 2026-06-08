@@ -15,7 +15,6 @@
 use crate::Key;
 use crate::KeyCodec;
 use crate::StructKey;
-use crate::Value;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, KeyCodec)]
@@ -35,10 +34,6 @@ pub(crate) struct FooValue;
 
 impl Key for FooKey {
     type ValueType = FooValue;
-}
-
-impl Value for FooValue {
-    type KeyType = FooKey;
 }
 
 #[cfg(test)]
