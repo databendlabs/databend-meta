@@ -140,17 +140,17 @@ mod tests {
 
     #[test]
     fn test_version_string() {
-        assert_eq!(version_str(), "260512.3.0");
+        assert_eq!(version_str(), "260512.4.0");
     }
 
     #[test]
     fn test_semver_components() {
-        assert_eq!(semver_tuple(version()), (260512, 3, 0));
+        assert_eq!(semver_tuple(version()), (260512, 4, 0));
     }
 
     #[test]
     fn test_semver_display() {
-        assert_eq!(version().to_semver().to_string(), "260512.3.0");
+        assert_eq!(version().to_semver().to_string(), "260512.4.0");
     }
 
     #[test]
