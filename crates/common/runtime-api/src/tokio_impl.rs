@@ -40,7 +40,7 @@ use crate::TrackingData;
 /// Global DNS resolver instance for TokioRuntime.
 static DNS_RESOLVER: LazyLock<io::Result<TokioResolver>> =
     LazyLock::new(|| match TokioResolver::builder_tokio() {
-        Ok(builder) => Ok(builder.build()),
+        Ok(builder) => builder.build().map_err(io::Error::other),
         Err(e) => Err(io::Error::other(e)),
     });
 
@@ -252,7 +252,7 @@ impl SpawnApi for TokioRuntime {
                 .lookup_ip(&hostname)
                 .await
                 .map_err(|e| io::Error::other(e.to_string()))?;
-            Ok(lookup.into_iter().collect())
+            Ok(lookup.iter().collect())
         })
     }
 
