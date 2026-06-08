@@ -174,6 +174,12 @@ pub fn grpc_changelog() -> BTreeMap<Version, GrpcVersionCompat> {
         min_server: ver(260217, 0, 0),
     });
 
+    // 260512.4.0: no grpc compatibility change.
+    m.insert(ver(260512, 4, 0), GrpcVersionCompat {
+        min_client: ver(1, 2, 676),
+        min_server: ver(260217, 0, 0),
+    });
+
     m
 }
 
