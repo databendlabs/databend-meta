@@ -95,7 +95,9 @@ pub use protobuf::txn_condition;
 pub use protobuf::txn_condition::ConditionResult;
 pub use protobuf::txn_op;
 pub use protobuf::txn_op_response;
+pub use state_machine_api::KVMeta;
 pub use state_machine_api::SeqV;
+pub use state_machine_api::SeqValue;
 
 pub use crate::cmd::Cmd;
 pub use crate::cmd::CmdContext;
