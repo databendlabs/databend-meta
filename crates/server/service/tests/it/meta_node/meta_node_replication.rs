@@ -17,10 +17,7 @@
 use std::fs;
 use std::io::Read;
 
-use databend_meta::message::ForwardRequest;
 use databend_meta::meta_service::MetaNode;
-use databend_meta_client::GetKVReq;
-use databend_meta_client::MetaGrpcReadReq;
 use databend_meta_raft_store::sm_v003::SnapshotStoreV004;
 use databend_meta_raft_store::state_machine::MetaSnapshotId;
 use databend_meta_runtime_api::TokioRuntime;
@@ -325,20 +322,9 @@ async fn test_raft_service_install_snapshot_v004() -> anyhow::Result<()> {
         .snapshot(last_log_id, "snapshot is installed")
         .await?;
 
-    let (_endpoint, strm) = meta_node
-        .handle_forwardable_request(ForwardRequest::<MetaGrpcReadReq> {
-            forward_to_leader: 0,
-            body: MetaGrpcReadReq::GetKV(GetKVReq {
-                key: "a".to_string(),
-            }),
-        })
-        .await?;
-
-    let got = strm.try_collect::<Vec<_>>().await?;
-    assert_eq!(got, vec![pb::StreamItem::new(
-        "a".to_string(),
-        Some(SeqV::new(1, b"foo".to_vec()).into())
-    )]);
+    let sm = meta_node.raft_store.get_sm_v003();
+    let got = sm.get_maybe_expired_kv("a").await?;
+    assert_eq!(got, Some(SeqV::new(1, b"foo".to_vec())));
 
     // Incomplete
 
