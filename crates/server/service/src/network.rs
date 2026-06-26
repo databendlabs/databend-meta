@@ -48,6 +48,7 @@ use databend_meta_types::raft_types::StorageError;
 use databend_meta_types::raft_types::StreamAppendResult;
 use databend_meta_types::raft_types::StreamingError;
 use databend_meta_types::raft_types::TransferLeaderRequest;
+use databend_meta_types::raft_types::TransferLeaderResponse;
 use databend_meta_types::raft_types::TypeConfig;
 use databend_meta_types::raft_types::Unreachable;
 use databend_meta_types::raft_types::Vote;
@@ -1152,17 +1153,17 @@ impl<SP: SpawnApi> NetTransferLeader<TypeConfig> for Network<SP> {
         &mut self,
         req: TransferLeaderRequest,
         _option: RPCOption,
-    ) -> Result<(), RPCError> {
+    ) -> Result<TransferLeaderResponse, RPCError> {
         info!(id = self.id, target = self.target, req :? = req; "{}", func_name!());
 
-        let r = pb::TransferLeaderRequest::from(req);
-
-        let req = SP::prepare_request(tonic::Request::new(r));
+        let pb_req = pb::TransferLeaderRequest::from(req);
 
         let mut client = self
             .take_client()
             .log_elapsed_debug("Raft NetworkConnection transfer_leader take_client()")
             .await?;
+
+        let req = SP::prepare_request(tonic::Request::new(pb_req));
 
         let grpc_res = client.transfer_leader(req).await;
         info!(
@@ -1172,17 +1173,19 @@ impl<SP: SpawnApi> NetTransferLeader<TypeConfig> for Network<SP> {
             grpc_res
         );
 
-        match &grpc_res {
-            Ok(_) => {
+        match grpc_res {
+            Ok(resp) => {
                 self.client.lock().await.replace(client);
+                let resp = resp.into_inner();
+
+                resp.try_into()
+                    .map_err(|e| RPCError::Unreachable(self.status_to_unreachable(e)))
             }
             Err(e) => {
                 warn!(target = self.target; "{} failed: {}", func_name!(), e);
+                Err(RPCError::Unreachable(self.status_to_unreachable(e)))
             }
         }
-
-        grpc_res.map_err(|e| RPCError::Unreachable(self.status_to_unreachable(e)))?;
-        Ok(())
     }
 }
 

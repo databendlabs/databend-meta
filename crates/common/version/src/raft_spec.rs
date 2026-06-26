@@ -74,6 +74,13 @@ impl RaftSpec {
             // cluster management action that doesn't affect normal raft operation.
             add_optional(&mut cli, F::TransferLeader, ver(1, 2, 599));
 
+            // 2026-06-26: since 260626.0.0:
+            // TransferLeaderV001 returns non-fatal rejection details from
+            // OpenRaft. The client uses it optionally to keep compatibility
+            // with peers that only provide the original transfer_leader API.
+            add(&mut srv, F::TransferLeaderV001, ver(260626, 0, 0));
+            add_optional(&mut cli, F::TransferLeaderV001, ver(260626, 0, 0));
+
             // 2025-07-20: since 1.2.777 (databend v1.2.777-nightly):
             // Typed protobuf vote RPC (with fallback to legacy vote).
             add(&mut srv, F::VoteV001, ver(1, 2, 777));
@@ -188,10 +195,15 @@ mod tests {
             (v(1, 2, 547), max)
         );
 
-        // Optional features (VoteV001, SnapshotV004, AppendV002) never cap the
-        // upper bound, so every CalVer release stays in regime 3.
+        // Optional features (VoteV001, SnapshotV004, AppendV002,
+        // TransferLeaderV001) never cap the upper bound, so every CalVer
+        // release stays in regime 3.
         assert_eq!(
             spec.compatible_peer_range(v(260512, 0, 0)),
+            (v(1, 2, 547), max)
+        );
+        assert_eq!(
+            spec.compatible_peer_range(v(260626, 0, 0)),
             (v(1, 2, 547), max)
         );
     }

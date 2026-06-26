@@ -54,5 +54,6 @@ fn candidate_versions() -> Vec<Version> {
         Version::new(260312, 0, 0),
         Version::new(260428, 0, 0),
         Version::new(260512, 0, 0),
+        Version::new(260626, 0, 0),
     ]
 }
