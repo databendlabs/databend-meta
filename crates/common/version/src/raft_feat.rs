@@ -48,6 +48,9 @@ pub enum RaftFeature {
 
     /// Leadership transfer RPC.
     TransferLeader,
+
+    /// Leadership transfer RPC that returns non-fatal rejection details.
+    TransferLeaderV001,
 }
 
 impl RaftFeature {
@@ -61,6 +64,7 @@ impl RaftFeature {
             RaftFeature::SnapshotV003,
             RaftFeature::SnapshotV004,
             RaftFeature::TransferLeader,
+            RaftFeature::TransferLeaderV001,
         ]
     }
 
@@ -74,6 +78,7 @@ impl RaftFeature {
             RaftFeature::SnapshotV003 => "raft/snapshot_v003",
             RaftFeature::SnapshotV004 => "raft/snapshot_v004",
             RaftFeature::TransferLeader => "raft/transfer_leader",
+            RaftFeature::TransferLeaderV001 => "raft/transfer_leader_v001",
         }
     }
 }
