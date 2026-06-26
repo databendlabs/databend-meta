@@ -34,7 +34,6 @@ use databend_meta_types::MetaAPIError;
 use databend_meta_types::PbAppendRequestExt;
 use databend_meta_types::PbAppendResponseExt;
 use databend_meta_types::protobuf as pb;
-use databend_meta_types::protobuf::Empty;
 use databend_meta_types::protobuf::InstallEntryV004;
 use databend_meta_types::protobuf::InstallSnapshotResponseV004;
 use databend_meta_types::protobuf::RaftReply;
@@ -524,7 +523,7 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
     async fn transfer_leader(
         &self,
         request: Request<pb::TransferLeaderRequest>,
-    ) -> Result<Response<Empty>, Status> {
+    ) -> Result<Response<pb::TransferLeaderResponse>, Status> {
         SP::trace_request(func_path!(), request, |request| async {
             let remote_addr = remote_addr(&request);
             let req = request.into_inner();
@@ -540,7 +539,8 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
 
             let raft = &self.meta_node.raft;
 
-            raft.handle_transfer_leader(req)
+            let resp = raft
+                .handle_transfer_leader(req)
                 .await
                 .map_err(GrpcHelper::internal_err)?;
 
@@ -550,7 +550,7 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
                 req_str
             );
 
-            Ok(Response::new(pb::Empty {}))
+            Ok(Response::new(pb::TransferLeaderResponse::from(resp)))
         })
         .await
     }
