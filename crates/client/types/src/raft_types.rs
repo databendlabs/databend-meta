@@ -174,6 +174,8 @@ pub type SnapshotMismatch = openraft::error::SnapshotMismatch;
 pub type VoteRequest = openraft::raft::VoteRequest<TypeConfig>;
 pub type VoteResponse = openraft::raft::VoteResponse<TypeConfig>;
 pub type TransferLeaderRequest = openraft::raft::TransferLeaderRequest<TypeConfig>;
+pub type TransferLeaderResponse = openraft::raft::TransferLeaderResponse<TypeConfig>;
+pub type TransferLeaderError = openraft::raft::TransferLeaderError<TypeConfig>;
 pub type EntryResponder = openraft::storage::EntryResponder<TypeConfig>;
 
 pub fn new_log_id(term: u64, node_id: NodeId, index: u64) -> LogId {

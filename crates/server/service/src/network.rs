@@ -48,6 +48,7 @@ use databend_meta_types::raft_types::StorageError;
 use databend_meta_types::raft_types::StreamAppendResult;
 use databend_meta_types::raft_types::StreamingError;
 use databend_meta_types::raft_types::TransferLeaderRequest;
+use databend_meta_types::raft_types::TransferLeaderResponse;
 use databend_meta_types::raft_types::TypeConfig;
 use databend_meta_types::raft_types::Unreachable;
 use databend_meta_types::raft_types::Vote;
@@ -1152,37 +1153,63 @@ impl<SP: SpawnApi> NetTransferLeader<TypeConfig> for Network<SP> {
         &mut self,
         req: TransferLeaderRequest,
         _option: RPCOption,
-    ) -> Result<(), RPCError> {
+    ) -> Result<TransferLeaderResponse, RPCError> {
         info!(id = self.id, target = self.target, req :? = req; "{}", func_name!());
 
-        let r = pb::TransferLeaderRequest::from(req);
-
-        let req = SP::prepare_request(tonic::Request::new(r));
+        let pb_req = pb::TransferLeaderRequest::from(req);
 
         let mut client = self
             .take_client()
             .log_elapsed_debug("Raft NetworkConnection transfer_leader take_client()")
             .await?;
 
-        let grpc_res = client.transfer_leader(req).await;
+        let req = SP::prepare_request(tonic::Request::new(pb_req.clone()));
+
+        let grpc_res = client.transfer_leader_v001(req).await;
         info!(
-            "{}: resp from target={} {:?}",
+            "{}_v001: resp from target={} {:?}",
             func_name!(),
             self.target,
             grpc_res
         );
 
-        match &grpc_res {
-            Ok(_) => {
+        match grpc_res {
+            Ok(resp) => {
                 self.client.lock().await.replace(client);
+                let resp = resp.into_inner();
+
+                resp.try_into()
+                    .map_err(|e| RPCError::Unreachable(self.status_to_unreachable(e)))
             }
             Err(e) => {
-                warn!(target = self.target; "{} failed: {}", func_name!(), e);
+                if e.code() != tonic::Code::Unimplemented && e.code() != tonic::Code::NotFound {
+                    warn!(target = self.target; "{}_v001 failed: {}", func_name!(), e);
+                    return Err(RPCError::Unreachable(self.status_to_unreachable(e)));
+                }
+
+                warn!(target = self.target; "{}_v001 not implemented, falling back to {}", func_name!(), func_name!());
+
+                let req = SP::prepare_request(tonic::Request::new(pb_req));
+                let grpc_res = client.transfer_leader(req).await;
+                info!(
+                    "{}: resp from target={} {:?}",
+                    func_name!(),
+                    self.target,
+                    grpc_res
+                );
+
+                match grpc_res {
+                    Ok(_) => {
+                        self.client.lock().await.replace(client);
+                        Ok(Ok(()))
+                    }
+                    Err(e) => {
+                        warn!(target = self.target; "{} failed: {}", func_name!(), e);
+                        Err(RPCError::Unreachable(self.status_to_unreachable(e)))
+                    }
+                }
             }
         }
-
-        grpc_res.map_err(|e| RPCError::Unreachable(self.status_to_unreachable(e)))?;
-        Ok(())
     }
 }
 

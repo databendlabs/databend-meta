@@ -37,6 +37,25 @@ message TransferLeaderRequest {
   LogId last_log_id = 3;
 }
 
+message TransferLeaderResponse {
+  TransferLeaderError error = 1;
+}
+
+message TransferLeaderError {
+  TransferLeaderVoteChanged vote_changed = 1;
+  TransferLeaderLogNotFlushed log_not_flushed = 2;
+}
+
+message TransferLeaderVoteChanged {
+  Vote expected = 1;
+  Vote actual = 2;
+}
+
+message TransferLeaderLogNotFlushed {
+  LogId expected = 1;
+  LogId actual = 2;
+}
+
 message MemberListRequest {string data = 1;}
 
 message MemberListReply {repeated string data = 1;}
@@ -472,6 +491,8 @@ service RaftService {
   rpc AppendV002(stream AppendRequest) returns (stream AppendResponse);
 
   rpc TransferLeader(TransferLeaderRequest) returns (Empty);
+
+  rpc TransferLeaderV001(TransferLeaderRequest) returns (TransferLeaderResponse);
 }
 
 // Request to retrieve key distribution layout information from a snapshot.

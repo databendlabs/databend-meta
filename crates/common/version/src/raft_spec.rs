@@ -104,6 +104,13 @@ impl RaftSpec {
             // 📡 raft client: optionally used since 260512.0.0; falls back to
             // legacy AppendEntries if the peer doesn't support it.
             add_optional(&mut cli, F::AppendV002, ver(260512, 0, 0));
+
+            // 2026-06-26: since 260626.0.0:
+            // TransferLeaderV001 returns non-fatal rejection details from
+            // OpenRaft. The client uses it optionally to keep compatibility
+            // with peers that only provide the original transfer_leader API.
+            add(&mut srv, F::TransferLeaderV001, ver(260626, 0, 0));
+            add_optional(&mut cli, F::TransferLeaderV001, ver(260626, 0, 0));
         }
 
         FeatureSpec::build(version, srv, cli)
@@ -188,10 +195,15 @@ mod tests {
             (v(1, 2, 547), max)
         );
 
-        // Optional features (VoteV001, SnapshotV004, AppendV002) never cap the
-        // upper bound, so every CalVer release stays in regime 3.
+        // Optional features (VoteV001, SnapshotV004, AppendV002,
+        // TransferLeaderV001) never cap the upper bound, so every CalVer
+        // release stays in regime 3.
         assert_eq!(
             spec.compatible_peer_range(v(260512, 0, 0)),
+            (v(1, 2, 547), max)
+        );
+        assert_eq!(
+            spec.compatible_peer_range(v(260626, 0, 0)),
             (v(1, 2, 547), max)
         );
     }
