@@ -41,9 +41,7 @@ pub use message::ListKVReq;
 pub use message::MGetKVReply;
 pub use message::MGetKVReq;
 pub use message::UpsertKVReply;
-pub use pair::BasicPair;
 pub use pair::Pair;
-pub use pair::SeqPair;
 // Re-export structkey types under `Key*` aliases. Within `kvapi` -- a
 // crate that mixes Key, Value, and API concepts -- the prefix tells
 // the reader which concept each type belongs to. (`structkey` itself

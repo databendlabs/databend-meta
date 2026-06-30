@@ -394,6 +394,8 @@ service RaftService {
   rpc VoteV001(VoteRequest) returns (VoteResponse);
 
   rpc TransferLeader(TransferLeaderRequest) returns (Empty);
+
+  rpc TransferLeaderV001(TransferLeaderRequest) returns (RaftReply);
 }
 
 // Request to retrieve key distribution layout information from a snapshot.

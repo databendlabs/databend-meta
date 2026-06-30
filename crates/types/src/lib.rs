@@ -69,7 +69,6 @@ pub use errors::meta_network_errors::ConnectionError;
 pub use errors::meta_network_errors::InvalidArgument;
 pub use errors::meta_network_errors::InvalidReply;
 pub use errors::meta_network_errors::MetaNetworkError;
-pub use errors::meta_network_errors::MetaNetworkResult;
 pub use errors::meta_startup_errors::MetaStartupError;
 pub use errors::rpc_errors::ForwardRPCError;
 pub use log_entry::LogEntry;

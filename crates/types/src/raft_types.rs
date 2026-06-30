@@ -92,13 +92,11 @@ pub type Unreachable = openraft::error::Unreachable<TypeConfig>;
 pub type AppendEntriesRequest = openraft::raft::AppendEntriesRequest<TypeConfig>;
 pub type AppendEntriesResponse = openraft::raft::AppendEntriesResponse<TypeConfig>;
 pub type InstallSnapshotRequest = openraft::raft::InstallSnapshotRequest<TypeConfig>;
-pub type InstallSnapshotResponse = openraft::raft::InstallSnapshotResponse<TypeConfig>;
 pub type SnapshotResponse = openraft::raft::SnapshotResponse<TypeConfig>;
-pub type InstallSnapshotError = openraft::error::InstallSnapshotError;
-pub type SnapshotMismatch = openraft::error::SnapshotMismatch;
 pub type VoteRequest = openraft::raft::VoteRequest<TypeConfig>;
 pub type VoteResponse = openraft::raft::VoteResponse<TypeConfig>;
 pub type TransferLeaderRequest = openraft::raft::TransferLeaderRequest<TypeConfig>;
+pub type TransferLeaderResponse = openraft::raft::TransferLeaderResponse<TypeConfig>;
 pub type EntryResponder = openraft::storage::EntryResponder<TypeConfig>;
 
 pub fn new_log_id(term: u64, node_id: NodeId, index: u64) -> LogId {

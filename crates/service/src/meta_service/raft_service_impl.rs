@@ -45,11 +45,11 @@ use databend_meta_types::raft_types::AppendEntriesRequest;
 use databend_meta_types::raft_types::Snapshot;
 use databend_meta_types::raft_types::SnapshotMeta;
 use databend_meta_types::raft_types::TransferLeaderRequest;
+use databend_meta_types::raft_types::TransferLeaderResponse;
 use databend_meta_types::raft_types::Vote;
 use databend_meta_types::raft_types::VoteRequest;
 use databend_meta_types::snapshot_db::DB;
 use databend_meta_types::sys_data::SysData;
-use fastrace::func_name;
 use fastrace::func_path;
 use futures::TryStreamExt;
 use log::error;
@@ -255,6 +255,29 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
             vote: Some(pb::Vote::from(snapshot_response.vote)),
         };
         Ok(Response::new(resp))
+    }
+
+    async fn do_transfer_leader(
+        &self,
+        request: Request<pb::TransferLeaderRequest>,
+    ) -> Result<TransferLeaderResponse, Status> {
+        let remote_addr = remote_addr(&request);
+        let req = request.into_inner();
+        let req: TransferLeaderRequest = req.try_into()?;
+        let req_str = req.to_string();
+
+        info!("RaftServiceImpl::transfer_leader: from:{remote_addr} start: {req_str}");
+
+        let resp = self
+            .meta_node
+            .raft
+            .handle_transfer_leader(req)
+            .await
+            .map_err(GrpcHelper::internal_err)?;
+
+        info!("RaftServiceImpl::transfer_leader: from:{remote_addr} done: {req_str}");
+
+        Ok(resp)
     }
 
     /// Receive a single file snapshot in binary chunks.
@@ -469,31 +492,19 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
         request: Request<pb::TransferLeaderRequest>,
     ) -> Result<Response<Empty>, Status> {
         SP::trace_request(func_path!(), request, |request| async {
-            let remote_addr = remote_addr(&request);
-            let req = request.into_inner();
-            let req: TransferLeaderRequest = req.try_into()?;
-
-            let req_str = req.to_string();
-
-            info!(
-                "RaftServiceImpl::{}: from:{remote_addr} start: {}",
-                func_name!(),
-                req_str
-            );
-
-            let raft = &self.meta_node.raft;
-
-            raft.handle_transfer_leader(req)
-                .await
-                .map_err(GrpcHelper::internal_err)?;
-
-            info!(
-                "RaftServiceImpl::{}: from:{remote_addr} done: {}",
-                func_name!(),
-                req_str
-            );
-
+            let _ = self.do_transfer_leader(request).await?;
             Ok(Response::new(pb::Empty {}))
+        })
+        .await
+    }
+
+    async fn transfer_leader_v001(
+        &self,
+        request: Request<pb::TransferLeaderRequest>,
+    ) -> Result<Response<RaftReply>, Status> {
+        SP::trace_request(func_path!(), request, |request| async {
+            let resp = self.do_transfer_leader(request).await?;
+            GrpcHelper::ok_response(&resp)
         })
         .await
     }

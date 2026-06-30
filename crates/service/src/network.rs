@@ -51,6 +51,7 @@ use databend_meta_types::raft_types::SnapshotResponse;
 use databend_meta_types::raft_types::StorageError;
 use databend_meta_types::raft_types::StreamingError;
 use databend_meta_types::raft_types::TransferLeaderRequest;
+use databend_meta_types::raft_types::TransferLeaderResponse;
 use databend_meta_types::raft_types::TypeConfig;
 use databend_meta_types::raft_types::Unreachable;
 use databend_meta_types::raft_types::Vote;
@@ -960,18 +961,45 @@ impl<SP: SpawnApi> RaftNetworkV2<TypeConfig> for Network<SP> {
         &mut self,
         req: TransferLeaderRequest,
         _option: RPCOption,
-    ) -> Result<(), RPCError> {
+    ) -> Result<TransferLeaderResponse, RPCError> {
         info!(id = self.id, target = self.target, req :? = req; "{}", func_name!());
-
-        let r = pb::TransferLeaderRequest::from(req);
-
-        let req = SP::prepare_request(tonic::Request::new(r));
 
         let mut client = self
             .take_client()
             .log_elapsed_debug("Raft NetworkConnection transfer_leader take_client()")
             .await?;
 
+        let r = pb::TransferLeaderRequest::from(req.clone());
+        let req_v001 = SP::prepare_request(tonic::Request::new(r));
+        let grpc_res_v001 = client.transfer_leader_v001(req_v001).await;
+        info!(
+            "{}_v001: resp from target={} {:?}",
+            func_name!(),
+            self.target,
+            grpc_res_v001
+        );
+
+        let fallback = match &grpc_res_v001 {
+            Ok(_) => false,
+            Err(e) => {
+                if e.code() == tonic::Code::Unimplemented || e.code() == tonic::Code::NotFound {
+                    warn!(target = self.target; "{}_v001 not implemented, falling back to transfer_leader: {}", func_name!(), e);
+                    true
+                } else {
+                    return Err(RPCError::Unreachable(self.status_to_unreachable(e.clone())));
+                }
+            }
+        };
+
+        if !fallback {
+            self.client.lock().await.replace(client);
+            return self.parse_grpc_resp::<TransferLeaderResponse, openraft::error::Infallible>(
+                grpc_res_v001,
+            );
+        }
+
+        let r = pb::TransferLeaderRequest::from(req);
+        let req = SP::prepare_request(tonic::Request::new(r));
         let grpc_res = client.transfer_leader(req).await;
         info!(
             "{}: resp from target={} {:?}",
@@ -990,7 +1018,7 @@ impl<SP: SpawnApi> RaftNetworkV2<TypeConfig> for Network<SP> {
         }
 
         grpc_res.map_err(|e| RPCError::Unreachable(self.status_to_unreachable(e)))?;
-        Ok(())
+        Ok(Ok(()))
     }
 
     /// When a `Unreachable` error is returned from the `Network`,
