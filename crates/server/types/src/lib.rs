@@ -64,7 +64,6 @@ pub use errors::meta_handshake_errors::MetaHandshakeError;
 pub use errors::meta_network_errors::ConnectionError;
 pub use errors::meta_network_errors::InvalidArgument;
 pub use errors::meta_network_errors::MetaNetworkError;
-pub use errors::meta_network_errors::MetaNetworkResult;
 pub use log_entry::LogEntry;
 pub use map_api::Expirable;
 pub mod match_seq {
