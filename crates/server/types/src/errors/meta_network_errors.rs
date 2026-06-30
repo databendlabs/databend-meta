@@ -75,8 +75,6 @@ impl MetaNetworkError {
     }
 }
 
-pub type MetaNetworkResult<T> = std::result::Result<T, MetaNetworkError>;
-
 #[derive(Error, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[error("ConnectionError: {msg} source: {source}")]
 pub struct ConnectionError {
