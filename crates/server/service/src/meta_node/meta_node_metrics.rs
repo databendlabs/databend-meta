@@ -583,4 +583,113 @@ mod tests {
         // A live snapshot must still serialize (real histogram percentiles are finite).
         assert!(serde_json::to_string(&m).is_ok());
     }
+
+    /// Completeness guard against silent information loss.
+    ///
+    /// `from_metric_set` maps families by hard-coded name, so a metric registered
+    /// in [`crate::metrics`] but not wired into `MetaMetrics` would be silently
+    /// dropped from `get_metrics()` — losing information the Prometheus-string
+    /// exposition still carries. This pins the whole registry inventory: adding,
+    /// removing, or renaming a metric fails here until `from_metric_set` and this
+    /// list are updated together. Names in `registered` only mean an unmapped
+    /// metric (information dropped); names in `mapped` only mean a dead mapping.
+    #[test]
+    fn test_every_registry_metric_is_mapped() {
+        use std::collections::BTreeSet;
+
+        use crate::metrics::meta_metrics_to_metric_set;
+        use crate::metrics::network_metrics;
+        use crate::metrics::raft_metrics;
+        use crate::metrics::server_metrics;
+
+        // Families register lazily, one `LazyLock` per group; touch one metric in
+        // each group to force every family to register. These specific calls are
+        // chosen not to perturb any value `test_get_metrics_maps_live_registry`
+        // asserts under parallel execution (the registry is process-global): the
+        // server op is `inc_by(0)`, the peer id is private to this test, and the
+        // storage/meta counters bumped here are asserted by no other test.
+        let peer: databend_meta_types::raft_types::NodeId = 1;
+        server_metrics::incr_proposals_pending(0);
+        raft_metrics::network::incr_sendto_bytes(&peer, 0);
+        raft_metrics::storage::incr_snapshot_written_entries();
+        network_metrics::incr_recv_bytes(0);
+
+        let set = meta_metrics_to_metric_set();
+        let registered: BTreeSet<&str> =
+            set.metric_families.iter().map(|f| f.name.as_str()).collect();
+
+        let mapped: BTreeSet<&str> = [
+            // server_metrics
+            "metasrv_server_applying_snapshot",
+            "metasrv_server_current_leader_id",
+            "metasrv_server_current_term",
+            "metasrv_server_is_leader",
+            "metasrv_server_last_log_index",
+            "metasrv_server_last_seq",
+            "metasrv_server_leader_changes",
+            "metasrv_server_node_is_health",
+            "metasrv_server_proposals_applied",
+            "metasrv_server_proposals_failed",
+            "metasrv_server_proposals_pending",
+            "metasrv_server_raft_log_cache_items",
+            "metasrv_server_raft_log_cache_used_size",
+            "metasrv_server_raft_log_size",
+            "metasrv_server_raft_log_wal_closed_chunk_count",
+            "metasrv_server_raft_log_wal_closed_chunk_total_size",
+            "metasrv_server_raft_log_wal_offset",
+            "metasrv_server_raft_log_wal_open_chunk_size",
+            "metasrv_server_read_failed",
+            "metasrv_server_snapshot_avg_block_size",
+            "metasrv_server_snapshot_avg_keys_per_block",
+            "metasrv_server_snapshot_block_count",
+            "metasrv_server_snapshot_data_size",
+            "metasrv_server_snapshot_expire_index_count",
+            "metasrv_server_snapshot_index_size",
+            "metasrv_server_snapshot_key_count",
+            "metasrv_server_snapshot_primary_index_count",
+            "metasrv_server_snapshot_read_block",
+            "metasrv_server_snapshot_read_block_from_cache",
+            "metasrv_server_snapshot_read_block_from_disk",
+            "metasrv_server_version",
+            "metasrv_server_watchers",
+            // raft_metrics::network
+            "metasrv_raft_network_active_peers",
+            "metasrv_raft_network_append_sent_seconds",
+            "metasrv_raft_network_fail_connect_to_peer",
+            "metasrv_raft_network_recv_bytes",
+            "metasrv_raft_network_sent_bytes",
+            "metasrv_raft_network_sent_failures",
+            "metasrv_raft_network_snapshot_recv_failures",
+            "metasrv_raft_network_snapshot_recv_inflights",
+            "metasrv_raft_network_snapshot_recv_seconds",
+            "metasrv_raft_network_snapshot_recv_success",
+            "metasrv_raft_network_snapshot_send_failure",
+            "metasrv_raft_network_snapshot_send_inflights",
+            "metasrv_raft_network_snapshot_send_success",
+            "metasrv_raft_network_snapshot_sent_seconds",
+            // raft_metrics::storage
+            "metasrv_raft_storage_raft_store_read_failed",
+            "metasrv_raft_storage_raft_store_write_failed",
+            "metasrv_raft_storage_snapshot_building",
+            "metasrv_raft_storage_snapshot_written_entries",
+            // network_metrics
+            "metasrv_meta_network_recv_bytes",
+            "metasrv_meta_network_req_failed",
+            "metasrv_meta_network_req_inflights",
+            "metasrv_meta_network_req_success",
+            "metasrv_meta_network_rpc_delay_ms",
+            "metasrv_meta_network_rpc_delay_read_ms",
+            "metasrv_meta_network_rpc_delay_write_ms",
+            "metasrv_meta_network_sent_bytes",
+            "metasrv_meta_network_stream_get_item_sent",
+            "metasrv_meta_network_stream_list_item_sent",
+            "metasrv_meta_network_stream_mget_item_sent",
+            "metasrv_meta_network_watch_change",
+            "metasrv_meta_network_watch_initialization",
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(registered, mapped);
+    }
 }
