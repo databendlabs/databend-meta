@@ -19,7 +19,7 @@ databend-meta-runtime-api = { path = "../../../common/runtime-api" }
 databend-meta-types = { path = "../../../server/types" }
 env_logger = "0.11"
 log = "0.4"
-openraft = "=0.10.0-alpha.28"
+openraft = "=0.10.0-alpha.29"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1.35", features = ["full"] }
