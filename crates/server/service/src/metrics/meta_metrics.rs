@@ -28,6 +28,8 @@
 use std::time::Instant;
 
 use databend_base::counter;
+use prometheus_client::encoding::protobuf::encode as protobuf_encode;
+use prometheus_client::encoding::protobuf::openmetrics_data_model::MetricSet;
 use prometheus_client::encoding::text::encode as prometheus_encode;
 
 pub mod server_metrics {
@@ -1041,6 +1043,16 @@ pub fn meta_metrics_to_prometheus_string() -> String {
     let mut text = String::new();
     prometheus_encode(&mut text, &registry).unwrap();
     text
+}
+
+/// Encode metrics into the OpenMetrics protobuf [`MetricSet`].
+///
+/// This is the structured counterpart of [`meta_metrics_to_prometheus_string`]:
+/// the whole registry as typed values instead of a text exposition. It is the
+/// read path for building the typed [`MetaMetrics`](crate::meta_node::meta_node_metrics::MetaMetrics).
+pub fn meta_metrics_to_metric_set() -> MetricSet {
+    let registry = crate::metrics::registry::load_global_registry();
+    protobuf_encode(&registry).unwrap()
 }
 
 #[derive(Default)]
