@@ -531,4 +531,56 @@ mod tests {
         // The whole snapshot must be JSON-serializable (no NaN/Inf leaking in).
         assert!(serde_json::to_string(&m).is_ok());
     }
+
+    /// End-to-end test of what `MetaNode::get_metrics()` evaluates: drive real
+    /// metrics into the global registry, then encode + map it. This guards the
+    /// hard-coded metric names against drift from [`crate::metrics`], which a
+    /// hand-built `MetricSet` cannot catch.
+    #[test]
+    fn test_get_metrics_maps_live_registry() {
+        use std::time::Duration;
+
+        use crate::metrics::meta_metrics_to_metric_set;
+        use crate::metrics::network_metrics;
+        use crate::metrics::raft_metrics;
+        use crate::metrics::server_metrics;
+
+        let peer: databend_meta_types::raft_types::NodeId = 424242;
+
+        // Exercise every extraction path against real metric families:
+        // plain gauge, bool gauge, single-label counter, multi-label gauge, histogram.
+        server_metrics::set_current_term(4242);
+        server_metrics::set_last_log_index(7777);
+        server_metrics::set_last_seq(555);
+        server_metrics::set_is_leader(true);
+        raft_metrics::network::incr_sendto_bytes(&peer, 512);
+        raft_metrics::network::incr_active_peers(&peer, "127.0.0.1:29003", 1);
+        network_metrics::sample_rpc_read_delay(Duration::from_millis(5));
+
+        // Exactly the expression behind `MetaNode::get_metrics()`.
+        let m = MetaMetrics::from_metric_set(&meta_metrics_to_metric_set());
+
+        // Gauges are absolute and only `report_metrics_loop` else writes them
+        // (it does not run under `cargo test --lib`), so these are exact.
+        assert_eq!(m.server.current_term, 4242);
+        assert_eq!(m.server.last_log_index, 7777);
+        assert_eq!(m.server.last_seq, 555);
+        assert!(m.server.is_leader);
+
+        // A distinct peer id makes the labeled entries unambiguous.
+        assert_eq!(m.raft_network.sent_bytes.get("to=424242"), Some(&512));
+        let active = m
+            .raft_network
+            .active_peers
+            .iter()
+            .find(|(k, _)| k.contains("id=424242"));
+        assert_eq!(active.map(|(_, v)| *v), Some(1));
+
+        // Histograms accumulate across the process, so assert presence.
+        assert!(m.meta_network.rpc_delay_ms.count >= 1);
+        assert!(m.meta_network.rpc_delay_read_ms.count >= 1);
+
+        // A live snapshot must still serialize (real histogram percentiles are finite).
+        assert!(serde_json::to_string(&m).is_ok());
+    }
 }
