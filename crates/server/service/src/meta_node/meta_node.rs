@@ -109,6 +109,7 @@ use crate::message::JoinRequest;
 use crate::message::LeaveRequest;
 use crate::meta_node::meta_management_error::MetaManagementError;
 use crate::meta_node::meta_node_builder::MetaNodeBuilder;
+use crate::meta_node::meta_node_metrics::MetaMetrics;
 use crate::meta_node::meta_node_status::MetaNodeStatus;
 use crate::meta_node::request_handler_error::CanNotForwardError;
 use crate::meta_node::request_handler_error::ForwardRequestError;
@@ -1296,6 +1297,17 @@ impl<SP: SpawnApi> MetaNode<SP> {
 
     async fn get_snapshot_db_stat(&self) -> DBStat {
         self.raft_store.get_snapshot_db_stat().await
+    }
+
+    /// Return a structured, typed snapshot of the entire metric registry.
+    ///
+    /// This is the programmatic counterpart of the Prometheus text exposition
+    /// ([`meta_metrics_to_prometheus_string`]): instead of a string to grep, the
+    /// caller reads typed fields, e.g. `metrics.server.current_term`.
+    ///
+    /// [`meta_metrics_to_prometheus_string`]: crate::metrics::meta_metrics_to_prometheus_string
+    pub fn get_metrics(&self) -> MetaMetrics {
+        MetaMetrics::from_metric_set(&crate::metrics::meta_metrics_to_metric_set())
     }
 
     pub async fn get_status(&self, binary_version: &str) -> MetaNodeStatus {
