@@ -83,7 +83,7 @@ raft-log = "0.3.0"
 rand = { version = "0.8.5", features = ["small_rng", "serde1"] }
 regex = "1.8.1"
 rmp-serde = "1.1.1"
-rotbl = { version = "0.2.10", features = [] }
+rotbl = { version = "0.3.0", features = [] }
 rustls = { version = "0.23.27", features = ["ring", "tls12"], default-features = false }
 semver = "1.0.14"
 seq-marked = { version = "0.3.5", features = ["seq-marked-serde", "seq-marked-bincode", "seqv-serde"] }
