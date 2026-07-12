@@ -79,7 +79,7 @@ pub struct ServerMetrics {
 }
 
 /// `metasrv_raft_network_*` metrics. Every metric is per-peer; each map is
-/// keyed by the joined label set (e.g. `to=2` or `id=2,addr=1.2.3.4:9191`).
+/// keyed by the joined label set (e.g. `to=2` or `addr=1.2.3.4:9191,id=2`).
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
 pub struct RaftNetworkMetrics {
     pub active_peers: BTreeMap<String, i64>,
@@ -364,13 +364,15 @@ fn percentile(count: u64, buckets: &[om::histogram_value::Bucket], q: f64) -> f6
     last_finite
 }
 
-/// The joined label set, e.g. `to=2` or `id=2,addr=1.2.3.4:9191`.
+/// The joined label set, ordered by label name.
 fn label_key(m: &om::Metric) -> String {
-    m.labels
+    let mut labels = m
+        .labels
         .iter()
         .map(|l| format!("{}={}", l.name, l.value))
-        .collect::<Vec<_>>()
-        .join(",")
+        .collect::<Vec<_>>();
+    labels.sort_unstable();
+    labels.join(",")
 }
 
 fn gauge(fams: &Families, name: &str) -> i64 {
@@ -476,6 +478,18 @@ mod tests {
                 })
                 .collect(),
         })
+    }
+
+    #[test]
+    fn test_label_key_is_order_independent() {
+        let mut first = point(gauge_point(0));
+        first.labels = vec![label("id", "2"), label("addr", "1.2.3.4:9191")];
+
+        let mut second = point(gauge_point(0));
+        second.labels = vec![label("addr", "1.2.3.4:9191"), label("id", "2")];
+
+        assert_eq!(label_key(&first), "addr=1.2.3.4:9191,id=2");
+        assert_eq!(label_key(&first), label_key(&second));
     }
 
     #[test]
