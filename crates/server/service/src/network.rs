@@ -54,6 +54,7 @@ use databend_meta_types::raft_types::Unreachable;
 use databend_meta_types::raft_types::Vote;
 use databend_meta_types::raft_types::VoteRequest;
 use databend_meta_types::raft_types::VoteResponse;
+use databend_meta_types::snapshot_db::DB;
 use fastrace::func_name;
 use futures::FutureExt;
 use futures::Stream;
@@ -1007,6 +1008,8 @@ impl<SP: SpawnApi> NetStreamAppend<TypeConfig> for Network<SP> {
 }
 
 impl<SP: SpawnApi> NetSnapshot<TypeConfig> for Network<SP> {
+    type SnapshotData = DB;
+
     /// Send snapshot to target node. Currently uses V004 streaming protocol.
     /// TODO: Add version negotiation to choose between V003/V004 based on target capabilities.
     #[logcall::logcall(err = "error", input = "")]
