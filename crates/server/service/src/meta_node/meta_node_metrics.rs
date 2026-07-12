@@ -17,7 +17,7 @@
 //! `prometheus-client` metrics are write-only: `Counter`/`Gauge`/`Histogram`
 //! (and labeled `Family`s of them) expose no way to read their current value
 //! back except through an encoder. So this typed snapshot is populated by
-//! encoding the registry to the OpenMetrics protobuf [`MetricSet`] and mapping
+//! encoding the registry to the OpenMetrics protobuf `MetricSet` and mapping
 //! every metric family, by name, into a named field. It is the programmatic
 //! counterpart of the Prometheus text exposition: a caller reads
 //! `metrics.server.current_term` instead of grepping a metric-name string.
@@ -139,9 +139,9 @@ pub struct HistogramMetrics {
 }
 
 impl MetaMetrics {
-    /// Map an OpenMetrics protobuf [`MetricSet`] (the encoded registry) into the
+    /// Map an OpenMetrics protobuf `MetricSet` (the encoded registry) into the
     /// typed snapshot. Missing metrics leave their field at the default (0 / empty).
-    pub fn from_metric_set(set: &om::MetricSet) -> Self {
+    pub(crate) fn from_metric_set(set: &om::MetricSet) -> Self {
         let fams: HashMap<&str, &om::MetricFamily> = set
             .metric_families
             .iter()
