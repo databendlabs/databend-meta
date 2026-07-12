@@ -64,7 +64,7 @@ use crate::store::RaftStore;
 ///
 /// A leader does not imply it is actually the leader granted by the cluster.
 /// It just means it believes it is the leader and have not yet perceived there is other newer leader.
-pub struct MetaLeader<'a, SP> {
+pub struct MetaLeader<'a, SP: SpawnApi> {
     sto: &'a RaftStore<SP>,
     raft: &'a MetaRaft<SP>,
 }
