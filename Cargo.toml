@@ -38,7 +38,7 @@ databend-meta-version = { path = "crates/version" }
 base2histogram = "0.2.3"
 databend-base = "0.4.0"
 map-api = "0.4.2"
-openraft = { version = "0.10.0-alpha.28", features = ["serde", "tracing-log"] }
+openraft = { version = "=0.10.0-alpha.29", features = ["serde", "tracing-log"] }
 sled = { version = "0.34", default-features = false }
 state-machine-api = "0.3.4"
 structkey = "0.1.1"
