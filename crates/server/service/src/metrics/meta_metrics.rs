@@ -1050,7 +1050,7 @@ pub fn meta_metrics_to_prometheus_string() -> String {
 /// This is the structured counterpart of [`meta_metrics_to_prometheus_string`]:
 /// the whole registry as typed values instead of a text exposition. It is the
 /// read path for building the typed `MetaMetrics`.
-pub fn meta_metrics_to_metric_set() -> MetricSet {
+pub(crate) fn meta_metrics_to_metric_set() -> MetricSet {
     let registry = crate::metrics::registry::load_global_registry();
     protobuf_encode(&registry).unwrap()
 }
