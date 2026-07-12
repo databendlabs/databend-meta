@@ -16,7 +16,7 @@ toml = { workspace = true }
 [package.metadata.compat]
 min-client-version = "1.2.676"
 min-server-version = "260217.0.0"
-min-raft-server-version = "1.2.547"
+min-raft-server-version = "1.2.818"
 min-raft-client-version = "0.0.0"
 
 [lints]
