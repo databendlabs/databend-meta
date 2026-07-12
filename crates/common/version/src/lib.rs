@@ -67,7 +67,7 @@ pub static MIN_SERVER_VERSION: Version = Version::new(260217, 0, 0);
 /// Minimum compatible raft-server version (node receiving raft RPCs).
 ///
 /// See [module documentation](self) for details.
-pub static MIN_RAFT_SERVER_VERSION: Version = Version::new(1, 2, 547);
+pub static MIN_RAFT_SERVER_VERSION: Version = Version::new(1, 2, 818);
 
 /// Minimum compatible raft-client version (node sending raft RPCs).
 ///
