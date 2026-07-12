@@ -20,6 +20,7 @@ pub(crate) mod meta_management_error;
 #[allow(clippy::module_inception)]
 pub mod meta_node;
 pub(crate) mod meta_node_builder;
+pub(crate) mod meta_node_metrics;
 pub(crate) mod meta_node_status;
 pub mod meta_worker;
 pub(crate) mod request_handler_error;
