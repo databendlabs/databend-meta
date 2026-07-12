@@ -58,7 +58,7 @@ fn candidate_versions() -> Vec<Version> {
         versions.push(Version::new(1, 2, patch));
     }
 
-    for minor in 0..=10 {
+    for minor in 0..=14 {
         versions.push(Version::new(260205, minor, 0));
     }
     for minor in 0..=10 {
@@ -67,11 +67,14 @@ fn candidate_versions() -> Vec<Version> {
     for minor in 0..=3 {
         versions.push(Version::new(260428, minor, 0));
     }
-    for minor in 0..=3 {
+    for minor in 0..=5 {
         versions.push(Version::new(260512, minor, 0));
     }
-    versions.push(Version::new(260628, 0, 0));
+    for minor in 0..=1 {
+        versions.push(Version::new(260628, minor, 0));
+    }
     versions.push(Version::new(260629, 0, 0));
+    versions.push(Version::new(260712, 0, 0));
 
     versions
 }
