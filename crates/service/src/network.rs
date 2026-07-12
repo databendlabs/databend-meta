@@ -57,6 +57,7 @@ use databend_meta_types::raft_types::Unreachable;
 use databend_meta_types::raft_types::Vote;
 use databend_meta_types::raft_types::VoteRequest;
 use databend_meta_types::raft_types::VoteResponse;
+use databend_meta_types::snapshot_db::DB;
 use fastrace::func_name;
 use futures::FutureExt;
 use futures::StreamExt;
@@ -726,6 +727,8 @@ impl<SP: SpawnApi> Network<SP> {
 }
 
 impl<SP: SpawnApi> RaftNetworkV2<TypeConfig> for Network<SP> {
+    type SnapshotData = DB;
+
     /// Send AppendEntries RPC with automatic payload size management.
     ///
     /// If the payload exceeds gRPC size limit, reduces entry count and retries.

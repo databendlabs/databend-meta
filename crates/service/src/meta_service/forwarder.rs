@@ -38,7 +38,7 @@ use crate::store::RaftStore;
 use crate::util::reply_to_api_result;
 
 /// Handle a request locally if it is leader. Otherwise, forward it to the leader.
-pub struct MetaForwarder<'a, SP> {
+pub struct MetaForwarder<'a, SP: SpawnApi> {
     sto: &'a RaftStore<SP>,
     #[allow(dead_code)]
     raft: &'a MetaRaft<SP>,

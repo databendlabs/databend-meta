@@ -36,6 +36,8 @@ use crate::metrics::raft_metrics;
 use crate::store::meta_raft_state_machine::MetaRaftStateMachine;
 
 impl<SP: SpawnApi> RaftSnapshotBuilder<TypeConfig> for MetaRaftStateMachine<SP> {
+    type SnapshotData = DB;
+
     #[fastrace::trace]
     async fn build_snapshot(&mut self) -> Result<Snapshot, io::Error> {
         self.do_build_snapshot().await
@@ -43,6 +45,7 @@ impl<SP: SpawnApi> RaftSnapshotBuilder<TypeConfig> for MetaRaftStateMachine<SP> 
 }
 
 impl<SP: SpawnApi> RaftStateMachine<TypeConfig> for MetaRaftStateMachine<SP> {
+    type SnapshotData = DB;
     type SnapshotBuilder = MetaRaftStateMachine<SP>;
 
     async fn applied_state(&mut self) -> Result<(Option<LogId>, StoredMembership), io::Error> {

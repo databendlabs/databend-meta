@@ -43,7 +43,6 @@ impl RaftTypeConfig for TypeConfig {
     type LeaderId = LeaderId;
     type Vote = openraft::Vote<LeaderId>;
     type Entry = openraft::Entry<CommittedLeaderId, LogEntry, NodeId, MembershipNode>;
-    type SnapshotData = DB;
     type AsyncRuntime = TokioRuntime;
     type Responder<T>
         = OneshotResponder<Self, T>
