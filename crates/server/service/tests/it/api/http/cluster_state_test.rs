@@ -247,11 +247,22 @@ async fn test_handle_trigger_transfer_leader() -> anyhow::Result<()> {
     let result = meta0.handle_trigger_transfer_leader(2).await?;
     assert!(result.is_ok());
 
-    // Wait for leadership transfer
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    let metrics = meta0.handle_raft_metrics().await?.borrow_watched().clone();
-    assert_eq!(metrics.current_leader, Some(2));
+    // Wait for the transfer to converge. Node 0 steps down immediately and
+    // reports no leader during the election window, so a single fixed wait is
+    // racy; poll until it observes node 2 as leader (or time out).
+    let mut current_leader = None;
+    for _ in 0..50 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        current_leader = meta0
+            .handle_raft_metrics()
+            .await?
+            .borrow_watched()
+            .current_leader;
+        if current_leader == Some(2) {
+            break;
+        }
+    }
+    assert_eq!(current_leader, Some(2));
 
     Ok(())
 }
