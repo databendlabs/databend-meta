@@ -67,8 +67,8 @@ async fn grpc_client<R: RuntimeApi>(
 
 /// Builds `Arc<ClientHandle<TokioRuntime>>` backed by real metasrv instances.
 ///
-/// Keeps `MetaSrvTestContext`s alive in a shared vec so the servers
-/// are not dropped while clients are in use.
+/// Keeps the contexts for the current client(s) alive.
+/// The test suite uses clients sequentially, so a new build replaces them.
 #[derive(Clone)]
 pub struct MetaSrvBuilder {
     contexts: Arc<Mutex<Vec<MetaSrvTestContext<TokioRuntime>>>>,
@@ -85,6 +85,8 @@ impl MetaSrvBuilder {
 #[async_trait]
 impl kvapi::ApiBuilder<Arc<ClientHandle<TokioRuntime>>> for MetaSrvBuilder {
     async fn build(&self) -> Arc<ClientHandle<TokioRuntime>> {
+        self.contexts.lock().unwrap().clear();
+
         let (tc, _addr) = start_metasrv::<TokioRuntime>().await.unwrap();
         let client = grpc_client(&tc).await.unwrap();
         self.contexts.lock().unwrap().push(tc);
@@ -92,6 +94,8 @@ impl kvapi::ApiBuilder<Arc<ClientHandle<TokioRuntime>>> for MetaSrvBuilder {
     }
 
     async fn build_cluster(&self) -> Vec<Arc<ClientHandle<TokioRuntime>>> {
+        self.contexts.lock().unwrap().clear();
+
         let tcs = start_metasrv_cluster::<TokioRuntime>(&[0, 1, 2])
             .await
             .unwrap();
@@ -115,5 +119,29 @@ impl kvapi::ApiBuilder<Arc<ClientHandle<TokioRuntime>>> for MetaSrvBuilder {
 
         self.contexts.lock().unwrap().extend(tcs);
         clients
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use databend_meta_test_harness::meta_service_test_harness;
+    use kvapi::ApiBuilder;
+    use test_harness::test;
+
+    use super::*;
+
+    #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+    async fn test_replaces_unused_context() -> anyhow::Result<()> {
+        let builder = MetaSrvBuilder::new();
+
+        let client = builder.build().await;
+        assert_eq!(builder.contexts.lock().unwrap().len(), 1);
+        drop(client);
+
+        let client = builder.build().await;
+        assert_eq!(builder.contexts.lock().unwrap().len(), 1);
+        drop(client);
+
+        Ok(())
     }
 }
