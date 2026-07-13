@@ -297,8 +297,12 @@ fn as_gauge(m: &om::Metric) -> i64 {
     match metric_value(m) {
         Some(om::metric_point::Value::GaugeValue(g)) => match &g.value {
             Some(om::gauge_value::Value::IntValue(v)) => *v,
-            Some(om::gauge_value::Value::DoubleValue(v)) => *v as i64,
-            None => 0,
+            Some(om::gauge_value::Value::DoubleValue(v))
+                if v.is_finite() && *v >= i64::MIN as f64 && *v < i64::MAX as f64 =>
+            {
+                *v as i64
+            }
+            _ => 0,
         },
         _ => 0,
     }
@@ -308,8 +312,12 @@ fn as_counter(m: &om::Metric) -> u64 {
     match metric_value(m) {
         Some(om::metric_point::Value::CounterValue(c)) => match &c.total {
             Some(om::counter_value::Total::IntValue(v)) => *v,
-            Some(om::counter_value::Total::DoubleValue(v)) => *v as u64,
-            None => 0,
+            Some(om::counter_value::Total::DoubleValue(v))
+                if v.is_finite() && *v >= 0.0 && *v < u64::MAX as f64 =>
+            {
+                *v as u64
+            }
+            _ => 0,
         },
         _ => 0,
     }
@@ -463,6 +471,19 @@ mod tests {
         })
     }
 
+    fn double_gauge_point(v: f64) -> om::Metric {
+        point(om::metric_point::Value::GaugeValue(om::GaugeValue {
+            value: Some(om::gauge_value::Value::DoubleValue(v)),
+        }))
+    }
+
+    fn double_counter_point(v: f64) -> om::Metric {
+        point(om::metric_point::Value::CounterValue(om::CounterValue {
+            total: Some(om::counter_value::Total::DoubleValue(v)),
+            ..Default::default()
+        }))
+    }
+
     fn histogram_point(sum: f64, buckets: &[(f64, u64)]) -> om::metric_point::Value {
         let count = buckets.iter().map(|(_, c)| c).sum();
         om::metric_point::Value::HistogramValue(om::HistogramValue {
@@ -490,6 +511,34 @@ mod tests {
 
         assert_eq!(label_key(&first), "addr=1.2.3.4:9191,id=2");
         assert_eq!(label_key(&first), label_key(&second));
+    }
+
+    #[test]
+    fn test_invalid_float_metrics_default_to_zero() {
+        for value in [
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::MAX,
+            f64::MIN,
+        ] {
+            assert_eq!(
+                (
+                    as_gauge(&double_gauge_point(value)),
+                    as_counter(&double_counter_point(value))
+                ),
+                (0, 0),
+            );
+        }
+
+        assert_eq!(as_counter(&double_counter_point(-1.0)), 0);
+        assert_eq!(
+            (
+                as_gauge(&double_gauge_point(2.5)),
+                as_counter(&double_counter_point(2.5))
+            ),
+            (2, 2),
+        );
     }
 
     #[test]
