@@ -15,7 +15,6 @@
 use std::error::Error;
 use std::fmt::Display;
 use std::future::Future;
-use std::io::Read;
 use std::marker::PhantomData;
 use std::time::Duration;
 
@@ -34,7 +33,6 @@ use databend_meta_types::PbAppendResponseExt;
 use databend_meta_types::protobuf as pb;
 use databend_meta_types::protobuf::InstallEntryV004;
 use databend_meta_types::protobuf::RaftReply;
-use databend_meta_types::protobuf::SnapshotChunkRequestV003;
 use databend_meta_types::raft_types::AppendEntriesRequest;
 use databend_meta_types::raft_types::AppendEntriesResponse;
 use databend_meta_types::raft_types::MembershipNode;
@@ -83,7 +81,6 @@ use seq_marked::SeqV;
 use state_machine_api::MetaValue;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::metrics::raft_metrics;
@@ -460,96 +457,6 @@ impl<SP: SpawnApi> Network<SP> {
         )
     }
 
-    /// Split V003 snapshot `DB` into chunks and send them via the given channel.
-    fn snapshot_chunk_stream_v003(
-        vote: Vote,
-        snapshot: Snapshot,
-        cancel: impl Future<Output = ReplicationClosed> + Send + 'static,
-        option: RPCOption,
-        target: NodeId,
-        tx: mpsc::Sender<SnapshotChunkRequestV003>,
-    ) -> Result<(), StreamingError> {
-        let chunk_size = option.snapshot_chunk_size().unwrap_or(1024 * 1024);
-
-        let snapshot_meta = snapshot.meta;
-        let db = snapshot.snapshot;
-
-        info!(
-            "start to transmit snapshot via v003: {}; db.file_size: {}; db.stat: {}; chunk size:{}",
-            snapshot_meta,
-            db.file_size(),
-            db.stat(),
-            chunk_size
-        );
-
-        let mut bf = db.open_file().map_err(|e| {
-            StorageError::read_snapshot(Some(snapshot_meta.signature()), (&e).into())
-        })?;
-
-        let mut c = std::pin::pin!(cancel);
-
-        #[allow(clippy::uninit_vec)]
-        let mut buf = {
-            let mut b = Vec::with_capacity(chunk_size);
-            unsafe {
-                b.set_len(chunk_size);
-            }
-            b
-        };
-
-        loop {
-            // If canceled, return at once
-            if let Some(err) = c.as_mut().now_or_never() {
-                return Err(err.into());
-            }
-
-            let mut offset = 0;
-            while offset < buf.len() {
-                let n_read = bf.read(&mut buf[offset..]).map_err(|e| {
-                    StorageError::read_snapshot(Some(snapshot_meta.signature()), (&e).into())
-                })?;
-
-                debug!("offset: {}, n_read: {}", offset, n_read);
-                if n_read == 0 {
-                    break;
-                }
-                offset += n_read;
-            }
-
-            debug!("buf len: {}", buf.len());
-
-            if offset == 0 {
-                break;
-            }
-
-            debug!("Build snapshot chunk len: {}", offset);
-
-            let chunk = SnapshotChunkRequestV003::new_chunk((buf[..offset]).to_vec());
-            let len = chunk.chunk.len() as u64;
-
-            let send_res = tx.blocking_send(chunk);
-            if let Err(e) = send_res {
-                error!("{} error sending to snapshot stream: {}", func_name!(), e);
-                return Ok(());
-            }
-            raft_metrics::network::incr_sendto_bytes(&target, len);
-        }
-
-        info!("build snapshot end chunk");
-
-        let end = SnapshotChunkRequestV003::new_end_chunk(vote, snapshot_meta.clone());
-        let send_res = tx.blocking_send(end);
-        if let Err(e) = send_res {
-            error!(
-                "{} error sending end chunk to snapshot stream: {}",
-                func_name!(),
-                e
-            );
-        }
-
-        Ok(())
-    }
-
     /// Stream all KV entries from snapshot DB for V004 replication.
     /// Converts SeqMarked entries to protobuf format and sends via channel.
     /// Skips tombstones.
@@ -710,9 +617,6 @@ impl<SP: SpawnApi> Network<SP> {
             }
         }
 
-        // if ensure_not_unimplemented(&grpc_res).is_err() {
-        // }
-
         let res: Result<SnapshotResponse, StreamingError> = try {
             let join_res = strm_handle.await;
             match join_res {
@@ -737,85 +641,6 @@ impl<SP: SpawnApi> Network<SP> {
                 )))
             })?;
             let vote = proto_vote.into();
-            SnapshotResponse { vote }
-        };
-
-        self.report_metrics_snapshot(res.is_ok());
-        res
-    }
-
-    /// Send snapshot in stream of binary bytes chunks
-    async fn send_snapshot_via_v003(
-        &mut self,
-        vote: Vote,
-        snapshot: Snapshot,
-        cancel: impl Future<Output = ReplicationClosed> + Send + 'static,
-        option: RPCOption,
-    ) -> Result<SnapshotResponse, StreamingError> {
-        info!(id = self.id, target = self.target; "{}", func_name!());
-
-        let target = self.target;
-        let (tx, rx) = mpsc::channel(16);
-        let strm = ReceiverStream::new(rx);
-
-        // Using strm of type `Pin<Box<Stream + Send + 'static>>` result in a higher rank lifetime error
-        // See:
-        // - https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=8c382b5a6d932aaf81815f3825efd5ed
-        // - https://github.com/rust-lang/rust/issues/87425
-        //
-        // Here we convert it to a concrete type `ReceiverStream` to avoid the error.
-
-        let strm_handle = SP::spawn_blocking(move || {
-            Self::snapshot_chunk_stream_v003(vote, snapshot, cancel, option, target, tx)
-        });
-
-        let mut client = self
-            .take_client()
-            .log_elapsed_debug("Raft NetworkConnection install_snapshot take_client()")
-            .await?;
-
-        let grpc_res = client
-            .install_snapshot_v003(strm)
-            .inspect_elapsed(observe_snapshot_send_spent(target))
-            .await;
-
-        info!(
-            "{} resp from: target={}: grpc_result: {:?}",
-            func_name!(),
-            target,
-            grpc_res,
-        );
-
-        match &grpc_res {
-            Ok(_) => {
-                self.client.lock().await.replace(client);
-            }
-            Err(e) => {
-                warn!(target = self.target; "install_snapshot failed: {}", e);
-            }
-        }
-
-        let res: Result<SnapshotResponse, StreamingError> = try {
-            let join_res = strm_handle.await;
-            match join_res {
-                Err(e) => {
-                    warn!("Snapshot sending thread error: {}", e);
-                }
-                Ok(strm_res) => {
-                    if let Err(e) = strm_res {
-                        warn!("Snapshot sending thread error: {}", e);
-                        Err(e)?;
-                    }
-                }
-            }
-
-            let grpc_response =
-                grpc_res.map_err(|e| StreamingError::Unreachable(self.status_to_unreachable(e)))?;
-            let snapshot_response = grpc_response.into_inner();
-            let vote = snapshot_response
-                .to_vote()
-                .map_err(|e| StreamingError::Network(NetworkError::new(&e)))?;
-
             SnapshotResponse { vote }
         };
 
@@ -1010,8 +835,11 @@ impl<SP: SpawnApi> NetStreamAppend<TypeConfig> for Network<SP> {
 impl<SP: SpawnApi> NetSnapshot<TypeConfig> for Network<SP> {
     type SnapshotData = DB;
 
-    /// Send snapshot to target node. Currently uses V004 streaming protocol.
-    /// TODO: Add version negotiation to choose between V003/V004 based on target capabilities.
+    /// Send snapshot to the target node via the V004 KV-entry streaming protocol.
+    ///
+    /// The V003 raw-rotbl fallback was removed: rotbl 0.3.0 writes V002-format
+    /// blocks that pre-V004 peers cannot decode, so SnapshotV004 is required
+    /// (see `RaftSpec`).
     #[logcall::logcall(err = "error", input = "")]
     #[fastrace::trace]
     async fn full_snapshot(
@@ -1025,62 +853,8 @@ impl<SP: SpawnApi> NetSnapshot<TypeConfig> for Network<SP> {
 
         let _g = snapshot_send_inflight(self.target).counted_guard();
 
-        // Clone the cancel
-        let (tx1, cancel1) = oneshot::channel();
-        let (tx2, cancel2) = oneshot::channel();
-
-        #[allow(unused_must_use)]
-        SP::spawn(
-            async move {
-                let got = cancel.await;
-                tx1.send(got.clone()).ok();
-                tx2.send(got).ok();
-            },
-            Some("snapshot_cancel_watch".into()),
-        );
-
-        // TODO: Add proper version negotiation or configuration
-        // For now, use V004 for testing the new KV streaming implementation
-        let res = self
-            .send_snapshot_via_v004(
-                vote,
-                snapshot.clone(),
-                async move {
-                    let _ = cancel1.await;
-                    ReplicationClosed::new("snapshot cancelled")
-                },
-                option.clone(),
-            )
-            .await;
-
-        let err = match res {
-            Ok(resp) => {
-                return Ok(resp);
-            }
-            Err(e) => e,
-        };
-
-        warn!(
-            "id={} target={} send_snapshot_via_v004 failed: {}",
-            self.id, self.target, err
-        );
-
-        if let StreamingError::Unreachable(_unreachable) = &err {
-            let resp = self
-                .send_snapshot_via_v003(
-                    vote,
-                    snapshot,
-                    async move {
-                        let _ = cancel2.await;
-                        ReplicationClosed::new("snapshot cancelled")
-                    },
-                    option.clone(),
-                )
-                .await?;
-            Ok(resp)
-        } else {
-            Err(err)
-        }
+        self.send_snapshot_via_v004(vote, snapshot, cancel, option)
+            .await
     }
 }
 
