@@ -112,16 +112,14 @@ impl RaftSpec {
             add(&mut srv, F::TransferLeaderV001, ver(260628, 0, 0));
             add_optional(&mut cli, F::TransferLeaderV001, ver(260628, 0, 0));
 
-            // 2026-07-12: since 260628.1.0:
+            // 2026-07-12: since 260629.0.0:
             // 📡 raft client: SnapshotV004 becomes required.
             //
-            // rotbl 0.3.0 writes snapshot blocks in the compressed V002 format,
-            // which pre-0.3.0 peers cannot decode. The V003 fallback ships the raw
-            // rotbl file byte-for-byte, so it would hand V002 blocks to a peer that
-            // only reads V001. Requiring SnapshotV004 — logical KV-entry streaming,
-            // where each node rebuilds its own rotbl — drops that unsafe raw-byte
-            // fallback.
-            add(&mut cli, F::SnapshotV004, ver(260628, 1, 0));
+            // This remains a breaking change: rotbl returns to the original
+            // uncompressed format, but V003 snapshot transmission is removed.
+            // Requiring SnapshotV004 — logical KV-entry streaming, where each node
+            // rebuilds its own rotbl — keeps peers on the supported transfer path.
+            add(&mut cli, F::SnapshotV004, ver(260629, 0, 0));
         }
 
         FeatureSpec::build(version, srv, cli)
@@ -192,29 +190,29 @@ mod tests {
 
         // Regime 2: server provides SnapshotV003 (since 1.2.547) but the client
         // does not yet require it (before 1.2.769). The upper bound is now capped
-        // at 260628.1.0: these nodes predate the SnapshotV004 server (1.2.818), so
-        // a peer that requires SnapshotV004 (260628.1.0+) cannot use them as server.
+        // at 260629.0.0: these nodes predate the SnapshotV004 server (1.2.818), so
+        // a peer that requires SnapshotV004 (260629.0.0+) cannot use them as server.
         assert_eq!(
             spec.compatible_peer_range(v(1, 2, 547)),
-            (v(0, 0, 120), v(260628, 1, 0))
+            (v(0, 0, 120), v(260629, 0, 0))
         );
         assert_eq!(
             spec.compatible_peer_range(v(1, 2, 768)),
-            (v(0, 0, 120), v(260628, 1, 0))
+            (v(0, 0, 120), v(260629, 0, 0))
         );
 
         // Regime 3: client requires SnapshotV003 (since 1.2.769): the floor rises
         // to the server's SnapshotV003 version (1.2.547). Nodes below the
-        // SnapshotV004 server (1.2.818) keep the 260628.1.0 upper cap.
+        // SnapshotV004 server (1.2.818) keep the 260629.0.0 upper cap.
         assert_eq!(
             spec.compatible_peer_range(v(1, 2, 769)),
-            (v(1, 2, 547), v(260628, 1, 0))
+            (v(1, 2, 547), v(260629, 0, 0))
         );
 
         // Once a node provides the SnapshotV004 server (since 1.2.818) the
         // SnapshotV004 requirement no longer caps its peers, and VoteV001,
         // AppendV002, and TransferLeaderV001 stay optional and never cap. CalVer
-        // releases before 260628.1.0 therefore have no upper bound.
+        // releases before 260629.0.0 therefore have no upper bound.
         assert_eq!(
             spec.compatible_peer_range(v(260512, 0, 0)),
             (v(1, 2, 547), max)
@@ -224,10 +222,10 @@ mod tests {
             (v(1, 2, 547), max)
         );
 
-        // Regime 4: client requires SnapshotV004 (since 260628.1.0): the floor
+        // Regime 4: client requires SnapshotV004 (since 260629.0.0): the floor
         // rises to the server's SnapshotV004 version (1.2.818).
         assert_eq!(
-            spec.compatible_peer_range(v(260628, 1, 0)),
+            spec.compatible_peer_range(v(260629, 0, 0)),
             (v(1, 2, 818), max)
         );
     }
