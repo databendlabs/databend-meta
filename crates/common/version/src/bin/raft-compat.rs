@@ -71,6 +71,7 @@ fn candidate_versions() -> Vec<Version> {
         versions.push(Version::new(260512, minor, 0));
     }
     versions.push(Version::new(260628, 0, 0));
+    versions.push(Version::new(260629, 0, 0));
 
     versions
 }
