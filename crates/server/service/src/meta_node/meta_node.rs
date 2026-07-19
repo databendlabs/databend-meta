@@ -71,7 +71,7 @@ use log::debug;
 use log::error;
 use log::info;
 use log::warn;
-use map_api::mvcc::ScopedRange;
+use map_api::mvcc::ViewRange;
 use maplit::btreemap;
 use openraft;
 use openraft::ChangeMembers;

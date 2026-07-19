@@ -71,7 +71,7 @@ impl MapApiHelper {
         meta: Option<KVMeta>,
     ) -> Result<BeforeAfter<SeqMarked<MetaValue>>, io::Error>
     where
-        T: mvcc::ScopedSet<UserKey, MetaValue> + Send + Sync + 'static,
+        T: mvcc::ViewApi<UserKey> + Send + Sync + 'static,
     {
         let got = s.get(key.clone()).await?;
         if got.is_tombstone() {

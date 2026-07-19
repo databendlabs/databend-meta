@@ -18,7 +18,7 @@ use databend_meta_types::UpsertKV;
 use databend_meta_types::raft_types::Membership;
 use databend_meta_types::raft_types::StoredMembership;
 use databend_meta_types::raft_types::TypeConfig;
-use map_api::mvcc::ScopedSet;
+use map_api::mvcc::ViewSet;
 use maplit::btreemap;
 use openraft::testing::log_id;
 use state_machine_api::UserKey;

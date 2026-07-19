@@ -26,8 +26,7 @@ use databend_meta_types::TxnRequest;
 use databend_meta_types::protobuf::StreamItem;
 use futures_util::TryStreamExt;
 use futures_util::stream::BoxStream;
-use map_api::mvcc::ScopedGet;
-use map_api::mvcc::ScopedRange;
+use map_api::mvcc::ViewRange;
 use seq_marked::SeqValue;
 use state_machine_api::UserKey;
 

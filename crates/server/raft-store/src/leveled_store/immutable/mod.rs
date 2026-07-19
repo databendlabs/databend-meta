@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::io;
 use std::io::Error;
 use std::ops::Deref;
 use std::ops::RangeBounds;
@@ -21,16 +20,13 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 use map_api::IOResultStream;
+use map_api::MapKey;
 use map_api::mvcc;
-use map_api::mvcc::ScopedSeqBoundedIntoRange;
-use map_api::mvcc::ViewKey;
-use map_api::mvcc::ViewValue;
 use seq_marked::SeqMarked;
 use state_machine_api::ExpireKey;
 use state_machine_api::MetaValue;
 use state_machine_api::UserKey;
 
-use crate::leveled_store::get_sub_table::GetSubTable;
 use crate::leveled_store::level::Level;
 use crate::leveled_store::level_index::LevelIndex;
 
@@ -81,6 +77,15 @@ impl Immutable {
     pub fn size(&self) -> u64 {
         self.level.kv.inner.len() as u64 + self.level.expire.inner.len() as u64
     }
+
+    pub(crate) fn get_at_seq<K>(&self, key: K, snapshot_seq: u64) -> SeqMarked<K::V>
+    where
+        K: MapKey,
+        Level: AsRef<mvcc::Table<K, K::V>>,
+    {
+        let table: &mvcc::Table<K, K::V> = self.level.as_ref().as_ref();
+        table.get(key, snapshot_seq).cloned()
+    }
 }
 
 impl AsRef<Level> for Immutable {
@@ -109,57 +114,30 @@ impl Deref for Immutable {
     }
 }
 
-// TODO: Test
-#[async_trait::async_trait]
-impl<K, V> mvcc::ScopedSeqBoundedGet<K, V> for Immutable
-where
-    K: ViewKey,
-    V: ViewValue,
-    Level: GetSubTable<K, V>,
-{
-    async fn get(&self, key: K, snapshot_seq: u64) -> Result<SeqMarked<V>, io::Error> {
-        let seq_marked = self.level.get_sub_table().get(key, snapshot_seq).cloned();
-        Ok(seq_marked)
-    }
-}
-
-// TODO: Test
-#[async_trait::async_trait]
-impl<K, V> mvcc::ScopedSeqBoundedRange<K, V> for Immutable
-where
-    K: ViewKey,
-    V: ViewValue,
-    Immutable: AsRef<mvcc::Table<K, V>>,
-{
-    async fn range<R>(
+impl Immutable {
+    pub(crate) async fn range_at_seq<K, R>(
         &self,
         range: R,
         snapshot_seq: u64,
-    ) -> Result<IOResultStream<(K, SeqMarked<V>)>, Error>
+    ) -> Result<IOResultStream<(K, SeqMarked<K::V>)>, Error>
     where
+        K: MapKey,
+        Immutable: AsRef<mvcc::Table<K, K::V>>,
         R: RangeBounds<K> + Send + Sync + Clone + 'static,
     {
-        self.clone().into_range(range, snapshot_seq).await
+        Ok(immutable_range(self.clone(), range, snapshot_seq))
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn assert_scoped_snapshot_range_traits<T>()
-    where
-        T: mvcc::ScopedSeqBoundedRangeIter<UserKey, MetaValue>,
-        T: mvcc::ScopedSeqBoundedRangeIter<ExpireKey, String>,
-        T: mvcc::ScopedSeqBoundedIntoRange<UserKey, MetaValue>,
-        T: mvcc::ScopedSeqBoundedIntoRange<ExpireKey, String>,
-        T: mvcc::ScopedSeqBoundedRange<UserKey, MetaValue>,
-        T: mvcc::ScopedSeqBoundedRange<ExpireKey, String>,
-    {
-    }
-
-    #[test]
-    fn test_scoped_snapshot_range_iter() {
-        assert_scoped_snapshot_range_traits::<Immutable>();
+#[futures_async_stream::try_stream(boxed, ok = (K, SeqMarked<K::V>), error = Error)]
+async fn immutable_range<K, R>(immutable: Immutable, range: R, snapshot_seq: u64)
+where
+    K: MapKey,
+    Immutable: AsRef<mvcc::Table<K, K::V>>,
+    R: RangeBounds<K> + Send + Sync + Clone + 'static,
+{
+    let table: &mvcc::Table<K, K::V> = immutable.as_ref();
+    for (key, value) in table.range(range, snapshot_seq) {
+        yield (key.clone(), value.cloned());
     }
 }

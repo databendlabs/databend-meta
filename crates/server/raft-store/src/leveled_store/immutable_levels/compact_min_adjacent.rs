@@ -59,7 +59,6 @@ impl ImmutableLevels {
 
 #[cfg(test)]
 mod tests {
-    use map_api::mvcc::ScopedSeqBoundedGet;
     use seq_marked::InternalSeq;
     use seq_marked::SeqMarked;
     use state_machine_api::UserKey;
@@ -140,15 +139,15 @@ mod tests {
         assert_eq!(result_indexes, expected_indexes);
 
         assert_eq!(
-            result.get(uk("k4"), 100).await.unwrap(),
+            result.get_at_seq(uk("k4"), 100),
             SeqMarked::new_normal(25u64, mv("v4"))
         );
         assert_eq!(
-            result.get(uk("k5"), 100).await.unwrap(),
+            result.get_at_seq(uk("k5"), 100),
             SeqMarked::new_normal(30u64, mv("v5"))
         );
         assert_eq!(
-            result.get(uk("k1"), 100).await.unwrap(),
+            result.get_at_seq(uk("k1"), 100),
             SeqMarked::new_normal(10u64, mv("v1"))
         );
     }
@@ -177,11 +176,11 @@ mod tests {
         assert_eq!(result_indexes, expected_indexes);
 
         assert_eq!(
-            result.get(uk("k1"), 100).await.unwrap(),
+            result.get_at_seq(uk("k1"), 100),
             SeqMarked::new_normal(10u64, mv("v1"))
         );
         assert_eq!(
-            result.get(uk("k2"), 100).await.unwrap(),
+            result.get_at_seq(uk("k2"), 100),
             SeqMarked::new_normal(20u64, mv("v2"))
         );
     }
@@ -207,31 +206,28 @@ mod tests {
         assert_eq!(result.immutables.len(), 1);
 
         assert_eq!(
-            result.get(uk("k1"), 100).await.unwrap(),
+            result.get_at_seq(uk("k1"), 100),
             SeqMarked::new_normal(25u64, mv("v1_new"))
         );
 
         assert_eq!(
-            result.get(uk("k1"), 20).await.unwrap(),
+            result.get_at_seq(uk("k1"), 20),
+            SeqMarked::new_normal(15u64, mv("v1_old"))
+        );
+
+        assert_eq!(result.get_at_seq(uk("k1"), 12), SeqMarked::new_not_found());
+
+        assert_eq!(
+            result.get_at_seq(uk("k1"), 18),
             SeqMarked::new_normal(15u64, mv("v1_old"))
         );
 
         assert_eq!(
-            result.get(uk("k1"), 12).await.unwrap(),
-            SeqMarked::new_not_found()
-        );
-
-        assert_eq!(
-            result.get(uk("k1"), 18).await.unwrap(),
-            SeqMarked::new_normal(15u64, mv("v1_old"))
-        );
-
-        assert_eq!(
-            result.get(uk("k2"), 100).await.unwrap(),
+            result.get_at_seq(uk("k2"), 100),
             SeqMarked::new_normal(10u64, mv("v2_only"))
         );
         assert_eq!(
-            result.get(uk("k3"), 100).await.unwrap(),
+            result.get_at_seq(uk("k3"), 100),
             SeqMarked::new_normal(30u64, mv("v3_new"))
         );
     }

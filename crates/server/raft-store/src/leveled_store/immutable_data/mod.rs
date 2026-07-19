@@ -25,17 +25,16 @@ use futures_util::StreamExt;
 use map_api::IOResultStream;
 use map_api::MapKey;
 use map_api::mvcc;
-use map_api::mvcc::ViewKey;
-use map_api::mvcc::ViewValue;
 use map_api::util;
 use seq_marked::InternalSeq;
 use seq_marked::SeqMarked;
 use stream_more::KMerge;
 use stream_more::StreamMore;
 
-use crate::leveled_store::ScopedSeqBoundedRead;
+use crate::leveled_store::ReadAtSeqDB;
 use crate::leveled_store::immutable::Immutable;
 use crate::leveled_store::immutable_levels::ImmutableLevels;
+use crate::leveled_store::level::Level;
 use crate::leveled_store::level::LevelStat;
 use crate::leveled_store::level_index::LevelIndex;
 use crate::leveled_store::map_api::MapKeyDecode;
@@ -138,21 +137,18 @@ impl ImmutableData {
     pub(crate) fn persisted(&self) -> Option<&DB> {
         self.persisted.as_ref()
     }
-}
 
-// TODO: test
-#[async_trait::async_trait]
-impl<K> mvcc::ScopedSeqBoundedGet<K, K::V> for ImmutableData
-where
-    K: MapKey,
-    K: ViewKey,
-    K::V: ViewValue,
-    K: MapKeyEncode + MapKeyDecode,
-    SeqMarked<K::V>: PersistedCodec<SeqMarked>,
-    Immutable: mvcc::ScopedSeqBoundedGet<K, K::V>,
-{
-    async fn get(&self, key: K, snapshot_seq: u64) -> Result<SeqMarked<K::V>, Error> {
-        let got = self.levels.get(key.clone(), snapshot_seq).await?;
+    pub(crate) async fn get_at_seq<K>(
+        &self,
+        key: K,
+        snapshot_seq: u64,
+    ) -> Result<SeqMarked<K::V>, Error>
+    where
+        K: MapKey + MapKeyEncode + MapKeyDecode,
+        SeqMarked<K::V>: PersistedCodec<SeqMarked>,
+        Level: AsRef<mvcc::Table<K, K::V>>,
+    {
+        let got = self.levels.get_at_seq(key.clone(), snapshot_seq);
         if !got.is_not_found() {
             return Ok(got);
         }
@@ -161,33 +157,27 @@ where
             return Ok(SeqMarked::new_not_found());
         };
 
-        mvcc::ScopedSeqBoundedGet::get(&ScopedSeqBoundedRead(db), key, snapshot_seq).await
+        ReadAtSeqDB(db).get_at_seq(key, snapshot_seq).await
     }
 }
 
-// TODO: test
-#[async_trait::async_trait]
-impl<K> mvcc::ScopedSeqBoundedRange<K, K::V> for ImmutableData
-where
-    K: MapKey,
-    K: ViewKey,
-    K::V: ViewValue,
-    K: MapKeyEncode + MapKeyDecode,
-    SeqMarked<K::V>: PersistedCodec<SeqMarked>,
-    Immutable: mvcc::ScopedSeqBoundedRange<K, K::V>,
-{
-    async fn range<R>(
+impl ImmutableData {
+    pub(crate) async fn range_at_seq<K, R>(
         &self,
         range: R,
         snapshot_seq: u64,
     ) -> Result<IOResultStream<(K, SeqMarked<K::V>)>, io::Error>
     where
+        K: MapKey,
+        K: MapKeyEncode + MapKeyDecode,
+        SeqMarked<K::V>: PersistedCodec<SeqMarked>,
+        Immutable: AsRef<mvcc::Table<K, K::V>>,
         R: RangeBounds<K> + Clone + Send + Sync + 'static,
     {
         let mut kmerge = KMerge::by(util::by_key_seq);
 
         for level in self.levels.newest_to_oldest() {
-            let strm = level.range(range.clone(), snapshot_seq).await?;
+            let strm = level.range_at_seq(range.clone(), snapshot_seq).await?;
 
             kmerge = kmerge.merge(strm);
         }
@@ -195,12 +185,11 @@ where
         // Bottom db level
 
         if let Some(db) = self.persisted() {
-            let map_view = ScopedSeqBoundedRead(db);
+            let map_view = ReadAtSeqDB(db);
             // NOTE: we assume a mvcc version won't use a version that is in a persisted db.
             //       Because we need to wait for a mvcc version to release in order to persist a db.
             //       Because when persisting, it may need to remove tombstone permanently.
-            let strm =
-                mvcc::ScopedSeqBoundedRange::range(&map_view, range.clone(), snapshot_seq).await?;
+            let strm = map_view.range_at_seq(range.clone(), snapshot_seq).await?;
             kmerge = kmerge.merge(strm);
         };
 
@@ -218,8 +207,6 @@ mod tests {
 
     use databend_meta_types::snapshot_db::DB;
     use futures_util::TryStreamExt;
-    use map_api::mvcc::ScopedSeqBoundedGet;
-    use map_api::mvcc::ScopedSeqBoundedRange;
     use rotbl::storage::impls::fs::FsStorage;
     use rotbl::v001::Config;
     use rotbl::v001::Rotbl;
@@ -338,10 +325,10 @@ mod tests {
         let key = UserKey::new("test");
 
         // Test with different snapshot_seq values
-        let res = data.get(key.clone(), 5).await.unwrap();
+        let res = data.get_at_seq(key.clone(), 5).await.unwrap();
         assert!(res.is_not_found());
 
-        let res = data.get(key, 100).await.unwrap();
+        let res = data.get_at_seq(key, 100).await.unwrap();
         assert!(res.is_not_found());
     }
 
@@ -351,11 +338,11 @@ mod tests {
         let data = ImmutableData::new(levels, None);
 
         // Test with different snapshot_seq values
-        let stream = data.range(UserKey::default().., 5).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 5).await.unwrap();
         let items: Vec<_> = stream.collect().await;
         assert!(items.is_empty());
 
-        let stream = data.range(UserKey::default().., 100).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 100).await.unwrap();
         let items: Vec<_> = stream.collect().await;
         assert!(items.is_empty());
     }
@@ -394,21 +381,21 @@ mod tests {
         let missing_key = UserKey::new("missing");
 
         // Test snapshot_seq effects - seq too low (should not find)
-        let res = data.get(key1.clone(), 5).await.unwrap();
+        let res = data.get_at_seq(key1.clone(), 5).await.unwrap();
         assert!(res.is_not_found());
 
         // Test snapshot_seq effects - seq adequate (should find)
-        let res = data.get(key1.clone(), 15).await.unwrap();
+        let res = data.get_at_seq(key1.clone(), 15).await.unwrap();
         let expected = SeqMarked::new_normal(10, (None, b("value1")));
         assert_eq!(res, expected);
 
         // Test snapshot_seq effects - seq high (should find)
-        let res = data.get(key2, 100).await.unwrap();
+        let res = data.get_at_seq(key2, 100).await.unwrap();
         let expected = SeqMarked::new_normal(20, (None, b("value2")));
         assert_eq!(res, expected);
 
         // Test missing key
-        let res = data.get(missing_key, 100).await.unwrap();
+        let res = data.get_at_seq(missing_key, 100).await.unwrap();
         assert!(res.is_not_found());
     }
 
@@ -428,12 +415,12 @@ mod tests {
         let data = ImmutableData::new(levels, None);
 
         // Test snapshot_seq effects - seq too low (should find nothing)
-        let stream = data.range(UserKey::default().., 5).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 5).await.unwrap();
         let items: Vec<_> = stream.collect().await;
         assert!(items.is_empty());
 
         // Test snapshot_seq effects - seq adequate (should find some)
-        let stream = data.range(UserKey::default().., 15).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 15).await.unwrap();
         let items: Vec<_> = stream.try_collect().await.unwrap();
         let expected = vec![(
             UserKey::new("key1"),
@@ -442,7 +429,7 @@ mod tests {
         assert_eq!(items, expected);
 
         // Test snapshot_seq effects - seq high (should find all)
-        let stream = data.range(UserKey::default().., 100).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 100).await.unwrap();
         let items: Vec<_> = stream.try_collect().await.unwrap();
         let expected = vec![
             (
@@ -496,21 +483,21 @@ mod tests {
         let key3 = UserKey::new("key3");
 
         // Test snapshot_seq effects - seq adequate for normal value
-        let res = data.get(key1, 25).await.unwrap();
+        let res = data.get_at_seq(key1, 25).await.unwrap();
         let expected = SeqMarked::new_normal(10, (None, b("value1")));
         assert_eq!(res, expected);
 
         // Test snapshot_seq effects - tombstone should return the tombstone
-        let res = data.get(key2.clone(), 25).await.unwrap();
+        let res = data.get_at_seq(key2.clone(), 25).await.unwrap();
         let expected = SeqMarked::new_tombstone(15);
         assert_eq!(res, expected);
 
         // Test snapshot_seq effects - seq too low for tombstone (should not find)
-        let res = data.get(key2, 10).await.unwrap();
+        let res = data.get_at_seq(key2, 10).await.unwrap();
         assert!(res.is_not_found());
 
         // Test snapshot_seq effects - normal value after tombstone
-        let res = data.get(key3, 25).await.unwrap();
+        let res = data.get_at_seq(key3, 25).await.unwrap();
         let expected = SeqMarked::new_normal(20, (None, b("value3")));
         assert_eq!(res, expected);
     }
@@ -533,7 +520,7 @@ mod tests {
         let data = ImmutableData::new(levels, None);
 
         // Test snapshot_seq = 12 (should find key1 but not key2 tombstone yet)
-        let stream = data.range(UserKey::default().., 12).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 12).await.unwrap();
         let items: Vec<_> = stream.try_collect().await.unwrap();
         let expected = vec![(
             UserKey::new("key1"),
@@ -542,7 +529,7 @@ mod tests {
         assert_eq!(items, expected);
 
         // Test snapshot_seq = 18 (should find key1 and key2 tombstone, but not key3 yet)
-        let stream = data.range(UserKey::default().., 18).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 18).await.unwrap();
         let items: Vec<_> = stream.try_collect().await.unwrap();
         let expected = vec![
             (
@@ -554,7 +541,7 @@ mod tests {
         assert_eq!(items, expected);
 
         // Test snapshot_seq = 22 (should find key1, key2 tombstone, key3)
-        let stream = data.range(UserKey::default().., 22).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 22).await.unwrap();
         let items: Vec<_> = stream.try_collect().await.unwrap();
         let expected = vec![
             (
@@ -570,7 +557,7 @@ mod tests {
         assert_eq!(items, expected);
 
         // Test snapshot_seq = 30 (should find all: key1, key2 tombstone, key3, key4 tombstone)
-        let stream = data.range(UserKey::default().., 30).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 30).await.unwrap();
         let items: Vec<_> = stream.try_collect().await.unwrap();
         let expected = vec![
             (
@@ -613,12 +600,12 @@ mod tests {
         let key_missing = UserKey::new("missing");
 
         // Test snapshot_seq effects - seq adequate (should find from DB)
-        let res = data.get(key1, 25).await.unwrap();
+        let res = data.get_at_seq(key1, 25).await.unwrap();
         let expected = SeqMarked::new_normal(10, (None, b("value1")));
         assert_eq!(res, expected);
 
         // Test missing key
-        let res = data.get(key_missing, 100).await.unwrap();
+        let res = data.get_at_seq(key_missing, 100).await.unwrap();
         assert!(res.is_not_found());
     }
 
@@ -641,7 +628,7 @@ mod tests {
         let data = ImmutableData::new(levels, Some(db));
 
         // Test snapshot_seq effects - seq adequate (should find from DB)
-        let stream = data.range(UserKey::default().., 100).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 100).await.unwrap();
         let items: Vec<_> = stream.try_collect().await.unwrap();
         let expected = vec![
             (
@@ -713,24 +700,24 @@ mod tests {
         let key_missing = UserKey::new("missing");
 
         // Test snapshot_seq = 7 (should find DB keys at seq 2,4 but not level key at seq 10)
-        let res = data.get(key_db1.clone(), 7).await.unwrap();
+        let res = data.get_at_seq(key_db1.clone(), 7).await.unwrap();
         let expected = SeqMarked::new_normal(2, (None, b("db_value1")));
         assert_eq!(res, expected);
 
-        let res = data.get(key_level1.clone(), 7).await.unwrap();
+        let res = data.get_at_seq(key_level1.clone(), 7).await.unwrap();
         assert!(res.is_not_found());
 
         // Test snapshot_seq = 12 (should find both DB key at seq 2 and level key at seq 10)
-        let res = data.get(key_db1, 12).await.unwrap();
+        let res = data.get_at_seq(key_db1, 12).await.unwrap();
         let expected = SeqMarked::new_normal(2, (None, b("db_value1")));
         assert_eq!(res, expected);
 
-        let res = data.get(key_level1, 12).await.unwrap();
+        let res = data.get_at_seq(key_level1, 12).await.unwrap();
         let expected = SeqMarked::new_normal(10, (None, b("level_value1")));
         assert_eq!(res, expected);
 
         // Test missing key
-        let res = data.get(key_missing, 100).await.unwrap();
+        let res = data.get_at_seq(key_missing, 100).await.unwrap();
         assert!(res.is_not_found());
     }
 
@@ -766,7 +753,7 @@ mod tests {
         let data = ImmutableData::new(levels, Some(db));
 
         // Test snapshot_seq = 7 (should find 2 DB items at seq 2,4)
-        let stream = data.range(UserKey::default().., 7).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 7).await.unwrap();
         let items: Vec<_> = stream.try_collect().await.unwrap();
         let expected = vec![
             (
@@ -781,7 +768,7 @@ mod tests {
         assert_eq!(items, expected);
 
         // Test snapshot_seq = 12 (should find 2 DB + 1 level item)
-        let stream = data.range(UserKey::default().., 12).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 12).await.unwrap();
         let items: Vec<_> = stream.try_collect().await.unwrap();
         let expected = vec![
             (
@@ -800,7 +787,7 @@ mod tests {
         assert_eq!(items, expected);
 
         // Test snapshot_seq = 100 (should find all: 2 DB + 2 level items)
-        let stream = data.range(UserKey::default().., 100).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 100).await.unwrap();
         let items: Vec<_> = stream.try_collect().await.unwrap();
         let expected = vec![
             (
@@ -886,25 +873,25 @@ mod tests {
         let key_level3 = UserKey::new("key_level3");
 
         // Test snapshot_seq = 7 (should find DB keys but not level keys)
-        let res = data.get(key_db1, 7).await.unwrap();
+        let res = data.get_at_seq(key_db1, 7).await.unwrap();
         let expected = SeqMarked::new_normal(2, (None, b("db_value1")));
         assert_eq!(res, expected);
 
-        let res = data.get(key_level1.clone(), 7).await.unwrap();
+        let res = data.get_at_seq(key_level1.clone(), 7).await.unwrap();
         assert!(res.is_not_found());
 
         // Test snapshot_seq = 12 (should find DB + level1, but not tombstone level2)
-        let res = data.get(key_level1, 12).await.unwrap();
+        let res = data.get_at_seq(key_level1, 12).await.unwrap();
         let expected = SeqMarked::new_normal(10, (None, b("level_value1")));
         assert_eq!(res, expected);
 
         // Test tombstone - should return the tombstone with adequate snapshot_seq
-        let res = data.get(key_level2, 25).await.unwrap();
+        let res = data.get_at_seq(key_level2, 25).await.unwrap();
         let expected = SeqMarked::new_tombstone(15);
         assert_eq!(res, expected);
 
         // Test snapshot_seq = 25 (should find DB + level1 + level3)
-        let res = data.get(key_level3, 25).await.unwrap();
+        let res = data.get_at_seq(key_level3, 25).await.unwrap();
         let expected = SeqMarked::new_normal(20, (None, b("level_value3")));
         assert_eq!(res, expected);
     }
@@ -942,7 +929,7 @@ mod tests {
         let data = ImmutableData::new(levels, Some(db));
 
         // Test snapshot_seq = 7 (should find 2 DB items, no level items)
-        let stream = data.range(UserKey::default().., 7).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 7).await.unwrap();
         let items: Vec<_> = stream.try_collect().await.unwrap();
         let expected = vec![
             (
@@ -957,7 +944,7 @@ mod tests {
         assert_eq!(items, expected);
 
         // Test snapshot_seq = 12 (should find 2 DB + 1 level item, no tombstone yet)
-        let stream = data.range(UserKey::default().., 12).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 12).await.unwrap();
         let items: Vec<_> = stream.try_collect().await.unwrap();
         let expected = vec![
             (
@@ -976,7 +963,7 @@ mod tests {
         assert_eq!(items, expected);
 
         // Test snapshot_seq = 18 (should find 2 DB + 1 level + 1 tombstone)
-        let stream = data.range(UserKey::default().., 18).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 18).await.unwrap();
         let items: Vec<_> = stream.try_collect().await.unwrap();
         let expected = vec![
             (
@@ -996,7 +983,7 @@ mod tests {
         assert_eq!(items, expected);
 
         // Test snapshot_seq = 25 (should find all: 2 DB + 2 normal level items + 1 tombstone)
-        let stream = data.range(UserKey::default().., 25).await.unwrap();
+        let stream = data.range_at_seq(UserKey::default().., 25).await.unwrap();
         let items: Vec<_> = stream.try_collect().await.unwrap();
         let expected = vec![
             (

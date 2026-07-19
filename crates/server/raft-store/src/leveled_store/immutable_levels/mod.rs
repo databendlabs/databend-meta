@@ -19,15 +19,13 @@ use std::ops::RangeBounds;
 use futures_util::StreamExt;
 use map_api::IOResultStream;
 use map_api::mvcc;
-use map_api::mvcc::ScopedSeqBoundedIntoRange;
-use map_api::mvcc::ViewKey;
-use map_api::mvcc::ViewValue;
 use map_api::util;
 use seq_marked::SeqMarked;
 use stream_more::KMerge;
 use stream_more::StreamMore;
 
 use crate::leveled_store::immutable::Immutable;
+use crate::leveled_store::level::Level;
 use crate::leveled_store::level::LevelStat;
 use crate::leveled_store::level_index::LevelIndex;
 use crate::leveled_store::map_api::MapKey;
@@ -115,31 +113,21 @@ impl ImmutableLevels {
     pub(crate) fn last_seq(&self) -> Option<u64> {
         self.newest().map(|l| l.sys_data().curr_seq())
     }
-}
 
-// TODO: test
-#[async_trait::async_trait]
-impl<K> mvcc::ScopedSeqBoundedRange<K, K::V> for ImmutableLevels
-where
-    K: MapKey,
-    K::V: ViewValue,
-    Immutable: mvcc::ScopedSeqBoundedIntoRange<K, K::V>,
-{
-    async fn range<R>(
+    pub(crate) async fn range_at_seq<K, R>(
         &self,
         range: R,
         snapshot_seq: u64,
     ) -> Result<IOResultStream<(K, SeqMarked<K::V>)>, Error>
     where
+        K: MapKey,
+        Immutable: AsRef<mvcc::Table<K, K::V>>,
         R: RangeBounds<K> + Send + Sync + Clone + 'static,
     {
         let mut kmerge = KMerge::by(util::by_key_seq);
 
         for level in self.newest_to_oldest() {
-            let strm = level
-                .clone()
-                .into_range(range.clone(), snapshot_seq)
-                .await?;
+            let strm = level.range_at_seq(range.clone(), snapshot_seq).await?;
 
             kmerge = kmerge.merge(strm);
         }
@@ -149,26 +137,21 @@ where
 
         Ok(coalesce.boxed())
     }
-}
 
-// TODO: test
-#[async_trait::async_trait]
-impl<K, V> mvcc::ScopedSeqBoundedGet<K, V> for ImmutableLevels
-where
-    K: ViewKey,
-    V: ViewValue,
-    Immutable: mvcc::ScopedSeqBoundedGet<K, V>,
-{
-    async fn get(&self, key: K, snapshot_seq: u64) -> Result<SeqMarked<V>, Error> {
+    pub(crate) fn get_at_seq<K>(&self, key: K, snapshot_seq: u64) -> SeqMarked<K::V>
+    where
+        K: MapKey,
+        Level: AsRef<mvcc::Table<K, K::V>>,
+    {
         for immutable in self.newest_to_oldest() {
-            let value = immutable.get(key.clone(), snapshot_seq).await?;
+            let value = immutable.get_at_seq(key.clone(), snapshot_seq);
 
             if !value.is_not_found() {
-                return Ok(value);
+                return value;
             }
         }
 
-        Ok(SeqMarked::new_not_found())
+        SeqMarked::new_not_found()
     }
 }
 
@@ -177,28 +160,13 @@ mod tests {
     use std::sync::Arc;
 
     use futures_util::StreamExt;
-    use map_api::mvcc;
-    use map_api::mvcc::ScopedSeqBoundedRange;
     use seq_marked::SeqMarked;
-    use state_machine_api::ExpireKey;
     use state_machine_api::MetaValue;
     use state_machine_api::UserKey;
 
     use crate::leveled_store::immutable::Immutable;
     use crate::leveled_store::immutable_levels::ImmutableLevels;
     use crate::leveled_store::level::Level;
-
-    fn assert_scoped_snapshot_range_traits<T>()
-    where
-        T: mvcc::ScopedSeqBoundedRange<UserKey, MetaValue>,
-        T: mvcc::ScopedSeqBoundedRange<ExpireKey, String>,
-    {
-    }
-
-    #[test]
-    fn test_scoped_snapshot_range_iter() {
-        assert_scoped_snapshot_range_traits::<ImmutableLevels>();
-    }
 
     /// Helper function to convert string to bytes (similar to existing code pattern)
     fn b(s: &str) -> Vec<u8> {
@@ -316,7 +284,7 @@ mod tests {
         levels.insert(immutable3);
 
         // Test 1: snapshot_seq = 20 (should see only data with seq <= 20)
-        let stream = levels.range(UserKey::default().., 20).await.unwrap();
+        let stream = levels.range_at_seq(UserKey::default().., 20).await.unwrap();
         let items: Vec<_> = stream.collect().await;
         let results: Vec<_> = items.into_iter().map(|r| r.unwrap()).collect();
 
@@ -333,7 +301,7 @@ mod tests {
         assert_eq!(results, expected);
 
         // Test 2: snapshot_seq = 30 (newer data from level2 overwrites level1)
-        let stream = levels.range(UserKey::default().., 30).await.unwrap();
+        let stream = levels.range_at_seq(UserKey::default().., 30).await.unwrap();
         let items: Vec<_> = stream.collect().await;
         let results: Vec<_> = items.into_iter().map(|r| r.unwrap()).collect();
 
@@ -359,7 +327,7 @@ mod tests {
         assert_eq!(results, expected);
 
         // Test 3: snapshot_seq = 40 (includes data from all levels up to seq 40)
-        let stream = levels.range(UserKey::default().., 40).await.unwrap();
+        let stream = levels.range_at_seq(UserKey::default().., 40).await.unwrap();
         let items: Vec<_> = stream.collect().await;
         let results: Vec<_> = items.into_iter().map(|r| r.unwrap()).collect();
 
@@ -386,7 +354,7 @@ mod tests {
         assert_eq!(results, expected);
 
         // Test 4: snapshot_seq = 50 (all data including newest overwrites)
-        let stream = levels.range(UserKey::default().., 50).await.unwrap();
+        let stream = levels.range_at_seq(UserKey::default().., 50).await.unwrap();
         let items: Vec<_> = stream.collect().await;
         let results: Vec<_> = items.into_iter().map(|r| r.unwrap()).collect();
 
@@ -422,7 +390,7 @@ mod tests {
 
         // Test 5: Range query for specific keys with snapshot_seq = 40
         let stream = levels
-            .range(UserKey::new("key2")..=UserKey::new("key5"), 40)
+            .range_at_seq(UserKey::new("key2")..=UserKey::new("key5"), 40)
             .await
             .unwrap();
         let items: Vec<_> = stream.collect().await;
@@ -443,7 +411,7 @@ mod tests {
         assert_eq!(results, expected);
 
         // Test 6: Early snapshot_seq = 12 (should only see key1)
-        let stream = levels.range(UserKey::default().., 12).await.unwrap();
+        let stream = levels.range_at_seq(UserKey::default().., 12).await.unwrap();
         let items: Vec<_> = stream.collect().await;
         let results: Vec<_> = items.into_iter().map(|r| r.unwrap()).collect();
 

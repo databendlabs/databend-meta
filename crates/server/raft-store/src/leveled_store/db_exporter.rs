@@ -24,13 +24,12 @@ use futures_util::StreamExt;
 use futures_util::TryStreamExt;
 use log::info;
 use map_api::IOResultStream;
-use map_api::mvcc::ScopedSeqBoundedRange;
 use state_machine_api::ExpireKey;
 use state_machine_api::ExpireValue;
 use state_machine_api::UserKey;
 
 use crate::key_spaces::SMEntry;
-use crate::leveled_store::db_impl_scoped_seq_bounded_read::ScopedSeqBoundedRead;
+use crate::leveled_store::db_impl_scoped_seq_bounded_read::ReadAtSeqDB;
 use crate::state_machine::StateMachineMetaKey;
 use crate::state_machine::StateMachineMetaValue;
 
@@ -93,8 +92,8 @@ impl<'a> DBExporter<'a> {
 
         // expire index
 
-        let strm = ScopedSeqBoundedRead(self.db)
-            .range(ExpireKey::default().., u64::MAX)
+        let strm = ReadAtSeqDB(self.db)
+            .range_at_seq(ExpireKey::default().., u64::MAX)
             .await?;
         let expire_strm = strm.try_filter_map(|(exp_k, marked)| {
             // Tombstone will be converted to None and be ignored.
@@ -105,8 +104,8 @@ impl<'a> DBExporter<'a> {
 
         // kv
 
-        let strm = ScopedSeqBoundedRead(self.db)
-            .range(UserKey::default().., u64::MAX)
+        let strm = ReadAtSeqDB(self.db)
+            .range_at_seq(UserKey::default().., u64::MAX)
             .await?;
         let kv_strm = strm.try_filter_map(|(user_key, seq_marked)| {
             // Tombstone will be converted to None and be ignored.
@@ -128,8 +127,8 @@ impl<'a> DBExporter<'a> {
 
     /// Export all user keys in a stream of `String`, ignore tombstone.
     pub async fn export_user_keys(&self) -> Result<IOResultStream<String>, io::Error> {
-        let strm = ScopedSeqBoundedRead(self.db)
-            .range(UserKey::default().., u64::MAX)
+        let strm = ReadAtSeqDB(self.db)
+            .range_at_seq(UserKey::default().., u64::MAX)
             .await?;
         // TODO: ignore tombstone, currently db does not include tombstone keys
         let user_key_strm = strm.map_ok(|(user_key, _)| user_key.key);

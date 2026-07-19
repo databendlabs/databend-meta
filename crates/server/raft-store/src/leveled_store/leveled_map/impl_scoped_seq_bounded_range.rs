@@ -22,14 +22,11 @@ use log::warn;
 use map_api::IOResultStream;
 use map_api::MapKey;
 use map_api::mvcc;
-use map_api::mvcc::ViewKey;
-use map_api::mvcc::ViewValue;
 use map_api::util;
 use seq_marked::SeqMarked;
 use stream_more::KMerge;
 use stream_more::StreamMore;
 
-use crate::leveled_store::get_sub_table::GetSubTable;
 use crate::leveled_store::immutable::Immutable;
 use crate::leveled_store::level::Level;
 use crate::leveled_store::leveled_map::LeveledMap;
@@ -37,84 +34,75 @@ use crate::leveled_store::map_api::MapKeyDecode;
 use crate::leveled_store::map_api::MapKeyEncode;
 use crate::leveled_store::persisted_codec::PersistedCodec;
 
-#[async_trait::async_trait]
-impl<K> mvcc::ScopedSeqBoundedRange<K, K::V> for LeveledMap
+pub(super) async fn range_at_seq<K, R>(
+    leveled_map: &LeveledMap,
+    range: R,
+    snapshot_seq: u64,
+) -> Result<IOResultStream<(K, SeqMarked<K::V>)>, Error>
 where
     K: MapKey,
-    K: ViewKey,
     K: MapKeyEncode + MapKeyDecode,
-    K::V: ViewValue,
     SeqMarked<K::V>: PersistedCodec<SeqMarked>,
-    Level: GetSubTable<K, K::V>,
-    Immutable: mvcc::ScopedSeqBoundedRange<K, K::V>,
+    Level: AsRef<mvcc::Table<K, K::V>>,
+    Immutable: AsRef<mvcc::Table<K, K::V>>,
+    R: RangeBounds<K> + Send + Sync + Clone + 'static,
 {
-    async fn range<R>(
-        &self,
-        range: R,
-        snapshot_seq: u64,
-    ) -> Result<IOResultStream<(K, SeqMarked<K::V>)>, Error>
-    where
-        R: RangeBounds<K> + Send + Sync + Clone + 'static,
-    {
-        let mut kmerge = KMerge::by(util::by_key_seq);
+    let mut kmerge = KMerge::by(util::by_key_seq);
 
-        // writable level
+    // writable level
 
-        let (vec, immutable) = {
-            let start = Instant::now();
-            debug!(
-                "Level.writable::range(start={:?}, end={:?})",
-                range.start_bound(),
-                range.end_bound()
-            );
+    let (vec, immutable) = {
+        let start = Instant::now();
+        debug!(
+            "Level.writable::range(start={:?}, end={:?})",
+            range.start_bound(),
+            range.end_bound()
+        );
 
-            let inner = self.data.lock().unwrap();
+        let inner = leveled_map.data.lock().unwrap();
 
-            debug!(
-                "Level.writable::range(start={:?}, end={:?}) acquired lock, took {:?}, writable: kv.len={}, expire.len={}",
-                range.start_bound(),
-                range.end_bound(),
-                start.elapsed(),
-                inner.writable.kv.inner.len(),
-                inner.writable.expire.inner.len()
-            );
+        debug!(
+            "Level.writable::range(start={:?}, end={:?}) acquired lock, took {:?}, writable: kv.len={}, expire.len={}",
+            range.start_bound(),
+            range.end_bound(),
+            start.elapsed(),
+            inner.writable.kv.inner.len(),
+            inner.writable.expire.inner.len()
+        );
 
-            let it = inner
-                .writable
-                .get_sub_table()
-                .range(range.clone(), snapshot_seq);
-            let vec = it.map(|(k, v)| (k.clone(), v.cloned())).collect::<Vec<_>>();
+        let table: &mvcc::Table<K, K::V> = inner.writable.as_ref();
+        let it = table.range(range.clone(), snapshot_seq);
+        let vec = it.map(|(k, v)| (k.clone(), v.cloned())).collect::<Vec<_>>();
 
-            (vec, inner.immutable.clone())
-        };
+        (vec, inner.immutable.clone())
+    };
 
-        if vec.len() > 1000 {
-            warn!(
-                "Level.writable::range(start={:?}, end={:?}) returns big range of len={}",
-                range.start_bound(),
-                range.end_bound(),
-                vec.len()
-            );
-        }
-
-        let strm = futures::stream::iter(vec).map(Ok).boxed();
-        kmerge = kmerge.merge(strm);
-
-        let strm = immutable.range(range, snapshot_seq).await?;
-        kmerge = kmerge.merge(strm);
-
-        // Merge entries with the same key, keep the one with larger internal-seq
-        let coalesce = kmerge.coalesce(util::merge_kv_results);
-
-        Ok(coalesce.boxed())
+    if vec.len() > 1000 {
+        warn!(
+            "Level.writable::range(start={:?}, end={:?}) returns big range of len={}",
+            range.start_bound(),
+            range.end_bound(),
+            vec.len()
+        );
     }
+
+    let strm = futures::stream::iter(vec).map(Ok).boxed();
+    kmerge = kmerge.merge(strm);
+
+    let strm = immutable.range_at_seq(range, snapshot_seq).await?;
+    kmerge = kmerge.merge(strm);
+
+    // Merge entries with the same key, keep the one with larger internal-seq
+    let coalesce = kmerge.coalesce(util::merge_kv_results);
+
+    Ok(coalesce.boxed())
 }
 
 #[cfg(test)]
 mod tests {
     use futures_util::TryStreamExt;
-    use map_api::mvcc::ScopedSeqBoundedRange;
-    use map_api::mvcc::ScopedSet;
+    use map_api::mvcc::RangeAtSeq;
+    use map_api::mvcc::ViewSet;
     use seq_marked::SeqMarked;
     use state_machine_api::UserKey;
 
@@ -138,7 +126,7 @@ mod tests {
         view.set(user_key("c"), Some((None, b("c0"))));
         view.commit().await.unwrap();
 
-        let strm = lm.range(user_key("").., 10).await.unwrap();
+        let strm = lm.range_at_seq(user_key("").., 10).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
 
         assert_eq!(got, vec![
@@ -160,7 +148,7 @@ mod tests {
         // Freeze - entries now in immutable level
         lm.freeze_writable_without_permit();
 
-        let strm = lm.range(user_key("").., 10).await.unwrap();
+        let strm = lm.range_at_seq(user_key("").., 10).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
 
         assert_eq!(got, vec![
@@ -186,7 +174,7 @@ mod tests {
         view.commit().await.unwrap();
 
         // Should merge and sort by key
-        let strm = lm.range(user_key("").., 10).await.unwrap();
+        let strm = lm.range_at_seq(user_key("").., 10).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
 
         assert_eq!(got, vec![
@@ -214,7 +202,7 @@ mod tests {
         view.set(user_key("b"), Some((None, b("b1"))));
         view.commit().await.unwrap();
 
-        let strm = lm.range(user_key("").., 10).await.unwrap();
+        let strm = lm.range_at_seq(user_key("").., 10).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
 
         // Writable values (higher seq) win
@@ -241,7 +229,7 @@ mod tests {
         view.set(user_key("b"), None);
         view.commit().await.unwrap();
 
-        let strm = lm.range(user_key("").., 10).await.unwrap();
+        let strm = lm.range_at_seq(user_key("").., 10).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
 
         // Tombstone is included in range
@@ -264,7 +252,7 @@ mod tests {
         view.commit().await.unwrap();
 
         // Range from "b" onwards
-        let strm = lm.range(user_key("b").., 10).await.unwrap();
+        let strm = lm.range_at_seq(user_key("b").., 10).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
         assert_eq!(got, vec![
             (user_key("b"), SeqMarked::new_normal(2, (None, b("b0")))),
@@ -273,7 +261,10 @@ mod tests {
         ]);
 
         // Range "b" to "d" (exclusive)
-        let strm = lm.range(user_key("b")..user_key("d"), 10).await.unwrap();
+        let strm = lm
+            .range_at_seq(user_key("b")..user_key("d"), 10)
+            .await
+            .unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
         assert_eq!(got, vec![
             (user_key("b"), SeqMarked::new_normal(2, (None, b("b0")))),
@@ -281,7 +272,10 @@ mod tests {
         ]);
 
         // Range "b" to "d" (inclusive)
-        let strm = lm.range(user_key("b")..=user_key("d"), 10).await.unwrap();
+        let strm = lm
+            .range_at_seq(user_key("b")..=user_key("d"), 10)
+            .await
+            .unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
         assert_eq!(got, vec![
             (user_key("b"), SeqMarked::new_normal(2, (None, b("b0")))),
@@ -301,12 +295,12 @@ mod tests {
         view.commit().await.unwrap();
 
         // snapshot_seq=0: nothing visible
-        let strm = lm.range(user_key("").., 0).await.unwrap();
+        let strm = lm.range_at_seq(user_key("").., 0).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
         assert!(got.is_empty());
 
         // snapshot_seq=1: only "a" visible
-        let strm = lm.range(user_key("").., 1).await.unwrap();
+        let strm = lm.range_at_seq(user_key("").., 1).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
         assert_eq!(got, vec![(
             user_key("a"),
@@ -314,7 +308,7 @@ mod tests {
         ),]);
 
         // snapshot_seq=2: "a" and "b" visible
-        let strm = lm.range(user_key("").., 2).await.unwrap();
+        let strm = lm.range_at_seq(user_key("").., 2).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
         assert_eq!(got, vec![
             (user_key("a"), SeqMarked::new_normal(1, (None, b("a0")))),
@@ -322,7 +316,7 @@ mod tests {
         ]);
 
         // snapshot_seq=u64::MAX: all visible
-        let strm = lm.range(user_key("").., u64::MAX).await.unwrap();
+        let strm = lm.range_at_seq(user_key("").., u64::MAX).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
         assert_eq!(got, vec![
             (user_key("a"), SeqMarked::new_normal(1, (None, b("a0")))),
@@ -346,7 +340,7 @@ mod tests {
         view.commit().await.unwrap();
 
         // snapshot_seq=1: sees old value from immutable
-        let strm = lm.range(user_key("").., 1).await.unwrap();
+        let strm = lm.range_at_seq(user_key("").., 1).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
         assert_eq!(got, vec![(
             user_key("a"),
@@ -354,7 +348,7 @@ mod tests {
         ),]);
 
         // snapshot_seq=2: sees new value from writable (dedup by coalesce)
-        let strm = lm.range(user_key("").., 2).await.unwrap();
+        let strm = lm.range_at_seq(user_key("").., 2).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
         assert_eq!(got, vec![(
             user_key("a"),
@@ -367,7 +361,7 @@ mod tests {
         let lm = LeveledMap::default();
 
         // Empty store
-        let strm = lm.range(user_key("").., 10).await.unwrap();
+        let strm = lm.range_at_seq(user_key("").., 10).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
         assert!(got.is_empty());
 
@@ -376,7 +370,7 @@ mod tests {
         view.set(user_key("a"), Some((None, b("a0"))));
         view.commit().await.unwrap();
 
-        let strm = lm.range(user_key("z").., 10).await.unwrap();
+        let strm = lm.range_at_seq(user_key("z").., 10).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
         assert!(got.is_empty());
     }

@@ -27,7 +27,6 @@ use futures::Stream;
 use futures::StreamExt;
 use log::debug;
 use log::info;
-use map_api::mvcc::ScopedGet;
 use state_machine_api::SeqV;
 use state_machine_api::StateMachineApi;
 use state_machine_api::UserKey;

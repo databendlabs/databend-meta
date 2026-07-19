@@ -21,7 +21,6 @@ use futures_util::TryStreamExt;
 use futures_util::future;
 use map_api::IOResultStream;
 use map_api::MapKV;
-use map_api::mvcc::ScopedSeqBoundedRange;
 use seq_marked::SeqMarked;
 use state_machine_api::ExpireKey;
 use state_machine_api::UserKey;
@@ -62,7 +61,7 @@ impl ImmutableData {
         // expire index: prefix `exp-/`.
 
         let strm = immutable_levels
-            .range(ExpireKey::default().., u64::MAX)
+            .range_at_seq(ExpireKey::default().., u64::MAX)
             .await?;
         let expire_strm = strm.map(|item: Result<(ExpireKey, SeqMarked<String>), io::Error>| {
             let (expire_key, marked_string) = item?;
@@ -74,7 +73,7 @@ impl ImmutableData {
         // kv: prefix: `kv--/`
 
         let strm = immutable_levels
-            .range(UserKey::default().., u64::MAX)
+            .range_at_seq(UserKey::default().., u64::MAX)
             .await?;
         let kv_strm = strm.map(|item: Result<MapKV<UserKey>, io::Error>| {
             let (k, v) = item?;

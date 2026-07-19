@@ -14,7 +14,6 @@
 
 pub mod db_builder;
 pub mod db_exporter;
-pub mod get_sub_table;
 pub mod immutable;
 pub mod immutable_levels;
 pub mod level;
@@ -43,4 +42,4 @@ mod rotbl_meta_value_impl;
 mod rotbl_seq_data_impl;
 mod rotbl_seq_mark_impl;
 
-pub use db_impl_scoped_seq_bounded_read::ScopedSeqBoundedRead;
+pub use db_impl_scoped_seq_bounded_read::ReadAtSeqDB;

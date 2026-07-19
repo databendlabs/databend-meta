@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::future;
 use std::io;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -28,13 +29,12 @@ use state_machine_api::UserKey;
 
 use crate::leveled_store::leveled_map::LeveledMap;
 use crate::leveled_store::types::Key;
-use crate::leveled_store::types::Namespace;
 use crate::leveled_store::types::Value;
 
 /// Type alias for the MVCC view used in the state machine.
-pub(crate) type MvccView = mvcc::View<Namespace, Key, Value, LeveledMap>;
+pub(crate) type MvccView = mvcc::View<Key, LeveledMap>;
 
-/// A wrapper around `mvcc::View` to provide scoped access to user and expire data.
+/// A wrapper around `mvcc::View` to provide typed access to user and expire data.
 ///
 /// Traits are bound to `StateMachineView`
 pub(crate) struct StateMachineView {
@@ -70,21 +70,32 @@ impl StateMachineView {
     }
 
     pub async fn commit(self) -> Result<(), io::Error> {
-        self.into_inner().commit().await?;
+        let (leveled_map, last_seq, changes) = self.into_inner().into_parts();
+        leveled_map.commit(last_seq, changes).await?;
         Ok(())
     }
-}
 
-#[async_trait::async_trait]
-impl mvcc::ScopedGet<UserKey, MetaValue> for StateMachineView {
-    async fn get(&self, key: UserKey) -> Result<SeqMarked<MetaValue>, io::Error> {
-        let got = self.inner.get(Namespace::User, Key::User(key)).await?;
+    pub(crate) async fn get(&self, key: UserKey) -> Result<SeqMarked<MetaValue>, io::Error> {
+        let got = self.inner.get(Key::User(key)).await?;
         Ok(got.map(|x| x.into_user()))
+    }
+
+    pub(crate) async fn get_expire(&self, key: ExpireKey) -> Result<SeqMarked<String>, io::Error> {
+        let got = self.deref().get(Key::Expire(key)).await?;
+
+        Ok(got.map(|x| x.into_expire()))
     }
 }
 
 #[async_trait::async_trait]
-impl mvcc::ScopedRange<UserKey, MetaValue> for StateMachineView {
+impl mvcc::ViewGet<UserKey> for StateMachineView {
+    async fn get(&self, key: UserKey) -> Result<SeqMarked<MetaValue>, io::Error> {
+        StateMachineView::get(self, key).await
+    }
+}
+
+#[async_trait::async_trait]
+impl mvcc::ViewRange<UserKey> for StateMachineView {
     async fn range<R>(
         &self,
         range: R,
@@ -98,48 +109,60 @@ impl mvcc::ScopedRange<UserKey, MetaValue> for StateMachineView {
         let start = start.map(Key::User);
         let end = end.map(Key::User);
 
-        let strm = self.inner.range(Namespace::User, (start, end)).await?;
+        let strm = self.inner.range((start, end)).await?;
 
         Ok(strm
-            .map_ok(|(k, v)| (k.into_user(), v.map(|x| x.into_user())))
+            .try_filter_map(|(key, value)| {
+                future::ready(Ok(match (key, value) {
+                    (Key::User(key), value) => Some((key, value.map(|x| x.into_user()))),
+                    (Key::Expire(_), _) => None,
+                }))
+            })
             .boxed())
     }
 }
 
 #[async_trait::async_trait]
-impl mvcc::ScopedSet<UserKey, MetaValue> for StateMachineView {
+impl mvcc::ViewSet<UserKey> for StateMachineView {
     fn set(&mut self, key: UserKey, value: Option<MetaValue>) -> SeqMarked<()> {
         let mvcc_view: &mut MvccView = self.deref_mut();
-        mvcc_view.set(Namespace::User, Key::User(key), value.map(Value::User))
+        mvcc_view.set(Key::User(key), value.map(Value::User))
     }
 }
 
 #[async_trait::async_trait]
-impl mvcc::ScopedGet<ExpireKey, String> for StateMachineView {
+impl mvcc::ViewGet<ExpireKey> for StateMachineView {
     async fn get(&self, key: ExpireKey) -> Result<SeqMarked<String>, io::Error> {
-        let got = self
-            .deref()
-            .get(Namespace::Expire, Key::Expire(key))
+        self.get_expire(key).await
+    }
+}
+
+#[async_trait::async_trait]
+impl mvcc::ViewSet<ExpireKey> for StateMachineView {
+    async fn fetch_and_set(
+        &mut self,
+        key: ExpireKey,
+        value: Option<String>,
+    ) -> Result<(SeqMarked<String>, SeqMarked<String>), io::Error> {
+        let (old_value, new_value) = self
+            .inner
+            .fetch_and_set_without_seq_increment(Key::Expire(key), value.map(Value::Expire))
             .await?;
 
-        Ok(got.map(|x| x.into_expire()))
+        Ok((
+            old_value.map(|x| x.into_expire()),
+            new_value.map(|x| x.into_expire()),
+        ))
     }
-}
 
-#[async_trait::async_trait]
-impl mvcc::ScopedSet<ExpireKey, String> for StateMachineView {
     fn set(&mut self, key: ExpireKey, value: Option<String>) -> SeqMarked<()> {
         let t: &mut MvccView = self.deref_mut();
-        t.set(
-            Namespace::Expire,
-            Key::Expire(key),
-            value.map(Value::Expire),
-        )
+        t.set_without_seq_increment(Key::Expire(key), value.map(Value::Expire))
     }
 }
 
 #[async_trait::async_trait]
-impl mvcc::ScopedRange<ExpireKey, String> for StateMachineView {
+impl mvcc::ViewRange<ExpireKey> for StateMachineView {
     async fn range<R>(
         &self,
         range: R,
@@ -153,10 +176,15 @@ impl mvcc::ScopedRange<ExpireKey, String> for StateMachineView {
         let start = start.map(Key::Expire);
         let end = end.map(Key::Expire);
 
-        let strm = self.inner.range(Namespace::Expire, (start, end)).await?;
+        let strm = self.inner.range((start, end)).await?;
 
         Ok(strm
-            .map_ok(|(k, v)| (k.into_expire(), v.map(|x| x.into_expire())))
+            .try_filter_map(|(key, value)| {
+                future::ready(Ok(match (key, value) {
+                    (Key::User(_), _) => None,
+                    (Key::Expire(key), value) => Some((key, value.map(|x| x.into_expire()))),
+                }))
+            })
             .boxed())
     }
 }
