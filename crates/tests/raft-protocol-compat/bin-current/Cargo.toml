@@ -29,7 +29,7 @@ tonic = "0.13"
 [patch.crates-io]
 async-backtrace = { git = "https://github.com/datafuse-extras/async-backtrace.git", rev = "dea4553" }
 databend-base = { git = "https://github.com/databendlabs/databend-base", tag = "v0.4.0" }
-map-api = { git = "https://github.com/databendlabs/map-api", tag = "v0.4.2" }
+map-api = { git = "https://github.com/databendlabs/map-api", tag = "v0.5.0" }
 sled = { git = "https://github.com/datafuse-extras/sled", tag = "v0.34.7-datafuse.1" }
-state-machine-api = { git = "https://github.com/databendlabs/state-machine-api.git", tag = "v0.3.4" }
+state-machine-api = { git = "https://github.com/databendlabs/state-machine-api.git", tag = "v0.4.0" }
 watcher = { git = "https://github.com/databendlabs/watcher", tag = "v0.5.0" }

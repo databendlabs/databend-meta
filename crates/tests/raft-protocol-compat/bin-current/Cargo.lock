@@ -938,7 +938,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta"
-version = "260629.0.0"
+version = "260629.1.0"
 dependencies = [
  "anyerror",
  "anyhow",
@@ -987,7 +987,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-base"
-version = "260629.0.0"
+version = "260629.1.0"
 dependencies = [
  "anyerror",
  "deepsize",
@@ -1002,7 +1002,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-client"
-version = "260629.0.0"
+version = "260629.1.0"
 dependencies = [
  "anyerror",
  "arrow-flight",
@@ -1035,7 +1035,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-client-types"
-version = "260629.0.0"
+version = "260629.1.0"
 dependencies = [
  "anyerror",
  "databend-meta-proto",
@@ -1072,7 +1072,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-kvapi"
-version = "260629.0.0"
+version = "260629.1.0"
 dependencies = [
  "async-trait",
  "databend-meta-client-types",
@@ -1085,7 +1085,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-kvapi-test-suite"
-version = "260629.0.0"
+version = "260629.1.0"
 dependencies = [
  "anyhow",
  "databend-meta-client-types",
@@ -1100,7 +1100,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-proto"
-version = "260629.0.0"
+version = "260629.1.0"
 dependencies = [
  "anyerror",
  "databend-meta-base",
@@ -1122,7 +1122,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-raft-store"
-version = "260629.0.0"
+version = "260629.1.0"
 dependencies = [
  "anyerror",
  "anyhow",
@@ -1139,6 +1139,7 @@ dependencies = [
  "fastrace",
  "fs_extra",
  "futures",
+ "futures-async-stream",
  "futures-util",
  "hostname",
  "log",
@@ -1162,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-runtime-api"
-version = "260629.0.0"
+version = "260629.1.0"
 dependencies = [
  "env_logger",
  "hickory-resolver",
@@ -1174,7 +1175,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-sled-store"
-version = "260629.0.0"
+version = "260629.1.0"
 dependencies = [
  "anyerror",
  "byteorder",
@@ -1191,7 +1192,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-types"
-version = "260629.0.0"
+version = "260629.1.0"
 dependencies = [
  "anyerror",
  "databend-meta-base",
@@ -1218,7 +1219,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-version"
-version = "260629.0.0"
+version = "260629.1.0"
 dependencies = [
  "semver",
 ]
@@ -2449,8 +2450,8 @@ dependencies = [
 
 [[package]]
 name = "map-api"
-version = "0.4.2"
-source = "git+https://github.com/databendlabs/map-api?tag=v0.4.2#0fee58dfa938b7234723dd3d383f71e559c202b4"
+version = "0.5.0"
+source = "git+https://github.com/databendlabs/map-api?tag=v0.5.0#556bde7103fb9f52a3b55f1d025339bc48a2ac05"
 dependencies = [
  "async-trait",
  "deepsize",
@@ -3900,8 +3901,8 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "state-machine-api"
-version = "0.3.4"
-source = "git+https://github.com/databendlabs/state-machine-api.git?tag=v0.3.4#d5bfbe8dc459ba7a68eaa1526cacffcf4c9f1982"
+version = "0.4.0"
+source = "git+https://github.com/databendlabs/state-machine-api.git?tag=v0.4.0#7abd898d3dfd20a6aa67971dcf0e79cd3c9e1d0a"
 dependencies = [
  "async-trait",
  "display-more 0.2.0",
