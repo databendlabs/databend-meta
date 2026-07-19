@@ -17,9 +17,9 @@
 use std::future;
 use std::io;
 
+use databend_meta_snapshot_db::DB;
 use databend_meta_types::SeqNum;
 use databend_meta_types::SeqV;
-use databend_meta_types::snapshot_db::DB;
 use futures_util::StreamExt;
 use futures_util::TryStreamExt;
 use log::info;

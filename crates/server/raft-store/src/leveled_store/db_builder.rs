@@ -18,7 +18,7 @@ use std::io;
 use std::path::Path;
 use std::sync::Arc;
 
-use databend_meta_types::snapshot_db::DB;
+use databend_meta_snapshot_db::DB;
 use databend_meta_types::sys_data::SysData;
 use futures::Stream;
 use futures_util::TryStreamExt;

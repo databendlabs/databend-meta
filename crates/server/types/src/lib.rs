@@ -30,7 +30,6 @@ pub mod kv_transaction;
 pub mod proto_ext;
 pub mod raft_types;
 
-pub mod snapshot_db;
 pub mod sys_data;
 
 // Re-export foundational types from base crate

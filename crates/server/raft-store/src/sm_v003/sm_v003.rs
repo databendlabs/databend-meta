@@ -20,8 +20,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use databend_meta_snapshot_db::DB;
 use databend_meta_types::raft_types::EntryResponder;
-use databend_meta_types::snapshot_db::DB;
 use databend_meta_types::sys_data::SysData;
 use futures::Stream;
 use futures::StreamExt;

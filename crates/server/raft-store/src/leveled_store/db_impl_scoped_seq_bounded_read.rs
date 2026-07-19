@@ -15,7 +15,7 @@
 use std::io;
 use std::ops::RangeBounds;
 
-use databend_meta_types::snapshot_db::DB;
+use databend_meta_snapshot_db::DB;
 use futures_util::StreamExt;
 use map_api::IOResultStream;
 use rotbl::v001::SeqMarked;
@@ -114,7 +114,7 @@ impl ReadAtSeqDB<'_> {
 mod tests {
     use std::sync::Arc;
 
-    use databend_meta_types::snapshot_db::DB;
+    use databend_meta_snapshot_db::DB;
     use futures_util::TryStreamExt;
     use rotbl::storage::impls::fs::FsStorage;
     use rotbl::v001::Config;

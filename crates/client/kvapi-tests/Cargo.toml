@@ -24,9 +24,7 @@ databend-meta-kvapi-test-suite = { workspace = true }
 databend-meta-runtime-api = { workspace = true }
 databend-meta-test-harness = { workspace = true }
 fastrace = { workspace = true }
-log = { workspace = true }
 test-harness = { workspace = true }
-tokio = { workspace = true }
 
 [lints]
 workspace = true

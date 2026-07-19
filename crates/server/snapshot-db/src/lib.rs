@@ -12,12 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! On-disk snapshot database backed by a rotbl table.
+
 use std::fmt;
 use std::fs;
 use std::io;
 use std::io::BufReader;
 use std::sync::Arc;
 
+use databend_meta_types::raft_types::CommittedLeaderId;
+use databend_meta_types::raft_types::MembershipNode;
+use databend_meta_types::raft_types::NodeId;
+use databend_meta_types::raft_types::SnapshotMeta;
+use databend_meta_types::sys_data::SysData;
 use futures_util::stream::BoxStream;
 use log::info;
 use openraft::SnapshotId;
@@ -25,8 +32,8 @@ use rotbl::v001::Rotbl;
 use rotbl::v001::SeqMarked;
 use rotbl::v001::stat::RotblStat;
 
-use crate::raft_types::SnapshotMeta;
-use crate::sys_data::SysData;
+/// A raft snapshot whose payload is a [`DB`].
+pub type Snapshot = openraft::Snapshot<CommittedLeaderId, NodeId, MembershipNode, DB>;
 
 /// A readonly leveled map that owns the data.
 #[derive(Clone)]

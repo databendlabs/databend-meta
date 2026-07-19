@@ -14,6 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: cargo generate-lockfile
+      # rustsec/audit-check installs cargo-audit without --locked, so its
+      # transitive deps resolve to the newest semver-compatible versions,
+      # which may require a rustc newer than the pin in rust-toolchain.toml.
+      # Installing it here with --locked uses the versions cargo-audit
+      # shipped; the action then finds it on PATH and skips its own install.
+      - run: cargo install --locked cargo-audit
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

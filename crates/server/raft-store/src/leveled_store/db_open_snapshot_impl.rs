@@ -16,7 +16,7 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use databend_meta_types::snapshot_db::DB;
+use databend_meta_snapshot_db::DB;
 use log::info;
 use openraft::SnapshotId;
 use rotbl::storage::impls::fs::FsStorage;

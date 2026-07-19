@@ -18,7 +18,7 @@ use std::marker::PhantomData;
 
 use databend_meta_runtime_api::JoinHandle;
 use databend_meta_runtime_api::SpawnApi;
-use databend_meta_types::snapshot_db::DB;
+use databend_meta_snapshot_db::DB;
 use databend_meta_types::sys_data::SysData;
 use futures::Stream;
 use futures_util::TryStreamExt;

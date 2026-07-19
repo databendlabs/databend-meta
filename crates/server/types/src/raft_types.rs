@@ -22,7 +22,6 @@ use openraft::vote::RaftLeaderId;
 
 use crate::AppliedState;
 use crate::LogEntry;
-use crate::snapshot_db::DB;
 
 pub type NodeId = u64;
 pub type MembershipNode = openraft::EmptyNode;
@@ -65,7 +64,6 @@ pub type EntryPayload = openraft::EntryPayload<LogEntry, NodeId, MembershipNode>
 pub type Entry = openraft::Entry<CommittedLeaderId, LogEntry, NodeId, MembershipNode>;
 
 pub type SnapshotMeta = openraft::SnapshotMeta<CommittedLeaderId, NodeId, MembershipNode>;
-pub type Snapshot = openraft::Snapshot<CommittedLeaderId, NodeId, MembershipNode, DB>;
 
 pub type RaftMetrics = openraft::RaftMetrics<TypeConfig>;
 pub type WatchReceiver<T> = openraft::type_config::alias::WatchReceiverOf<TypeConfig, T>;

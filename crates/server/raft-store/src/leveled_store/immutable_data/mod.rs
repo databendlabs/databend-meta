@@ -18,7 +18,7 @@ use std::io;
 use std::io::Error;
 use std::ops::RangeBounds;
 
-use databend_meta_types::snapshot_db::DB;
+use databend_meta_snapshot_db::DB;
 use display_more::DisplayOptionExt;
 use display_more::DisplaySliceExt;
 use futures_util::StreamExt;
@@ -205,7 +205,7 @@ mod tests {
 
     use std::sync::Arc;
 
-    use databend_meta_types::snapshot_db::DB;
+    use databend_meta_snapshot_db::DB;
     use futures_util::TryStreamExt;
     use rotbl::storage::impls::fs::FsStorage;
     use rotbl::v001::Config;

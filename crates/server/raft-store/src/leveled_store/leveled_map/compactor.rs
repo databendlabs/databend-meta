@@ -15,7 +15,7 @@
 use std::io;
 use std::sync::Arc;
 
-use databend_meta_types::snapshot_db::DB;
+use databend_meta_snapshot_db::DB;
 use databend_meta_types::sys_data::SysData;
 use map_api::IOResultStream;
 use rotbl::v001::SeqMarked;

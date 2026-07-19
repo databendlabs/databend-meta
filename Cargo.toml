@@ -21,6 +21,7 @@ members = [
     "crates/client/kvapi-tests",
     "crates/client/client",
     "crates/server/sled-store",
+    "crates/server/snapshot-db",
     "crates/server/raft-store",
     "crates/server/service",
     "benchmark",
@@ -41,6 +42,7 @@ databend-meta-proto = { path = "crates/common/proto" }
 databend-meta-raft-store = { path = "crates/server/raft-store" }
 databend-meta-runtime-api = { path = "crates/common/runtime-api" }
 databend-meta-sled-store = { path = "crates/server/sled-store" }
+databend-meta-snapshot-db = { path = "crates/server/snapshot-db" }
 databend-meta-test-harness = { path = "crates/common/test-harness" }
 databend-meta-types = { path = "crates/server/types" }
 databend-meta-version = { path = "crates/common/version" }
