@@ -19,7 +19,7 @@ use databend_meta_types::SeqV;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::normalize_meta::NormalizeMeta;
 use futures_util::TryStreamExt;
-use map_api::mvcc::ScopedRange;
+use map_api::mvcc::ViewRange;
 use pretty_assertions::assert_eq;
 use seq_marked::SeqMarked;
 use seq_marked::SeqValue;

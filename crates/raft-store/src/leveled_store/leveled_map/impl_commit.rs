@@ -12,61 +12,59 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::BTreeMap;
 use std::io::Error;
 
 use log::info;
-use map_api::mvcc;
 use map_api::mvcc::Table;
 use seq_marked::InternalSeq;
 
 use crate::leveled_store::leveled_map::LeveledMap;
 use crate::leveled_store::types::Key;
-use crate::leveled_store::types::Namespace;
 use crate::leveled_store::types::Value;
 
-#[async_trait::async_trait]
-impl mvcc::Commit<Namespace, Key, Value> for LeveledMap {
-    async fn commit(
-        &mut self,
+impl LeveledMap {
+    pub(crate) async fn commit(
+        &self,
         last_seq: InternalSeq,
-        mut changes: BTreeMap<Namespace, Table<Key, Value>>,
+        changes: Table<Key, Value>,
     ) -> Result<(), Error> {
-        info!(
-            "Committing changes to leveled map data: last_seq={}",
-            last_seq
-        );
+        info!("Committing changes to leveled map data: last_seq={last_seq}");
+
+        let Table {
+            inner: changes,
+            last_seq: changes_last_seq,
+        } = changes;
+        let mut user_changes = Vec::new();
+        let mut expire_changes = Vec::new();
+
+        for ((key, seq_marked), value) in changes {
+            match key {
+                Key::User(key) => {
+                    user_changes.push(((key, seq_marked), value.map(Value::into_user)));
+                }
+                Key::Expire(key) => {
+                    expire_changes.push(((key, seq_marked), value.map(Value::into_expire)));
+                }
+            }
+        }
+
         let mut inner = self.data.lock().unwrap();
-
-        // user map
-
-        let user_updates = changes.remove(&Namespace::User);
-
-        if let Some(updates) = user_updates {
-            let it = updates.inner.into_iter().map(|((k, seq_marked), v)| {
-                ((k.into_user(), seq_marked), v.map(|x| x.into_user()))
-            });
-
-            inner.writable.kv.apply_changes(updates.last_seq, it);
+        if !user_changes.is_empty() {
+            inner
+                .writable
+                .kv
+                .apply_changes(changes_last_seq, user_changes);
+        }
+        if !expire_changes.is_empty() {
+            inner
+                .writable
+                .expire
+                .apply_changes(changes_last_seq, expire_changes);
         }
 
-        // expire map
-
-        let expire_updates = changes.remove(&Namespace::Expire);
-
-        if let Some(updates) = expire_updates {
-            let it = updates.inner.into_iter().map(|((k, seq_marked), v)| {
-                ((k.into_expire(), seq_marked), v.map(|x| x.into_expire()))
-            });
-
-            inner.writable.expire.apply_changes(updates.last_seq, it);
-        }
-
-        // seq
-
-        inner.writable.with_sys_data(|sys_data| {
-            sys_data.update_seq(*last_seq);
-        });
+        inner
+            .writable
+            .with_sys_data(|sys_data| sys_data.update_seq(*last_seq));
 
         Ok(())
     }
@@ -75,10 +73,8 @@ impl mvcc::Commit<Namespace, Key, Value> for LeveledMap {
 #[cfg(test)]
 mod tests {
     use std::cmp::Reverse;
-    use std::collections::BTreeMap;
 
     use map_api::SeqMarked;
-    use map_api::mvcc::Commit;
     use map_api::mvcc::Table;
     use seq_marked::InternalSeq;
     use state_machine_api::ExpireKey;
@@ -87,7 +83,6 @@ mod tests {
 
     use crate::leveled_store::leveled_map::LeveledMap;
     use crate::leveled_store::types::Key;
-    use crate::leveled_store::types::Namespace;
     use crate::leveled_store::types::Value;
 
     fn user_key(s: impl ToString) -> UserKey {
@@ -104,10 +99,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_commit_user_namespace() -> anyhow::Result<()> {
-        let mut lm = LeveledMap::default();
+        let lm = LeveledMap::default();
 
         // Create changes for User namespace
-        let mut changes = BTreeMap::new();
+        let mut changes = Table::new();
         let mut user_table = Table::new();
         user_table.last_seq = SeqMarked::new_normal(5, ());
         user_table.inner.insert(
@@ -124,7 +119,8 @@ mod tests {
             ),
             Some(Value::User((Some(KVMeta::new_expires_at(10)), b("b1")))),
         );
-        changes.insert(Namespace::User, user_table);
+        changes.last_seq = user_table.last_seq;
+        changes.inner.append(&mut user_table.inner);
 
         // Commit changes
         lm.commit(InternalSeq::new(5), changes).await?;
@@ -158,10 +154,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_commit_expire_namespace() -> anyhow::Result<()> {
-        let mut lm = LeveledMap::default();
+        let lm = LeveledMap::default();
 
         // Create changes for Expire namespace
-        let mut changes = BTreeMap::new();
+        let mut changes = Table::new();
         let mut expire_table = Table::new();
         expire_table.last_seq = SeqMarked::new_normal(3, ());
         expire_table.inner.insert(
@@ -171,7 +167,8 @@ mod tests {
             ),
             Some(Value::Expire("key1".to_string())),
         );
-        changes.insert(Namespace::Expire, expire_table);
+        changes.last_seq = expire_table.last_seq;
+        changes.inner.append(&mut expire_table.inner);
 
         // Commit changes
         lm.commit(InternalSeq::new(3), changes).await?;
@@ -198,10 +195,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_commit_both_namespaces() -> anyhow::Result<()> {
-        let mut lm = LeveledMap::default();
+        let lm = LeveledMap::default();
 
         // Create changes for both namespaces
-        let mut changes = BTreeMap::new();
+        let mut changes = Table::new();
 
         // User namespace
         let mut user_table = Table::new();
@@ -220,7 +217,8 @@ mod tests {
             ),
             None,
         );
-        changes.insert(Namespace::User, user_table);
+        changes.last_seq = user_table.last_seq;
+        changes.inner.append(&mut user_table.inner);
 
         // Expire namespace
         let mut expire_table = Table::new();
@@ -232,7 +230,8 @@ mod tests {
             ),
             Some(Value::Expire("user1".to_string())),
         );
-        changes.insert(Namespace::Expire, expire_table);
+        changes.last_seq = expire_table.last_seq;
+        changes.inner.append(&mut expire_table.inner);
 
         // Commit changes
         lm.commit(InternalSeq::new(7), changes).await?;
@@ -277,10 +276,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_commit_empty_changes() -> anyhow::Result<()> {
-        let mut lm = LeveledMap::default();
+        let lm = LeveledMap::default();
 
         // Commit with no namespace changes
-        let changes = BTreeMap::new();
+        let changes = Table::new();
         lm.commit(InternalSeq::new(10), changes).await?;
 
         // Only sys_data should be updated
@@ -296,10 +295,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_commit_with_tombstones() -> anyhow::Result<()> {
-        let mut lm = LeveledMap::default();
+        let lm = LeveledMap::default();
 
         // Create changes with tombstones (deletions)
-        let mut changes = BTreeMap::new();
+        let mut changes = Table::new();
         let mut user_table = Table::new();
         user_table.last_seq = SeqMarked::new_normal(4, ());
 
@@ -321,7 +320,8 @@ mod tests {
             None,
         );
 
-        changes.insert(Namespace::User, user_table);
+        changes.last_seq = user_table.last_seq;
+        changes.inner.append(&mut user_table.inner);
 
         // Commit changes
         lm.commit(InternalSeq::new(4), changes).await?;
@@ -354,11 +354,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_commit_merge_with_existing_data() -> anyhow::Result<()> {
-        let mut lm = LeveledMap::default();
+        let lm = LeveledMap::default();
 
         // First, add some initial data to both namespaces
         {
-            let mut initial_changes = BTreeMap::new();
+            let mut initial_changes = Table::new();
 
             // Initial User namespace data
             let mut user_table = Table::new();
@@ -380,7 +380,8 @@ mod tests {
                     b("value2"),
                 ))),
             );
-            initial_changes.insert(Namespace::User, user_table);
+            initial_changes.last_seq = user_table.last_seq;
+            initial_changes.inner.append(&mut user_table.inner);
 
             // Initial Expire namespace data
             let mut expire_table = Table::new();
@@ -392,7 +393,8 @@ mod tests {
                 ),
                 Some(Value::Expire("key2".to_string())),
             );
-            initial_changes.insert(Namespace::Expire, expire_table);
+            initial_changes.last_seq = expire_table.last_seq;
+            initial_changes.inner.append(&mut expire_table.inner);
 
             lm.commit(InternalSeq::new(3), initial_changes).await?;
         }
@@ -433,7 +435,7 @@ mod tests {
 
         // Now commit new changes that should be merged with existing data
         {
-            let mut new_changes = BTreeMap::new();
+            let mut new_changes = Table::new();
 
             // New User namespace data (updates key2, adds key3, deletes key1)
             let mut user_table = Table::new();
@@ -465,7 +467,8 @@ mod tests {
                 ),
                 None,
             );
-            new_changes.insert(Namespace::User, user_table);
+            new_changes.last_seq = user_table.last_seq;
+            new_changes.inner.append(&mut user_table.inner);
 
             // New Expire namespace data
             let mut expire_table = Table::new();
@@ -486,7 +489,8 @@ mod tests {
                 ),
                 Some(Value::Expire("key2".to_string())),
             );
-            new_changes.insert(Namespace::Expire, expire_table);
+            new_changes.last_seq = expire_table.last_seq;
+            new_changes.inner.append(&mut expire_table.inner);
 
             lm.commit(InternalSeq::new(7), new_changes).await?;
         }

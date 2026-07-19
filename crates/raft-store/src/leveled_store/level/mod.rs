@@ -13,27 +13,17 @@
 // limitations under the License.
 
 use std::collections::BTreeMap;
-use std::io::Error;
-use std::ops::RangeBounds;
 
 use databend_meta_types::Node;
 use databend_meta_types::raft_types::LogId;
 use databend_meta_types::raft_types::NodeId;
 use databend_meta_types::raft_types::StoredMembership;
 use databend_meta_types::sys_data::SysData;
-use futures_util::StreamExt;
-use map_api::IOResultStream;
 use map_api::mvcc;
-use map_api::mvcc::ScopedSeqBoundedRangeIter;
-use map_api::mvcc::ViewKey;
-use map_api::mvcc::ViewValue;
 use seq_marked::InternalSeq;
-use seq_marked::SeqMarked;
 use state_machine_api::ExpireKey;
 use state_machine_api::MetaValue;
 use state_machine_api::UserKey;
-
-use crate::leveled_store::get_sub_table::GetSubTable;
 
 mod stat;
 pub use stat::LevelStat;
@@ -62,44 +52,6 @@ impl AsRef<mvcc::Table<UserKey, MetaValue>> for Level {
 impl AsRef<mvcc::Table<ExpireKey, String>> for Level {
     fn as_ref(&self) -> &mvcc::Table<ExpireKey, String> {
         &self.expire
-    }
-}
-
-impl GetSubTable<UserKey, MetaValue> for Level {
-    fn get_sub_table(&self) -> &mvcc::Table<UserKey, MetaValue> {
-        &self.kv
-    }
-}
-
-#[async_trait::async_trait]
-impl GetSubTable<ExpireKey, String> for Level {
-    fn get_sub_table(&self) -> &mvcc::Table<ExpireKey, String> {
-        &self.expire
-    }
-}
-
-#[async_trait::async_trait]
-impl<K, V> mvcc::ScopedSeqBoundedRange<K, V> for Level
-where
-    K: ViewKey,
-    V: ViewValue,
-    Level: mvcc::ScopedSeqBoundedRangeIter<K, V>,
-{
-    async fn range<R>(
-        &self,
-        range: R,
-        snapshot_seq: u64,
-    ) -> Result<IOResultStream<(K, SeqMarked<V>)>, Error>
-    where
-        R: RangeBounds<K> + Send + Sync + Clone + 'static,
-    {
-        let vec = self
-            .range_iter(range, snapshot_seq)
-            .map(|(k, v)| Ok((k.clone(), v.cloned())))
-            .collect::<Vec<_>>();
-
-        let strm = futures::stream::iter(vec);
-        Ok(strm.boxed())
     }
 }
 

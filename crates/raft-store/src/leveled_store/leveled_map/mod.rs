@@ -42,10 +42,8 @@ use crate::sm_v003::writer_acquirer::WriterPermit;
 
 pub mod compactor;
 mod impl_commit;
-mod impl_scoped_seq_bounded_get;
 mod impl_scoped_seq_bounded_range;
 mod impl_seq_bounded_get;
-mod impl_seq_bounded_range;
 pub mod leveled_map_data;
 
 #[cfg(test)]

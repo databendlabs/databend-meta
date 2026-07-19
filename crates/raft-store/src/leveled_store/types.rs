@@ -12,28 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Defines the name space, key and value type for leveled store.
+//! Defines the key and value types for the leveled store.
 
-use map_api::mvcc;
+use map_api::MapKey;
 use state_machine_api::ExpireKey;
 use state_machine_api::MetaValue;
 use state_machine_api::UserKey;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Namespace {
-    User,
-    Expire,
-}
-
-impl mvcc::ViewNamespace for Namespace {
-    fn increments_seq(&self) -> bool {
-        match self {
-            Namespace::User => true,
-            // Backward compatibility: when inserting an expiry index as the secondary index, do not increase seq.
-            Namespace::Expire => false,
-        }
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Key {
@@ -77,4 +61,8 @@ impl Value {
             Value::Expire(v) => v,
         }
     }
+}
+
+impl MapKey for Key {
+    type V = Value;
 }

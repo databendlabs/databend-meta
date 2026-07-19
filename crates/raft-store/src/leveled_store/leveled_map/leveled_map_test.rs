@@ -14,11 +14,10 @@
 
 use futures_util::TryStreamExt;
 use map_api::SeqMarked;
-use map_api::mvcc::ScopedGet;
-use map_api::mvcc::ScopedRange;
-use map_api::mvcc::ScopedSeqBoundedGet;
-use map_api::mvcc::ScopedSeqBoundedRange;
-use map_api::mvcc::ScopedSet;
+use map_api::mvcc::GetAtSeq;
+use map_api::mvcc::RangeAtSeq;
+use map_api::mvcc::ViewRange;
+use map_api::mvcc::ViewSet;
 use state_machine_api::KVMeta;
 use state_machine_api::UserKey;
 
@@ -236,7 +235,7 @@ async fn test_two_levels() -> anyhow::Result<()> {
     let tmp = LeveledMap::default();
     tmp.replace_immutable_levels(immutables);
 
-    let strm = tmp.range(user_key("").., u64::MAX).await?;
+    let strm = tmp.range_at_seq(user_key("").., u64::MAX).await?;
     let got = strm.try_collect::<Vec<_>>().await?;
     assert_eq!(got, vec![
         //
@@ -291,25 +290,25 @@ async fn build_3_levels() -> anyhow::Result<LeveledMap> {
 async fn test_three_levels_get_range() -> anyhow::Result<()> {
     let l = build_3_levels().await?;
 
-    let got = l.get(user_key("a"), u64::MAX).await?;
+    let got = l.get_at_seq(user_key("a"), u64::MAX).await?;
     assert_eq!(got, SeqMarked::new_normal(1, (None, b("a0"))));
 
-    let got = l.get(user_key("b"), u64::MAX).await?;
+    let got = l.get_at_seq(user_key("b"), u64::MAX).await?;
     assert_eq!(got, SeqMarked::new_tombstone(4));
 
-    let got = l.get(user_key("c"), u64::MAX).await?;
+    let got = l.get_at_seq(user_key("c"), u64::MAX).await?;
     assert_eq!(got, SeqMarked::new_tombstone(6));
 
-    let got = l.get(user_key("d"), u64::MAX).await?;
+    let got = l.get_at_seq(user_key("d"), u64::MAX).await?;
     assert_eq!(got, SeqMarked::new_normal(7, (None, b("d2"))));
 
-    let got = l.get(user_key("e"), u64::MAX).await?;
+    let got = l.get_at_seq(user_key("e"), u64::MAX).await?;
     assert_eq!(got, SeqMarked::new_normal(6, (None, b("e1"))));
 
-    let got = l.get(user_key("f"), u64::MAX).await?;
+    let got = l.get_at_seq(user_key("f"), u64::MAX).await?;
     assert_eq!(got, SeqMarked::new_tombstone(0));
 
-    let strm = l.range(user_key("").., u64::MAX).await?;
+    let strm = l.range_at_seq(user_key("").., u64::MAX).await?;
     let got = strm.try_collect::<Vec<_>>().await?;
     assert_eq!(got, vec![
         //
@@ -468,7 +467,7 @@ async fn build_2_level_with_meta() -> anyhow::Result<LeveledMap> {
 #[tokio::test]
 async fn test_2_level_same_tombstone() -> anyhow::Result<()> {
     let lm = build_2_level_consecutive_delete().await?;
-    let strm = lm.range(UserKey::default().., u64::MAX).await?;
+    let strm = lm.range_at_seq(UserKey::default().., u64::MAX).await?;
 
     let got = strm.try_collect::<Vec<_>>().await?;
 
@@ -538,7 +537,7 @@ async fn test_two_level_update_meta() -> anyhow::Result<()> {
             SeqMarked::new_normal(6, (Some(KVMeta::new_expires_at(2)), b("a0")))
         );
 
-        let got = l.get(user_key("a"), u64::MAX).await?;
+        let got = l.get_at_seq(user_key("a"), u64::MAX).await?;
         assert_eq!(
             got,
             SeqMarked::new_normal(6, (Some(KVMeta::new_expires_at(2)), b("a0")))
@@ -557,7 +556,7 @@ async fn test_two_level_update_meta() -> anyhow::Result<()> {
         );
         assert_eq!(result, SeqMarked::new_normal(6, (None, b("b1"))));
 
-        let got = l.get(user_key("b"), u64::MAX).await?;
+        let got = l.get_at_seq(user_key("b"), u64::MAX).await?;
         assert_eq!(got, SeqMarked::new_normal(6, (None, b("b1"))));
     }
 
@@ -577,7 +576,7 @@ async fn test_two_level_update_meta() -> anyhow::Result<()> {
             SeqMarked::new_normal(6, (Some(KVMeta::new_expires_at(20)), b("c1")))
         );
 
-        let got = l.get(user_key("c"), u64::MAX).await?;
+        let got = l.get_at_seq(user_key("c"), u64::MAX).await?;
         assert_eq!(
             got,
             SeqMarked::new_normal(6, (Some(KVMeta::new_expires_at(20)), b("c1")))
@@ -597,7 +596,7 @@ async fn test_two_level_update_meta() -> anyhow::Result<()> {
         assert_eq!(prev, SeqMarked::new_tombstone(0));
         assert_eq!(result, SeqMarked::new_tombstone(0));
 
-        let got = l.get(user_key("d"), u64::MAX).await?;
+        let got = l.get_at_seq(user_key("d"), u64::MAX).await?;
         assert_eq!(got, SeqMarked::new_tombstone(0));
     }
 

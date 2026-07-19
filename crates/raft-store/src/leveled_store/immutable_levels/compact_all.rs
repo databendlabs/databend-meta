@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use map_api::mvcc;
-use map_api::mvcc::ScopedSeqBoundedRange;
 use state_machine_api::ExpireKey;
 use state_machine_api::UserKey;
 
@@ -34,7 +33,7 @@ impl ImmutableLevels {
 
         // Copy all expire data and keep tombstone.
         let strm = immutable_levels
-            .range(ExpireKey::default().., u64::MAX)
+            .range_at_seq(ExpireKey::default().., u64::MAX)
             .await
             .unwrap();
 
@@ -43,7 +42,7 @@ impl ImmutableLevels {
 
         // Copy all kv data and keep tombstone.
         let strm = immutable_levels
-            .range(UserKey::default().., u64::MAX)
+            .range_at_seq(UserKey::default().., u64::MAX)
             .await
             .unwrap();
 
@@ -59,13 +58,10 @@ impl ImmutableLevels {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Deref;
-
     use databend_meta_types::raft_types::Membership;
     use databend_meta_types::raft_types::StoredMembership;
     use databend_meta_types::raft_types::TypeConfig;
     use futures_util::TryStreamExt;
-    use map_api::mvcc::ScopedSeqBoundedRange;
     use openraft::testing::log_id;
     use seq_marked::SeqMarked;
     use state_machine_api::ExpireKey;
@@ -118,7 +114,7 @@ mod tests {
         );
         assert_eq!(d.last_applied(), Some(log_id::<TypeConfig>(3, 3, 3)));
 
-        let strm = d.range(UserKey::default().., u64::MAX).await?;
+        let strm = d.range_at_seq(UserKey::default().., u64::MAX).await?;
         let got = strm.try_collect::<Vec<_>>().await?;
         assert_eq!(got, vec![
             //
@@ -129,7 +125,7 @@ mod tests {
             (user_key("e"), SeqMarked::new_normal(6, (None, b("e1")))),
         ]);
 
-        let strm = d.range(ExpireKey::default().., u64::MAX).await?;
+        let strm = d.range_at_seq(ExpireKey::default().., u64::MAX).await?;
         let got = strm.try_collect::<Vec<_>>().await?;
         assert_eq!(got, vec![]);
 
@@ -147,9 +143,9 @@ mod tests {
             immutable_levels.compact_all().await
         };
 
-        let d = immutable_levels.newest().unwrap().deref();
+        let d = immutable_levels.newest().unwrap();
 
-        let strm = d.range(UserKey::default().., u64::MAX).await?;
+        let strm = d.range_at_seq(UserKey::default().., u64::MAX).await?;
         let got = strm.try_collect::<Vec<_>>().await?;
 
         assert_eq!(got, vec![
@@ -168,7 +164,7 @@ mod tests {
             ),
         ]);
 
-        let strm = d.range(ExpireKey::default().., u64::MAX).await?;
+        let strm = d.range_at_seq(ExpireKey::default().., u64::MAX).await?;
         let got = strm.try_collect::<Vec<_>>().await?;
         assert_eq!(got, vec![
             //

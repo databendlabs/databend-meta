@@ -22,7 +22,7 @@ use crate::leveled_store::level::Level;
 pub struct LeveledMapData {
     /// The top level is the newest and writable.
     ///
-    /// It can only be updated with mvcc::Commit
+    /// It can only be updated by [`LeveledMap::commit`](super::LeveledMap::commit).
     pub(crate) writable: Level,
 
     pub(crate) immutable: Arc<ImmutableData>,

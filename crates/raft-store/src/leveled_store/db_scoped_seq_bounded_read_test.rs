@@ -16,15 +16,13 @@
 
 use databend_meta_types::UpsertKV;
 use futures_util::TryStreamExt;
-use map_api::mvcc::ScopedSeqBoundedGet;
-use map_api::mvcc::ScopedSeqBoundedRange;
 use seq_marked::SeqMarked;
 use state_machine_api::ExpireKey;
 use state_machine_api::KVMeta;
 use state_machine_api::UserKey;
 
 use crate::leveled_store::db_builder::DBBuilder;
-use crate::leveled_store::db_impl_scoped_seq_bounded_read::ScopedSeqBoundedRead;
+use crate::leveled_store::db_impl_scoped_seq_bounded_read::ReadAtSeqDB;
 use crate::sm_v003::SMV003;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
@@ -71,27 +69,27 @@ async fn test_db_scoped_seq_bounded_read() -> anyhow::Result<()> {
 
     // Test kv map
 
-    let binding = ScopedSeqBoundedRead(&db);
+    let binding = ReadAtSeqDB(&db);
     let smap = binding;
     assert_eq!(
         SeqMarked::new_normal(4, (Some(KVMeta::new(Some(15), Some(0))), b("a1"))),
-        smap.get(user_key("a"), u64::MAX).await?
+        smap.get_at_seq(user_key("a"), u64::MAX).await?
     );
     assert_eq!(
         SeqMarked::new_not_found(),
-        smap.get(user_key("b"), u64::MAX).await?,
+        smap.get_at_seq(user_key("b"), u64::MAX).await?,
         "no tombstone is stored"
     );
     assert_eq!(
         SeqMarked::new_normal(3, (Some(KVMeta::new(Some(20), Some(0))), b("c0"))),
-        smap.get(user_key("c"), u64::MAX).await?
+        smap.get_at_seq(user_key("c"), u64::MAX).await?
     );
     assert_eq!(
         SeqMarked::new_not_found(),
-        smap.get(user_key("d"), u64::MAX).await?
+        smap.get_at_seq(user_key("d"), u64::MAX).await?
     );
 
-    let strm = smap.range(UserKey::default().., u64::MAX).await?;
+    let strm = smap.range_at_seq(UserKey::default().., u64::MAX).await?;
     let got = strm.try_collect::<Vec<_>>().await?;
     assert_eq!(
         vec![
@@ -109,23 +107,23 @@ async fn test_db_scoped_seq_bounded_read() -> anyhow::Result<()> {
 
     // Test expire index
 
-    let binding = ScopedSeqBoundedRead(&db);
+    let binding = ReadAtSeqDB(&db);
     let emap = binding;
 
     assert_eq!(
         SeqMarked::new_normal(4, s("a")),
-        emap.get(ExpireKey::new(15_000, 4), u64::MAX).await?
+        emap.get_at_seq(ExpireKey::new(15_000, 4), u64::MAX).await?
     );
     assert_eq!(
         SeqMarked::new_normal(3, s("c")),
-        emap.get(ExpireKey::new(20_000, 3), u64::MAX).await?
+        emap.get_at_seq(ExpireKey::new(20_000, 3), u64::MAX).await?
     );
     assert_eq!(
         SeqMarked::new_not_found(),
-        emap.get(ExpireKey::new(5_000, 2), u64::MAX).await?
+        emap.get_at_seq(ExpireKey::new(5_000, 2), u64::MAX).await?
     );
 
-    let strm = emap.range(ExpireKey::default().., u64::MAX).await?;
+    let strm = emap.range_at_seq(ExpireKey::default().., u64::MAX).await?;
     let got = strm.try_collect::<Vec<_>>().await?;
     assert_eq!(
         vec![

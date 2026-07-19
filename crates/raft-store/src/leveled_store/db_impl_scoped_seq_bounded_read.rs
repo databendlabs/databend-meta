@@ -18,9 +18,6 @@ use std::ops::RangeBounds;
 use databend_meta_types::snapshot_db::DB;
 use futures_util::StreamExt;
 use map_api::IOResultStream;
-use map_api::mvcc;
-use map_api::mvcc::ViewKey;
-use map_api::mvcc::ViewValue;
 use rotbl::v001::SeqMarked;
 
 use crate::leveled_store::map_api::MapKey;
@@ -31,18 +28,18 @@ use crate::leveled_store::rotbl_codec::RotblCodec;
 
 /// A wrapper that implements the `ScopedSnapshot*` trait for the `DB`.
 #[derive(Debug, Clone)]
-pub struct ScopedSeqBoundedRead<'a>(pub &'a DB);
+pub struct ReadAtSeqDB<'a>(pub &'a DB);
 
-#[async_trait::async_trait]
-impl<K> mvcc::ScopedSeqBoundedGet<K, K::V> for ScopedSeqBoundedRead<'_>
-where
-    K: MapKey,
-    K: ViewKey,
-    K: MapKeyEncode + MapKeyDecode,
-    K::V: ViewValue,
-    SeqMarked<K::V>: PersistedCodec<SeqMarked>,
-{
-    async fn get(&self, key: K, _snapshot_seq: u64) -> Result<SeqMarked<K::V>, io::Error> {
+impl ReadAtSeqDB<'_> {
+    pub(crate) async fn get_at_seq<K>(
+        &self,
+        key: K,
+        _snapshot_seq: u64,
+    ) -> Result<SeqMarked<K::V>, io::Error>
+    where
+        K: MapKey + MapKeyEncode + MapKeyDecode,
+        SeqMarked<K::V>: PersistedCodec<SeqMarked>,
+    {
         // TODO: DB does not consider snapshot_seq
         let key = RotblCodec::encode_key(&key)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -58,21 +55,16 @@ where
     }
 }
 
-#[async_trait::async_trait]
-impl<K> mvcc::ScopedSeqBoundedRange<K, K::V> for ScopedSeqBoundedRead<'_>
-where
-    K: MapKey,
-    K: ViewKey,
-    K: MapKeyEncode + MapKeyDecode,
-    K::V: ViewValue,
-    SeqMarked<K::V>: PersistedCodec<SeqMarked>,
-{
-    async fn range<R>(
+impl ReadAtSeqDB<'_> {
+    pub(crate) async fn range_at_seq<K, R>(
         &self,
         range: R,
         _snapshot_seq: u64,
     ) -> Result<IOResultStream<(K, SeqMarked<K::V>)>, io::Error>
     where
+        K: MapKey,
+        K: MapKeyEncode + MapKeyDecode,
+        SeqMarked<K::V>: PersistedCodec<SeqMarked>,
         R: RangeBounds<K> + Send + Sync + Clone + 'static,
     {
         // TODO: DB does not consider snapshot_seq
@@ -99,8 +91,6 @@ mod tests {
 
     use databend_meta_types::snapshot_db::DB;
     use futures_util::TryStreamExt;
-    use map_api::mvcc::ScopedSeqBoundedGet;
-    use map_api::mvcc::ScopedSeqBoundedRange;
     use rotbl::storage::impls::fs::FsStorage;
     use rotbl::v001::Config;
     use rotbl::v001::Rotbl;
@@ -181,12 +171,14 @@ mod tests {
             ),
         ];
         let db = create_db_with_data(&tmp_dir, entries).unwrap();
-        let reader = ScopedSeqBoundedRead(&db);
+        let reader = ReadAtSeqDB(&db);
 
-        let got: SeqMarked<MetaValue> = reader.get(user_key("key1"), u64::MAX).await.unwrap();
+        let got: SeqMarked<MetaValue> =
+            reader.get_at_seq(user_key("key1"), u64::MAX).await.unwrap();
         assert_eq!(got, SeqMarked::new_normal(10, (None, b("value1"))));
 
-        let got: SeqMarked<MetaValue> = reader.get(user_key("key2"), u64::MAX).await.unwrap();
+        let got: SeqMarked<MetaValue> =
+            reader.get_at_seq(user_key("key2"), u64::MAX).await.unwrap();
         assert_eq!(got, SeqMarked::new_normal(20, (None, b("value2"))));
     }
 
@@ -198,10 +190,12 @@ mod tests {
             SeqMarked::new_normal(10, (None, b("value1"))),
         )];
         let db = create_db_with_data(&tmp_dir, entries).unwrap();
-        let reader = ScopedSeqBoundedRead(&db);
+        let reader = ReadAtSeqDB(&db);
 
-        let got: SeqMarked<MetaValue> =
-            reader.get(user_key("nonexistent"), u64::MAX).await.unwrap();
+        let got: SeqMarked<MetaValue> = reader
+            .get_at_seq(user_key("nonexistent"), u64::MAX)
+            .await
+            .unwrap();
         assert!(got.is_not_found());
     }
 
@@ -210,9 +204,9 @@ mod tests {
         let tmp_dir = tempfile::tempdir().unwrap();
         let entries: Vec<(UserKey, SeqMarked<MetaValue>)> = vec![];
         let db = create_db_with_data(&tmp_dir, entries).unwrap();
-        let reader = ScopedSeqBoundedRead(&db);
+        let reader = ReadAtSeqDB(&db);
 
-        let got: SeqMarked<MetaValue> = reader.get(user_key("any"), u64::MAX).await.unwrap();
+        let got: SeqMarked<MetaValue> = reader.get_at_seq(user_key("any"), u64::MAX).await.unwrap();
         assert!(got.is_not_found());
     }
 
@@ -227,9 +221,10 @@ mod tests {
             (user_key("key2"), SeqMarked::new_tombstone(20)),
         ];
         let db = create_db_with_data(&tmp_dir, entries).unwrap();
-        let reader = ScopedSeqBoundedRead(&db);
+        let reader = ReadAtSeqDB(&db);
 
-        let got: SeqMarked<MetaValue> = reader.get(user_key("key2"), u64::MAX).await.unwrap();
+        let got: SeqMarked<MetaValue> =
+            reader.get_at_seq(user_key("key2"), u64::MAX).await.unwrap();
         assert!(got.is_tombstone());
     }
 
@@ -251,9 +246,9 @@ mod tests {
             ),
         ];
         let db = create_db_with_data(&tmp_dir, entries).unwrap();
-        let reader = ScopedSeqBoundedRead(&db);
+        let reader = ReadAtSeqDB(&db);
 
-        let strm = reader.range(user_key("").., u64::MAX).await.unwrap();
+        let strm = reader.range_at_seq(user_key("").., u64::MAX).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
 
         assert_eq!(got, vec![
@@ -294,10 +289,13 @@ mod tests {
             ),
         ];
         let db = create_db_with_data(&tmp_dir, entries).unwrap();
-        let reader = ScopedSeqBoundedRead(&db);
+        let reader = ReadAtSeqDB(&db);
 
         // Range from "b" onwards
-        let strm = reader.range(user_key("b").., u64::MAX).await.unwrap();
+        let strm = reader
+            .range_at_seq(user_key("b").., u64::MAX)
+            .await
+            .unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
         assert_eq!(got, vec![
             (
@@ -316,7 +314,7 @@ mod tests {
 
         // Range "b" to "d" (exclusive)
         let strm = reader
-            .range(user_key("b")..user_key("d"), u64::MAX)
+            .range_at_seq(user_key("b")..user_key("d"), u64::MAX)
             .await
             .unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
@@ -337,9 +335,9 @@ mod tests {
         let tmp_dir = tempfile::tempdir().unwrap();
         let entries: Vec<(UserKey, SeqMarked<MetaValue>)> = vec![];
         let db = create_db_with_data(&tmp_dir, entries).unwrap();
-        let reader = ScopedSeqBoundedRead(&db);
+        let reader = ReadAtSeqDB(&db);
 
-        let strm = reader.range(user_key("").., u64::MAX).await.unwrap();
+        let strm = reader.range_at_seq(user_key("").., u64::MAX).await.unwrap();
         let got: Vec<(UserKey, SeqMarked<MetaValue>)> = strm.try_collect().await.unwrap();
         assert!(got.is_empty());
     }
@@ -352,10 +350,13 @@ mod tests {
             SeqMarked::new_normal(1, (None, b("value_a"))),
         )];
         let db = create_db_with_data(&tmp_dir, entries).unwrap();
-        let reader = ScopedSeqBoundedRead(&db);
+        let reader = ReadAtSeqDB(&db);
 
         // Range starts after all data
-        let strm = reader.range(user_key("z").., u64::MAX).await.unwrap();
+        let strm = reader
+            .range_at_seq(user_key("z").., u64::MAX)
+            .await
+            .unwrap();
         let got: Vec<(UserKey, SeqMarked<MetaValue>)> = strm.try_collect().await.unwrap();
         assert!(got.is_empty());
     }
@@ -375,9 +376,9 @@ mod tests {
             ),
         ];
         let db = create_db_with_data(&tmp_dir, entries).unwrap();
-        let reader = ScopedSeqBoundedRead(&db);
+        let reader = ReadAtSeqDB(&db);
 
-        let strm = reader.range(user_key("").., u64::MAX).await.unwrap();
+        let strm = reader.range_at_seq(user_key("").., u64::MAX).await.unwrap();
         let got: Vec<_> = strm.try_collect().await.unwrap();
 
         assert_eq!(got, vec![
@@ -407,16 +408,16 @@ mod tests {
             ),
         ];
         let db = create_db_with_data(&tmp_dir, entries).unwrap();
-        let reader = ScopedSeqBoundedRead(&db);
+        let reader = ReadAtSeqDB(&db);
 
         let got: SeqMarked<MetaValue> = reader
-            .get(user_key("key/with/slashes"), u64::MAX)
+            .get_at_seq(user_key("key/with/slashes"), u64::MAX)
             .await
             .unwrap();
         assert_eq!(got, SeqMarked::new_normal(1, (None, b("value1"))));
 
         let got: SeqMarked<MetaValue> = reader
-            .get(user_key("key:with:colons"), u64::MAX)
+            .get_at_seq(user_key("key:with:colons"), u64::MAX)
             .await
             .unwrap();
         assert_eq!(got, SeqMarked::new_normal(2, (None, b("value2"))));

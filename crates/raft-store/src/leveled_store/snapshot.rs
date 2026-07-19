@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::future;
 use std::io;
 use std::io::Error;
 use std::ops::Deref;
@@ -28,10 +29,8 @@ use state_machine_api::UserKey;
 
 use crate::leveled_store::leveled_map::LeveledMap;
 use crate::leveled_store::types::Key;
-use crate::leveled_store::types::Namespace;
-use crate::leveled_store::types::Value;
 
-pub(crate) type MvccSnapshot = mvcc::Snapshot<Namespace, Key, Value, LeveledMap>;
+pub(crate) type MvccSnapshot = mvcc::Snapshot<Key, LeveledMap>;
 
 /// A wrapper of mvcc::Snapshot to implement additional traits
 #[derive(Clone, Debug)]
@@ -48,16 +47,14 @@ impl Deref for StateMachineSnapshot {
 }
 
 #[async_trait::async_trait]
-impl mvcc::ScopedGet<UserKey, MetaValue> for StateMachineSnapshot {
-    async fn get(&self, key: UserKey) -> Result<SeqMarked<MetaValue>, Error> {
-        let key = Key::User(key);
-        let v = self.inner.get(Namespace::User, key).await?;
-        Ok(v.map(|x| x.into_user()))
+impl mvcc::ViewGet<UserKey> for StateMachineSnapshot {
+    async fn get(&self, key: UserKey) -> Result<SeqMarked<MetaValue>, io::Error> {
+        StateMachineSnapshot::get(self, key).await
     }
 }
 
 #[async_trait::async_trait]
-impl mvcc::ScopedRange<UserKey, MetaValue> for StateMachineSnapshot {
+impl mvcc::ViewRange<UserKey> for StateMachineSnapshot {
     async fn range<R>(
         &self,
         range: R,
@@ -71,25 +68,28 @@ impl mvcc::ScopedRange<UserKey, MetaValue> for StateMachineSnapshot {
         let start = start.map(Key::User);
         let end = end.map(Key::User);
 
-        let strm = self.inner.range(Namespace::User, (start, end)).await?;
+        let strm = self.inner.range((start, end)).await?;
 
         Ok(strm
-            .map_ok(|(k, v)| (k.into_user(), v.map(|x| x.into_user())))
+            .try_filter_map(|(key, value)| {
+                future::ready(Ok(match (key, value) {
+                    (Key::User(key), value) => Some((key, value.map(|x| x.into_user()))),
+                    (Key::Expire(_), _) => None,
+                }))
+            })
             .boxed())
     }
 }
 
 #[async_trait::async_trait]
-impl mvcc::ScopedGet<ExpireKey, String> for StateMachineSnapshot {
-    async fn get(&self, key: ExpireKey) -> Result<SeqMarked<String>, Error> {
-        let key = Key::Expire(key);
-        let v = self.inner.get(Namespace::Expire, key).await?;
-        Ok(v.map(|x| x.into_expire()))
+impl mvcc::ViewGet<ExpireKey> for StateMachineSnapshot {
+    async fn get(&self, key: ExpireKey) -> Result<SeqMarked<String>, io::Error> {
+        StateMachineSnapshot::get_expire(self, key).await
     }
 }
 
 #[async_trait::async_trait]
-impl mvcc::ScopedRange<ExpireKey, String> for StateMachineSnapshot {
+impl mvcc::ViewRange<ExpireKey> for StateMachineSnapshot {
     async fn range<R>(
         &self,
         range: R,
@@ -103,15 +103,30 @@ impl mvcc::ScopedRange<ExpireKey, String> for StateMachineSnapshot {
         let start = start.map(Key::Expire);
         let end = end.map(Key::Expire);
 
-        let strm = self.inner.range(Namespace::Expire, (start, end)).await?;
+        let strm = self.inner.range((start, end)).await?;
 
         Ok(strm
-            .map_ok(|(k, v)| (k.into_expire(), v.map(|x| x.into_expire())))
+            .try_filter_map(|(key, value)| {
+                future::ready(Ok(match (key, value) {
+                    (Key::User(_), _) => None,
+                    (Key::Expire(key), value) => Some((key, value.map(|x| x.into_expire()))),
+                }))
+            })
             .boxed())
     }
 }
 
 impl StateMachineSnapshot {
+    pub async fn get(&self, key: UserKey) -> Result<SeqMarked<MetaValue>, Error> {
+        let v = self.inner.get(Key::User(key)).await?;
+        Ok(v.map(|x| x.into_user()))
+    }
+
+    pub async fn get_expire(&self, key: ExpireKey) -> Result<SeqMarked<String>, Error> {
+        let v = self.inner.get(Key::Expire(key)).await?;
+        Ok(v.map(|x| x.into_expire()))
+    }
+
     pub fn new(inner: MvccSnapshot) -> Self {
         Self { inner }
     }

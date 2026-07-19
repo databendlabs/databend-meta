@@ -22,10 +22,9 @@ use databend_meta_types::raft_types::Membership;
 use databend_meta_types::raft_types::StoredMembership;
 use databend_meta_types::raft_types::TypeConfig;
 use futures_util::TryStreamExt;
-use map_api::mvcc;
-use map_api::mvcc::ScopedSeqBoundedGet;
-use map_api::mvcc::ScopedSeqBoundedRange;
-use map_api::mvcc::ScopedSet;
+use map_api::mvcc::GetAtSeq;
+use map_api::mvcc::RangeAtSeq;
+use map_api::mvcc::ViewSet;
 use maplit::btreemap;
 use openraft::testing::log_id;
 use pretty_assertions::assert_eq;
@@ -34,7 +33,7 @@ use state_machine_api::ExpireKey;
 use state_machine_api::KVMeta;
 use state_machine_api::UserKey;
 
-use crate::leveled_store::ScopedSeqBoundedRead;
+use crate::leveled_store::ReadAtSeqDB;
 use crate::leveled_store::db_builder::DBBuilder;
 use crate::leveled_store::immutable_data::ImmutableData;
 use crate::leveled_store::immutable_levels::ImmutableLevels;
@@ -60,7 +59,7 @@ async fn test_leveled_query_with_db() -> anyhow::Result<()> {
         btreemap! {3=>Node::new("3", Endpoint::new("3", 3))}
     );
 
-    let strm = lm.range(user_key("").., u64::MAX).await?;
+    let strm = lm.range_at_seq(user_key("").., u64::MAX).await?;
     let got = strm.try_collect::<Vec<_>>().await?;
     assert_eq!(got, vec![
         //
@@ -72,15 +71,15 @@ async fn test_leveled_query_with_db() -> anyhow::Result<()> {
     ]);
 
     assert_eq!(
-        lm.get(user_key("a"), u64::MAX).await?,
+        lm.get_at_seq(user_key("a"), u64::MAX).await?,
         SeqMarked::new_normal(1, (None, b("a0")))
     );
     assert_eq!(
-        lm.get(user_key("b"), u64::MAX).await?,
+        lm.get_at_seq(user_key("b"), u64::MAX).await?,
         SeqMarked::new_tombstone(4)
     );
 
-    let strm = lm.range(ExpireKey::default().., u64::MAX).await?;
+    let strm = lm.range_at_seq(ExpireKey::default().., u64::MAX).await?;
     let got = strm.try_collect::<Vec<_>>().await?;
     assert_eq!(got, vec![]);
 
@@ -101,7 +100,7 @@ async fn test_leveled_query_with_expire_index() -> anyhow::Result<()> {
     assert_eq!(lm.last_applied(), None);
     assert_eq!(lm.nodes(), btreemap! {});
 
-    let strm = lm.range(user_key("").., u64::MAX).await?;
+    let strm = lm.range_at_seq(user_key("").., u64::MAX).await?;
     let got = strm.try_collect::<Vec<_>>().await?;
     assert_eq!(got, vec![
         //
@@ -119,7 +118,7 @@ async fn test_leveled_query_with_expire_index() -> anyhow::Result<()> {
         ),
     ]);
 
-    let strm = lm.range(ExpireKey::default().., u64::MAX).await?;
+    let strm = lm.range_at_seq(ExpireKey::default().., u64::MAX).await?;
     let got = strm.try_collect::<Vec<_>>().await?;
     assert_eq!(got, vec![
         //
@@ -162,9 +161,9 @@ async fn test_compact() -> anyhow::Result<()> {
         &btreemap! {3=>Node::new("3", Endpoint::new("3", 3))}
     );
 
-    let strm =
-        mvcc::ScopedSeqBoundedRange::range(&ScopedSeqBoundedRead(&db), user_key("").., u64::MAX)
-            .await?;
+    let strm = ReadAtSeqDB(&db)
+        .range_at_seq(user_key("").., u64::MAX)
+        .await?;
     let got = strm.try_collect::<Vec<_>>().await?;
     assert_eq!(got, vec![
         //
@@ -173,12 +172,9 @@ async fn test_compact() -> anyhow::Result<()> {
         (user_key("e"), SeqMarked::new_normal(6, (None, b("e1")))),
     ]);
 
-    let strm = mvcc::ScopedSeqBoundedRange::range(
-        &ScopedSeqBoundedRead(&db),
-        ExpireKey::default()..,
-        u64::MAX,
-    )
-    .await?;
+    let strm = ReadAtSeqDB(&db)
+        .range_at_seq(ExpireKey::default().., u64::MAX)
+        .await?;
     let got = strm.try_collect::<Vec<_>>().await?;
     assert_eq!(got, vec![]);
 
@@ -216,8 +212,8 @@ async fn test_compact_expire_index() -> anyhow::Result<()> {
     assert_eq!(db.last_applied_ref(), &None);
     assert_eq!(db.nodes_ref(), &btreemap! {});
 
-    let strm = ScopedSeqBoundedRead(&db)
-        .range(UserKey::default().., u64::MAX)
+    let strm = ReadAtSeqDB(&db)
+        .range_at_seq(UserKey::default().., u64::MAX)
         .await?;
     let got = strm.try_collect::<Vec<_>>().await?;
     assert_eq!(got, vec![
@@ -236,12 +232,9 @@ async fn test_compact_expire_index() -> anyhow::Result<()> {
         ),
     ]);
 
-    let strm = mvcc::ScopedSeqBoundedRange::range(
-        &ScopedSeqBoundedRead(&db),
-        ExpireKey::default()..,
-        u64::MAX,
-    )
-    .await?;
+    let strm = ReadAtSeqDB(&db)
+        .range_at_seq(ExpireKey::default().., u64::MAX)
+        .await?;
     let got = strm.try_collect::<Vec<_>>().await?;
     assert_eq!(got, vec![
         //
