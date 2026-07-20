@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt;
-use std::fmt::Write;
 use std::io;
 
+pub use databend_meta_snapshot_db::MapKeyDecode;
+pub use databend_meta_snapshot_db::MapKeyEncode;
+pub use databend_meta_snapshot_db::MapKeyPrefix;
 pub use map_api::BeforeAfter;
 pub use map_api::IOResultStream;
 pub use map_api::map_key::MapKey;
@@ -27,23 +28,6 @@ use state_machine_api::MetaValue;
 use state_machine_api::UserKey;
 
 use crate::leveled_store::leveled_map::LeveledMap;
-
-pub type MapKeyPrefix = &'static str;
-
-pub trait MapKeyEncode {
-    /// PREFIX is the prefix of the key used to define key space in the on-disk storage.
-    const PREFIX: MapKeyPrefix;
-
-    fn prefix(&self) -> MapKeyPrefix {
-        Self::PREFIX
-    }
-
-    fn encode<W: Write>(&self, w: W) -> Result<(), fmt::Error>;
-}
-
-pub trait MapKeyDecode: Sized {
-    fn decode(buf: &str) -> Result<Self, io::Error>;
-}
 
 pub(crate) struct MapApiHelper;
 

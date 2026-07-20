@@ -21,9 +21,9 @@ use std::io::Error;
 use state_machine_api::ExpireKey;
 use state_machine_api::UserKey;
 
-use crate::leveled_store::map_api::MapKeyDecode;
-use crate::leveled_store::map_api::MapKeyEncode;
-use crate::leveled_store::map_api::MapKeyPrefix;
+use crate::map_api::MapKeyDecode;
+use crate::map_api::MapKeyEncode;
+use crate::map_api::MapKeyPrefix;
 
 impl MapKeyEncode for UserKey {
     const PREFIX: MapKeyPrefix = "kv--";

@@ -27,7 +27,7 @@ use rotbl::v001::SeqMarked;
 use state_machine_api::KVMeta;
 use state_machine_api::MetaValue;
 
-use crate::leveled_store::persisted_codec::PersistedCodec;
+use crate::persisted_codec::PersistedCodec;
 
 impl PersistedCodec<SeqMarked> for SeqMarked<MetaValue> {
     fn encode_to(self) -> Result<SeqMarked, io::Error> {
@@ -87,7 +87,7 @@ impl PersistedCodec<SeqMarked> for SeqMarked<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::leveled_store::persisted_codec::PersistedCodec;
+    use crate::persisted_codec::PersistedCodec;
 
     #[test]
     fn test_marked_of_string_try_from_seq_marked() -> io::Result<()> {

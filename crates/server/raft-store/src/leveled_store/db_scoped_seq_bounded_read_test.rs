@@ -14,6 +14,7 @@
 
 //! Test for db_map_api_ro_impl.
 
+use databend_meta_snapshot_db::ReadAtSeqDB;
 use databend_meta_types::UpsertKV;
 use futures_util::TryStreamExt;
 use seq_marked::SeqMarked;
@@ -22,7 +23,6 @@ use state_machine_api::KVMeta;
 use state_machine_api::UserKey;
 
 use crate::leveled_store::db_builder::DBBuilder;
-use crate::leveled_store::db_impl_scoped_seq_bounded_read::ReadAtSeqDB;
 use crate::sm_v003::SMV003;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]

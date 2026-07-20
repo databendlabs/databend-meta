@@ -32,14 +32,7 @@ pub mod view;
 #[cfg(test)]
 pub(crate) mod testing_data;
 
-mod db_impl_scoped_seq_bounded_read;
 mod db_open_snapshot_impl;
 #[cfg(test)]
 mod db_scoped_seq_bounded_read_test;
 pub mod immutable_data;
-mod key_spaces_impl;
-mod rotbl_meta_value_impl;
-mod rotbl_seq_data_impl;
-mod rotbl_seq_mark_impl;
-
-pub use db_impl_scoped_seq_bounded_read::ReadAtSeqDB;

@@ -19,6 +19,7 @@ use std::io::Error;
 use std::ops::RangeBounds;
 
 use databend_meta_snapshot_db::DB;
+use databend_meta_snapshot_db::ReadAtSeqDB;
 use display_more::DisplayOptionExt;
 use display_more::DisplaySliceExt;
 use futures_util::StreamExt;
@@ -31,7 +32,6 @@ use seq_marked::SeqMarked;
 use stream_more::KMerge;
 use stream_more::StreamMore;
 
-use crate::leveled_store::ReadAtSeqDB;
 use crate::leveled_store::immutable::Immutable;
 use crate::leveled_store::immutable_levels::ImmutableLevels;
 use crate::leveled_store::level::Level;

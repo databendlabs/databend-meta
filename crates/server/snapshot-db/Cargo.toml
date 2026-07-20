@@ -8,15 +8,20 @@ publish = { workspace = true }
 edition = { workspace = true }
 
 [dependencies]
+bincode = { workspace = true }
 databend-meta-types = { workspace = true }
 futures-util = { workspace = true }
 log = { workspace = true }
+map-api = { workspace = true }
 openraft = { workspace = true }
 rotbl = { workspace = true }
+seq-marked = { workspace = true }
 serde_json = { workspace = true }
+state-machine-api = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tokio = { workspace = true }
 
 [lints]
 workspace = true

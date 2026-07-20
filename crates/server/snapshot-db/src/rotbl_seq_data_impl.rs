@@ -26,7 +26,7 @@ use seq_marked::SeqData;
 use state_machine_api::KVMeta;
 use state_machine_api::MetaValue;
 
-use crate::leveled_store::persisted_codec::PersistedCodec;
+use crate::persisted_codec::PersistedCodec;
 
 impl PersistedCodec<SeqData> for SeqData<MetaValue> {
     fn encode_to(self) -> Result<SeqData, io::Error> {
@@ -77,7 +77,7 @@ impl PersistedCodec<SeqData> for SeqData<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::leveled_store::persisted_codec::PersistedCodec;
+    use crate::persisted_codec::PersistedCodec;
 
     #[test]
     fn test_marked_of_string_try_from_seq_marked() -> io::Result<()> {

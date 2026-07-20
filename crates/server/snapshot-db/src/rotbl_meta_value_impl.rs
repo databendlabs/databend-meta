@@ -25,7 +25,7 @@ use std::io;
 use state_machine_api::KVMeta;
 use state_machine_api::MetaValue;
 
-use crate::leveled_store::persisted_codec::PersistedCodec;
+use crate::persisted_codec::PersistedCodec;
 
 impl PersistedCodec<Vec<u8>> for MetaValue {
     fn encode_to(self) -> Result<Vec<u8>, io::Error> {
@@ -100,7 +100,7 @@ fn bincode_config() -> impl bincode::config::Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::leveled_store::persisted_codec::PersistedCodec;
+    use crate::persisted_codec::PersistedCodec;
 
     #[test]
     fn test_meta_value_try_from_bytes() -> io::Result<()> {

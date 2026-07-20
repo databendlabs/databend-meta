@@ -14,6 +14,15 @@
 
 //! On-disk snapshot database backed by a rotbl table.
 
+mod key_spaces_impl;
+pub mod map_api;
+pub mod persisted_codec;
+mod read_at_seq_db;
+pub mod rotbl_codec;
+mod rotbl_meta_value_impl;
+mod rotbl_seq_data_impl;
+mod rotbl_seq_mark_impl;
+
 use std::fmt;
 use std::fs;
 use std::io;
@@ -27,10 +36,16 @@ use databend_meta_types::raft_types::SnapshotMeta;
 use databend_meta_types::sys_data::SysData;
 use futures_util::stream::BoxStream;
 use log::info;
+pub use map_api::MapKeyDecode;
+pub use map_api::MapKeyEncode;
+pub use map_api::MapKeyPrefix;
 use openraft::SnapshotId;
+pub use persisted_codec::PersistedCodec;
+pub use read_at_seq_db::ReadAtSeqDB;
 use rotbl::v001::Rotbl;
 use rotbl::v001::SeqMarked;
 use rotbl::v001::stat::RotblStat;
+pub use rotbl_codec::RotblCodec;
 
 /// A raft snapshot whose payload is a [`DB`].
 pub type Snapshot = openraft::Snapshot<CommittedLeaderId, NodeId, MembershipNode, DB>;

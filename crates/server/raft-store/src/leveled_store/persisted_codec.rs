@@ -12,17 +12,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Convert one type to another type for this crate to convert between 3rd party types.
-
-use std::io;
-
-/// Convert one type `Self` to type `T` for persisting on disk for this crate to convert between 3rd party types.
-pub trait PersistedCodec<T>
-where Self: Sized
-{
-    /// Convert `Self` to `T`.
-    fn encode_to(self) -> Result<T, io::Error>;
-
-    /// Parse `T` back to `Self`.
-    fn decode_from(value: T) -> Result<Self, io::Error>;
-}
+pub use databend_meta_snapshot_db::PersistedCodec;

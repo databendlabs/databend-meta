@@ -15,6 +15,7 @@
 use std::io;
 use std::sync::Arc;
 
+use databend_meta_snapshot_db::ReadAtSeqDB;
 use databend_meta_types::Endpoint;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::node::Node;
@@ -33,7 +34,6 @@ use state_machine_api::ExpireKey;
 use state_machine_api::KVMeta;
 use state_machine_api::UserKey;
 
-use crate::leveled_store::ReadAtSeqDB;
 use crate::leveled_store::db_builder::DBBuilder;
 use crate::leveled_store::immutable_data::ImmutableData;
 use crate::leveled_store::immutable_levels::ImmutableLevels;

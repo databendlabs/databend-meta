@@ -15,23 +15,23 @@
 use std::io;
 use std::ops::RangeBounds;
 
-use databend_meta_snapshot_db::DB;
 use futures_util::StreamExt;
 use map_api::IOResultStream;
+use map_api::MapKey;
 use rotbl::v001::SeqMarked;
 
-use crate::leveled_store::map_api::MapKey;
-use crate::leveled_store::map_api::MapKeyDecode;
-use crate::leveled_store::map_api::MapKeyEncode;
-use crate::leveled_store::persisted_codec::PersistedCodec;
-use crate::leveled_store::rotbl_codec::RotblCodec;
+use crate::DB;
+use crate::MapKeyDecode;
+use crate::MapKeyEncode;
+use crate::PersistedCodec;
+use crate::RotblCodec;
 
 /// A wrapper that implements the `ScopedSnapshot*` trait for the `DB`.
 #[derive(Debug, Clone)]
 pub struct ReadAtSeqDB<'a>(pub &'a DB);
 
 impl ReadAtSeqDB<'_> {
-    pub(crate) async fn get_at_seq<K>(
+    pub async fn get_at_seq<K>(
         &self,
         key: K,
         snapshot_seq: u64,
@@ -69,7 +69,7 @@ impl ReadAtSeqDB<'_> {
 }
 
 impl ReadAtSeqDB<'_> {
-    pub(crate) async fn range_at_seq<K, R>(
+    pub async fn range_at_seq<K, R>(
         &self,
         range: R,
         snapshot_seq: u64,
@@ -114,7 +114,6 @@ impl ReadAtSeqDB<'_> {
 mod tests {
     use std::sync::Arc;
 
-    use databend_meta_snapshot_db::DB;
     use futures_util::TryStreamExt;
     use rotbl::storage::impls::fs::FsStorage;
     use rotbl::v001::Config;
@@ -125,7 +124,7 @@ mod tests {
     use state_machine_api::UserKey;
 
     use super::*;
-    use crate::leveled_store::rotbl_codec::RotblCodec;
+    use crate::RotblCodec;
 
     fn user_key(s: impl ToString) -> UserKey {
         UserKey::new(s)

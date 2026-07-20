@@ -18,6 +18,7 @@ use std::future;
 use std::io;
 
 use databend_meta_snapshot_db::DB;
+use databend_meta_snapshot_db::ReadAtSeqDB;
 use databend_meta_types::SeqNum;
 use databend_meta_types::SeqV;
 use futures_util::StreamExt;
@@ -29,7 +30,6 @@ use state_machine_api::ExpireValue;
 use state_machine_api::UserKey;
 
 use crate::key_spaces::SMEntry;
-use crate::leveled_store::db_impl_scoped_seq_bounded_read::ReadAtSeqDB;
 use crate::state_machine::StateMachineMetaKey;
 use crate::state_machine::StateMachineMetaValue;
 
