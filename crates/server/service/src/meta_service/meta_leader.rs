@@ -255,7 +255,10 @@ impl<'a, SP: SpawnApi> MetaLeader<'a, SP> {
         let membership = self
             .sto
             .get_sm_v003()
-            .with_sys_data(|s| s.last_membership_ref().membership().clone());
+            .data()
+            .last_membership()
+            .membership()
+            .clone();
 
         let msg = if membership.voter_ids().any(|id| id == node_id) {
             ChangeMembers::RemoveVoters(btreeset! {node_id})

@@ -89,7 +89,7 @@ impl LeveledMap {
         StateMachineView::from_leveled_map(self)
     }
 
-    pub fn with_sys_data<T>(&self, f: impl FnOnce(&mut SysData) -> T) -> T {
+    pub(crate) fn with_sys_data<T>(&self, f: impl FnOnce(&mut SysData) -> T) -> T {
         self.with_inner(|inner| inner.writable.with_sys_data(f))
     }
 
@@ -104,8 +104,9 @@ impl LeveledMap {
         self.do_freeze_writable()
     }
 
-    /// For testing, requires no permit
-    pub fn freeze_writable_without_permit(&self) {
+    /// For testing, requires no permit.
+    #[cfg(test)]
+    pub(crate) fn freeze_writable_without_permit(&self) {
         self.do_freeze_writable()
     }
 

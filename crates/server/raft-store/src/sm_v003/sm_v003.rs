@@ -273,10 +273,6 @@ impl SMV003 {
         self.leveled_map.with_sys_data(|x| x.clone())
     }
 
-    pub fn with_sys_data<T>(&self, f: impl FnOnce(&mut SysData) -> T) -> T {
-        self.leveled_map.with_sys_data(f)
-    }
-
     pub fn into_leveled_map(self) -> LeveledMap {
         self.leveled_map
     }
