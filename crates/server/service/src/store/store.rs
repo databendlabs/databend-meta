@@ -32,7 +32,6 @@ use databend_meta_raft_store::raft_log_v004::RaftLogV004;
 use databend_meta_raft_store::raft_log_v004::util;
 use databend_meta_raft_store::sm_v003::SMV003;
 use databend_meta_raft_store::sm_v003::SnapshotStoreV004;
-use databend_meta_raft_store::sm_v003::compactor_acquirer::CompactorAcquirer;
 use databend_meta_raft_store::state_machine::MetaSnapshotId;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DB;
@@ -243,7 +242,8 @@ impl<SP: SpawnApi> RaftStore<SP> {
             Ok(line)
         }
 
-        let permit = self.new_compactor_acquirer("export").acquire().await;
+        let sm = self.get_sm_v003();
+        let compactor = sm.acquire_compactor("export").await;
 
         let mut dump = {
             let log = self.log().read().await;
@@ -252,8 +252,8 @@ impl<SP: SpawnApi> RaftStore<SP> {
 
         // Log is dumped thus there won't be a gap between sm and log.
         // It is now safe to release the compactor.
-        let db = self.get_sm_v003().get_snapshot();
-        drop(permit);
+        let db = compactor.db();
+        drop(compactor);
 
         // Export data header first
         {
@@ -352,9 +352,5 @@ impl<SP: SpawnApi> RaftStore<SP> {
         }
 
         ns
-    }
-    fn new_compactor_acquirer(&self, name: impl ToString) -> CompactorAcquirer {
-        let sm = self.get_sm_v003();
-        sm.new_compactor_acquirer(name)
     }
 }

@@ -22,7 +22,7 @@ use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::Semaphore;
 
 /// Acquirer is used to acquire a permit for compaction, without holding lock to the state machine.
-pub struct CompactorAcquirer {
+pub(super) struct CompactorAcquirer {
     name: String,
     sem: Arc<Semaphore>,
 }
@@ -34,14 +34,14 @@ impl fmt::Display for CompactorAcquirer {
 }
 
 impl CompactorAcquirer {
-    pub fn new(sem: Arc<Semaphore>, name: impl ToString) -> Self {
+    pub(super) fn new(sem: Arc<Semaphore>, name: impl ToString) -> Self {
         CompactorAcquirer {
             name: name.to_string(),
             sem,
         }
     }
 
-    pub async fn acquire(self) -> CompactorPermit {
+    pub(super) async fn acquire(self) -> CompactorPermit {
         let start = Instant::now();
 
         // Safe unwrap: it returns error only when semaphore is closed.
@@ -70,7 +70,7 @@ impl CompactorAcquirer {
 }
 
 #[derive(Debug)]
-pub struct CompactorPermit {
+pub(crate) struct CompactorPermit {
     _permit: OwnedSemaphorePermit,
     _drop: DropGuard,
 }

@@ -157,18 +157,9 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
         let _guard = SnapshotBuilding::guard();
 
         let sm_v003 = self.get_inner();
-        let mut compactor_permit = sm_v003
-            .new_compactor_acquirer("build_snapshot")
-            .acquire()
+        let mut compactor = sm_v003
+            .freeze_writable_for_compaction("build_snapshot")
             .await;
-        {
-            let mut writer_permit = sm_v003.acquire_writer_permit().await;
-            sm_v003
-                .leveled_map()
-                .freeze_writable(&mut writer_permit, &mut compactor_permit);
-        }
-
-        let mut compactor = sm_v003.new_compactor(compactor_permit);
 
         info!("do_build_snapshot compactor created");
 

@@ -40,9 +40,8 @@ impl InMemoryCompactor {
     pub async fn new(sm: Arc<SMV003>, name: impl ToString) -> Self {
         let name = name.to_string();
 
-        // Always acquire the compactor permit first to avoid deadlock.
-        let compactor_permit = sm.new_compactor_acquirer(name.clone()).acquire().await;
-        let writer_permit = sm.new_writer_acquirer().acquire().await;
+        let (compactor_permit, writer_permit) =
+            sm.acquire_compaction_and_writer(name.clone()).await;
 
         Self {
             writer_permit,
@@ -100,7 +99,7 @@ impl fmt::Display for ImmutableCompactor {
 }
 
 impl ImmutableCompactor {
-    pub fn new(
+    pub(crate) fn new(
         leveled_map: LeveledMap,
         compactor_permit: CompactorPermit,
         name: impl ToString,

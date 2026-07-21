@@ -40,11 +40,11 @@ use crate::leveled_store::leveled_map::compactor::Compactor;
 use crate::leveled_store::leveled_map::leveled_map_data::LeveledMapData;
 use crate::leveled_store::snapshot::StateMachineSnapshot;
 use crate::leveled_store::view::StateMachineView;
+use crate::sm_v003::WriterPermit;
 use crate::sm_v003::compactor_acquirer::CompactorAcquirer;
 use crate::sm_v003::compactor_acquirer::CompactorPermit;
 use crate::sm_v003::sm_v003_kv_api::SMV003KVApi;
 use crate::sm_v003::writer_acquirer::WriterAcquirer;
-use crate::sm_v003::writer_acquirer::WriterPermit;
 
 pub type OnChange = Box<dyn Fn((String, Option<SeqV>, Option<SeqV>)) + Send + Sync>;
 
@@ -52,7 +52,7 @@ pub struct SMV003 {
     leveled_map: LeveledMap,
 
     /// A semaphore that permits at most one compactor to run.
-    pub(crate) compaction_semaphore: Arc<Semaphore>,
+    compaction_semaphore: Arc<Semaphore>,
 
     /// Semaphore for exclusive write access to the state machine.
     ///
@@ -64,7 +64,7 @@ pub struct SMV003 {
     /// Historical context: Inserting tombstones does not increase the seq,
     /// so MVCC isolation with seq alone cannot completely separate concurrent writers.
     /// This semaphore provides the necessary serialization.
-    pub(crate) write_semaphore: Arc<Semaphore>,
+    write_semaphore: Arc<Semaphore>,
 
     /// Since when to start cleaning expired keys.
     cleanup_start_time: Arc<Mutex<Duration>>,
@@ -237,8 +237,18 @@ impl SMV003 {
         permit
     }
 
-    pub fn new_writer_acquirer(&self) -> WriterAcquirer {
+    fn new_writer_acquirer(&self) -> WriterAcquirer {
         WriterAcquirer::new(self.write_semaphore.clone())
+    }
+
+    pub(crate) async fn acquire_compaction_and_writer(
+        &self,
+        name: impl ToString,
+    ) -> (CompactorPermit, WriterPermit) {
+        let compactor_permit = self.new_compactor_acquirer(name).acquire().await;
+        let writer_permit = self.acquire_writer_permit().await;
+
+        (compactor_permit, writer_permit)
     }
 
     /// Apply entries from the stream to the state machine.
@@ -296,7 +306,21 @@ impl SMV003 {
         self.new_compactor(permit)
     }
 
-    pub fn new_compactor(&self, permit: CompactorPermit) -> Compactor {
+    /// Acquire permits in canonical order, freeze the writable level, and
+    /// return a compactor that retains the compaction permit.
+    pub async fn freeze_writable_for_compaction(&self, name: impl ToString) -> Compactor {
+        let (mut compactor_permit, mut writer_permit) =
+            self.acquire_compaction_and_writer(name).await;
+
+        self.leveled_map
+            .freeze_writable(&mut writer_permit, &mut compactor_permit);
+
+        drop(writer_permit);
+
+        self.new_compactor(compactor_permit)
+    }
+
+    fn new_compactor(&self, permit: CompactorPermit) -> Compactor {
         let immutable_data = self.leveled_map.immutable_data();
 
         info!(
@@ -304,13 +328,10 @@ impl SMV003 {
             immutable_data.stat()
         );
 
-        Compactor {
-            _permit: permit,
-            immutable_data,
-        }
+        Compactor::new(permit, immutable_data)
     }
 
-    pub fn new_compactor_acquirer(&self, name: impl ToString) -> CompactorAcquirer {
+    fn new_compactor_acquirer(&self, name: impl ToString) -> CompactorAcquirer {
         CompactorAcquirer::new(self.compaction_semaphore.clone(), name)
     }
 }

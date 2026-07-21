@@ -22,7 +22,7 @@ use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::Semaphore;
 
 /// Acquirer is used to acquire a permit for applying, without holding lock to the state machine.
-pub struct WriterAcquirer {
+pub(super) struct WriterAcquirer {
     sem: Arc<Semaphore>,
 }
 
@@ -33,11 +33,11 @@ impl fmt::Display for WriterAcquirer {
 }
 
 impl WriterAcquirer {
-    pub fn new(sem: Arc<Semaphore>) -> Self {
+    pub(super) fn new(sem: Arc<Semaphore>) -> Self {
         WriterAcquirer { sem }
     }
 
-    pub async fn acquire(self) -> WriterPermit {
+    pub(super) async fn acquire(self) -> WriterPermit {
         // Safe unwrap: it returns error only when semaphore is closed.
         // This semaphore does not close.
         let start = Instant::now();

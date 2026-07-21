@@ -96,7 +96,7 @@ impl LeveledMap {
     /// Freeze the current writable level and create a new empty writable level.
     ///
     /// Need writer permit to reset the writable level, and compactor permit to add a new immutable level.
-    pub fn freeze_writable(
+    pub(crate) fn freeze_writable(
         &self,
         _writer_permit: &mut WriterPermit,
         _compactor_permit: &mut CompactorPermit,

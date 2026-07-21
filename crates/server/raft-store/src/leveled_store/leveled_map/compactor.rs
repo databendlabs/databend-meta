@@ -32,11 +32,18 @@ pub struct Compactor {
     /// Acquired permit for this compactor.
     ///
     /// This is used to ensure that only one compactor can run at a time.
-    pub(crate) _permit: CompactorPermit,
+    _permit: CompactorPermit,
     pub(crate) immutable_data: Arc<ImmutableData>,
 }
 
 impl Compactor {
+    pub(crate) fn new(permit: CompactorPermit, immutable_data: Arc<ImmutableData>) -> Self {
+        Self {
+            _permit: permit,
+            immutable_data,
+        }
+    }
+
     pub fn immutable_data(&self) -> Arc<ImmutableData> {
         self.immutable_data.clone()
     }

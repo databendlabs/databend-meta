@@ -185,10 +185,8 @@ async fn test_compact() -> anyhow::Result<()> {
 async fn test_compact_expire_index() -> anyhow::Result<()> {
     let (sm, _g) = build_sm_with_expire().await?;
     {
-        let mut permit = sm.new_writer_acquirer().acquire().await;
-        let mut compactor_permit = sm.new_compactor_acquirer("").acquire().await;
-        sm.leveled_map()
-            .freeze_writable(&mut permit, &mut compactor_permit);
+        let compactor = sm.freeze_writable_for_compaction("").await;
+        drop(compactor);
     }
 
     let mut lm = sm.into_leveled_map();
