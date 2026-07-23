@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::io;
+use std::time::Duration;
 
 use databend_meta::meta_node::meta_node::LogStore;
 use databend_meta::meta_node::meta_node::SMStore;
@@ -356,6 +357,21 @@ async fn test_meta_store_install_snapshot() -> anyhow::Result<()> {
 
         info!("--- install snapshot");
         {
+            let writer_permit = sto.get_sm_v003().acquire_writer_permit().await;
+
+            assert!(
+                tokio::time::timeout(
+                    Duration::from_millis(10),
+                    sto.state_machine()
+                        .clone()
+                        .do_install_snapshot(data.clone()),
+                )
+                .await
+                .is_err()
+            );
+
+            drop(writer_permit);
+
             sto.state_machine()
                 .clone()
                 .do_install_snapshot(data.clone())
