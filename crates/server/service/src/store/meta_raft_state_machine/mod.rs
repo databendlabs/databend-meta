@@ -86,7 +86,7 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
 
         self.in_memory_compactor_cancel = Some(Arc::new(tx));
 
-        let weak = Arc::downgrade(&self.get_inner());
+        let weak = Arc::downgrade(&self.inner);
         let fu = Self::compact_loop(weak, interval, rx);
 
         #[allow(unused_must_use)]
@@ -94,7 +94,7 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
     }
 
     async fn compact_loop(
-        weak_sm: Weak<SMV003>,
+        weak_inner: Weak<Mutex<Arc<SMV003>>>,
         interval: Duration,
         cancel: oneshot::Receiver<()>,
     ) {
@@ -114,10 +114,16 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
 
             }
 
-            let Some(sm) = weak_sm.upgrade() else {
+            // Track the slot holding the current state machine, not one instance:
+            // snapshot installation replaces the inner `Arc<SMV003>`, and a weak
+            // reference to the replaced instance would end this loop and leave the
+            // new state machine without in-memory compaction.
+            let Some(inner) = weak_inner.upgrade() else {
                 info!("in_memory_compact canceled as state machine dropped");
                 return;
             };
+
+            let sm = inner.lock().unwrap().deref().clone();
 
             Self::in_memory_compact_once(sm).await
         }
