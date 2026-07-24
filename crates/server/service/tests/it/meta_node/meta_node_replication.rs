@@ -210,6 +210,26 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
         snapshot_meta,
     ));
 
+    // Client writes concurrent to the snapshot RPC: installation must
+    // serialize with them, and the snapshot supersedes them all because its
+    // log id carries a greater term.
+    let write_task = {
+        let mn = tc0.meta_node();
+        tokio::spawn(async move {
+            for i in 0.. {
+                let key = format!("during-install-{}", i);
+                let res = mn
+                    .write(LogEntry::new(Cmd::UpsertKV(UpsertKV::update(&key, b"v"))))
+                    .await;
+
+                // The node steps down once it accepts the term-10 snapshot.
+                if res.is_err() {
+                    break;
+                }
+            }
+        })
+    };
+
     // Complete transmit
 
     let resp = client0
@@ -228,6 +248,21 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
         .wait(timeout())
         .snapshot(last_log_id, "snapshot is installed")
         .await?;
+
+    write_task.await?;
+
+    // The installed snapshot replaced the state machine wholesale.
+    {
+        let sm = meta_node.raft_store.get_sm_v003();
+
+        assert_eq!(Some(last_log_id), *sm.sys_data().last_applied_ref());
+
+        let got = sm.get_maybe_expired_kv("during-install-0").await?;
+        assert_eq!(
+            None, got,
+            "concurrent writes are superseded by the snapshot"
+        );
+    }
 
     // Incomplete
 
