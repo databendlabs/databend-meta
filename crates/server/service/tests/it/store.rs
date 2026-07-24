@@ -20,6 +20,7 @@ use databend_meta::meta_node::meta_node::SMStore;
 use databend_meta::store::RaftStore;
 use databend_meta_raft_store::leveled_store::db_exporter::DBExporter;
 use databend_meta_raft_store::raft_log_v004::util::blocking_flush;
+use databend_meta_raft_store::state_machine::MetaSnapshotId;
 use databend_meta_raft_store::state_machine::testing::snapshot_logs;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_snapshot_db::DB;
@@ -27,6 +28,7 @@ use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
 use databend_meta_types::SeqV;
 use databend_meta_types::UpsertKV;
+use databend_meta_types::node::Node;
 use databend_meta_types::normalize_meta::NormalizeMeta;
 use databend_meta_types::raft_types::Entry;
 use databend_meta_types::raft_types::EntryPayload;
@@ -37,10 +39,12 @@ use databend_meta_types::raft_types::StoredMembership;
 use databend_meta_types::raft_types::TypeConfig;
 use databend_meta_types::raft_types::Vote;
 use databend_meta_types::raft_types::new_log_id;
+use databend_meta_types::sys_data::SysData;
 use futures::TryStreamExt;
 use futures::stream;
 use log::debug;
 use log::info;
+use maplit::btreemap;
 use maplit::btreeset;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
@@ -705,6 +709,44 @@ async fn test_meta_store_install_snapshot_not_blocked_by_compaction() -> anyhow:
     assert_eq!(Some(SeqV::new(1, b"A".to_vec())), got.without_proposed_at());
 
     assert!(sm.get_snapshot().is_some());
+
+    Ok(())
+}
+
+/// A snapshot without last_applied must still be installed when the state
+/// machine has no last_applied either: `databend_metactl::import` produces
+/// such snapshots, containing manually added nodes but no log id.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_meta_store_install_snapshot_without_last_applied() -> anyhow::Result<()> {
+    let id = 3;
+    let tc = MetaSrvTestContext::<TokioRuntime>::new(id);
+    let sto = RaftStore::<TokioRuntime>::open(&tc.config.raft_config).await?;
+
+    info!("--- build a snapshot with node data but no last_applied, like metactl import");
+
+    let db = {
+        let writer = sto.state_machine().snapshot_store().new_writer()?;
+
+        let mut sys_data = SysData::default();
+        sys_data.nodes_mut().insert(5, Node::default());
+
+        writer.commit(MetaSnapshotId::new_with_epoch(None), sys_data)?
+    };
+
+    sto.state_machine().clone().do_install_snapshot(db).await?;
+
+    let sm = sto.get_sm_v003();
+
+    assert_eq!(None, *sm.sys_data().last_applied_ref());
+    assert_eq!(
+        btreemap! {5 => Node::default()},
+        sm.sys_data().nodes_ref().clone()
+    );
+    assert!(
+        sm.get_snapshot().is_some(),
+        "a None/None install must not be skipped"
+    );
 
     Ok(())
 }
