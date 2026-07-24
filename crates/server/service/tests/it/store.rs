@@ -571,6 +571,96 @@ async fn test_meta_store_install_snapshot_skips_stale_snapshot() -> anyhow::Resu
     Ok(())
 }
 
+/// Installing a snapshot that is still fresher than an in-flight write batch
+/// must wait for the batch, then proceed: the write is legitimately
+/// superseded because the snapshot contains it.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_meta_store_install_snapshot_proceeds_after_in_flight_write() -> anyhow::Result<()> {
+    let id = 3;
+
+    // last_applied == (1, 0, 9)
+    let data = build_snapshot_db(id).await?;
+
+    let tc = MetaSrvTestContext::<TokioRuntime>::new(id);
+    let sto = RaftStore::<TokioRuntime>::open(&tc.config.raft_config).await?;
+
+    info!("--- apply the first 6 entries; the batch stays open, short of the snapshot");
+
+    let (entry_tx, entry_rx) =
+        futures::channel::mpsc::unbounded::<Result<EntryResponder, io::Error>>();
+
+    let (logs, want) = snapshot_logs();
+    for ent in logs.into_iter().take(6) {
+        entry_tx
+            .unbounded_send(Ok((ent, None)))
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+    }
+
+    let apply_task = {
+        let sm = sto.get_sm_v003();
+        tokio::spawn(async move { sm.apply_entries(entry_rx).await })
+    };
+
+    // Wait until the apply task holds the writer permit.
+    loop {
+        let acquired = tokio::time::timeout(
+            Duration::from_millis(10),
+            sto.get_sm_v003().acquire_writer_permit(),
+        )
+        .await;
+
+        let Ok(permit) = acquired else {
+            break;
+        };
+        drop(permit);
+        tokio::task::yield_now().await;
+    }
+
+    info!("--- install snapshot; it must block until the batch commits");
+
+    let install_task = {
+        let mut sm_store = sto.state_machine().clone();
+        let data = data.clone();
+        tokio::spawn(async move { sm_store.do_install_snapshot(data).await })
+    };
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        !install_task.is_finished(),
+        "install must wait for the in-flight write"
+    );
+
+    drop(entry_tx);
+    apply_task.await??;
+    install_task.await??;
+
+    info!("--- the snapshot is still fresher: it must be installed");
+    {
+        let sm = sto.get_sm_v003();
+
+        let last_applied = *sm.sys_data().last_applied_ref();
+        assert_eq!(Some(log_id::<TypeConfig>(1, 0, 9)), last_applied);
+
+        let mem = sm.sys_data().last_membership_ref().clone();
+        assert_eq!(
+            StoredMembership::new(
+                Some(log_id::<TypeConfig>(1, 0, 5)),
+                Membership::new_with_defaults(vec![btreeset! {4,5,6}], [])
+            ),
+            mem
+        );
+
+        assert!(sm.get_snapshot().is_some());
+
+        let curr_snap = sto.state_machine().clone().build_snapshot().await?;
+        let res = db_to_lines(&curr_snap.snapshot).await?;
+        assert_eq!(want, res);
+    }
+
+    Ok(())
+}
+
 /// Installation is deliberately independent from compaction: a held
 /// compaction permit must not delay installing a snapshot.
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
