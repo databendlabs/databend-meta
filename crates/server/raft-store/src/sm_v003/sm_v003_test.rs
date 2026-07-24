@@ -28,6 +28,8 @@ use seq_marked::SeqValue;
 use state_machine_api::ExpireKey;
 use state_machine_api::StateMachineApi;
 
+use crate::leveled_store::db_builder::DBBuilder;
+use crate::leveled_store::leveled_map::LeveledMap;
 use crate::sm_v003::SMV003;
 use crate::state_machine_api_ext::StateMachineApiExt;
 
@@ -392,6 +394,64 @@ async fn test_inserting_expired_becomes_deleting() -> anyhow::Result<()> {
         (ExpireKey::new(15_000, 4), SeqMarked::new_tombstone(5),),
         (ExpireKey::new(20_000, 3), SeqMarked::new_normal(3, s("c"))),
     ]);
+
+    Ok(())
+}
+
+/// A snapshot-installed state machine shares the writer and compaction
+/// semaphores with its predecessor: a permit acquired from the old instance
+/// keeps excluding writers and compactors on the new one.
+///
+/// Snapshot installation relies on this: it holds the writer permit of the
+/// pre-install instance across the swap, which must gate writers of the
+/// post-install instance as well.
+#[tokio::test]
+async fn test_install_snapshot_v003_shares_semaphores() -> anyhow::Result<()> {
+    let sm = SMV003::default();
+
+    let temp_dir = tempfile::tempdir()?;
+    let db_builder = DBBuilder::new(
+        temp_dir.path().to_str().unwrap(),
+        "temp-db",
+        rotbl::v001::Config::default(),
+    )?;
+    let db = db_builder
+        .build_from_leveled_map(&mut LeveledMap::default(), |_sys_data| {
+            "1-1-1-1.snap".to_string()
+        })
+        .await?;
+
+    let sm2 = sm.install_snapshot_v003(db);
+
+    // Writer semaphore is shared.
+    {
+        let permit = sm.acquire_writer_permit().await;
+
+        let blocked =
+            tokio::time::timeout(Duration::from_millis(100), sm2.acquire_writer_permit()).await;
+        assert!(
+            blocked.is_err(),
+            "writer permit of the old instance must block the new instance"
+        );
+
+        drop(permit);
+        let _permit2 = sm2.acquire_writer_permit().await;
+    }
+
+    // Compaction semaphore is shared.
+    {
+        let compactor = sm.acquire_compactor("old").await;
+
+        let blocked =
+            tokio::time::timeout(Duration::from_millis(100), sm2.acquire_compactor("new")).await;
+        assert!(
+            blocked.is_err(),
+            "compaction permit of the old instance must block the new instance"
+        );
+
+        drop(compactor);
+        let _compactor2 = sm2.acquire_compactor("new").await;
+    }
 
     Ok(())
 }
