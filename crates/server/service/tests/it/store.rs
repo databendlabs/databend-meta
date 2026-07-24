@@ -571,6 +571,54 @@ async fn test_meta_store_install_snapshot_skips_stale_snapshot() -> anyhow::Resu
     Ok(())
 }
 
+/// Installation is deliberately independent from compaction: a held
+/// compaction permit must not delay installing a snapshot.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_meta_store_install_snapshot_not_blocked_by_compaction() -> anyhow::Result<()> {
+    let id = 3;
+
+    // last_applied == (1, 0, 9)
+    let data = build_snapshot_db(id).await?;
+
+    let tc = MetaSrvTestContext::<TokioRuntime>::new(id);
+    let sto = RaftStore::<TokioRuntime>::open(&tc.config.raft_config).await?;
+
+    let compactor = sto.get_sm_v003().acquire_compactor("test").await;
+
+    let res = tokio::time::timeout(
+        Duration::from_secs(5),
+        sto.state_machine()
+            .clone()
+            .do_install_snapshot(data.clone()),
+    )
+    .await;
+    res.expect("install must not wait for the compaction permit")?;
+
+    drop(compactor);
+
+    let sm = sto.get_sm_v003();
+
+    let last_applied = *sm.sys_data().last_applied_ref();
+    assert_eq!(Some(log_id::<TypeConfig>(1, 0, 9)), last_applied);
+
+    let mem = sm.sys_data().last_membership_ref().clone();
+    assert_eq!(
+        StoredMembership::new(
+            Some(log_id::<TypeConfig>(1, 0, 5)),
+            Membership::new_with_defaults(vec![btreeset! {4,5,6}], [])
+        ),
+        mem
+    );
+
+    let got = sm.get_maybe_expired_kv("a").await?;
+    assert_eq!(Some(SeqV::new(1, b"A".to_vec())), got.without_proposed_at());
+
+    assert!(sm.get_snapshot().is_some());
+
+    Ok(())
+}
+
 /// Feed `snapshot_logs()` to a fresh store and build a snapshot from it.
 ///
 /// The returned snapshot DB has `last_applied == (1, 0, 9)`.
