@@ -751,6 +751,145 @@ async fn test_meta_store_install_snapshot_without_last_applied() -> anyhow::Resu
     Ok(())
 }
 
+/// A snapshot build that captured the pre-install state machine may complete
+/// after a snapshot installation; it reorganizes only the discarded map and
+/// must not affect the installed state.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_meta_store_install_snapshot_during_snapshot_build() -> anyhow::Result<()> {
+    let id = 3;
+
+    // last_applied == (1, 0, 9)
+    let data = build_snapshot_db(id).await?;
+
+    let tc = MetaSrvTestContext::<TokioRuntime>::new(id);
+    let sto = RaftStore::<TokioRuntime>::open(&tc.config.raft_config).await?;
+
+    info!("--- apply the first 6 entries: last_applied == (1, 0, 6)");
+    {
+        let (logs, _want) = snapshot_logs();
+        let entry_stream = stream::iter(logs.into_iter().take(6).map(|e| Ok((e, None))));
+        sto.get_sm_v003().apply_entries(entry_stream).await?;
+    }
+
+    info!("--- start building a snapshot; it blocks on the held writer permit");
+
+    let writer_permit = sto.get_sm_v003().acquire_writer_permit().await;
+
+    let build_task = {
+        let mut sm_store = sto.state_machine().clone();
+        tokio::spawn(async move { sm_store.build_snapshot().await })
+    };
+
+    // Wait until the build task holds the compaction permit: the pre-install
+    // state machine is captured by then.
+    loop {
+        let acquired = tokio::time::timeout(
+            Duration::from_millis(10),
+            sto.get_sm_v003().acquire_compactor("probe"),
+        )
+        .await;
+
+        let Ok(compactor) = acquired else {
+            break;
+        };
+        drop(compactor);
+        tokio::task::yield_now().await;
+    }
+
+    drop(writer_permit);
+
+    info!("--- install a snapshot while the build is in flight");
+
+    sto.state_machine()
+        .clone()
+        .do_install_snapshot(data.clone())
+        .await?;
+
+    let built = build_task.await??;
+    assert_eq!(
+        Some(log_id::<TypeConfig>(1, 0, 6)),
+        built.meta.last_log_id,
+        "the build captured the pre-install state machine"
+    );
+
+    info!("--- the installed state machine is unaffected by the stale build");
+    {
+        let (_logs, want) = snapshot_logs();
+
+        let sm = sto.get_sm_v003();
+
+        let last_applied = *sm.sys_data().last_applied_ref();
+        assert_eq!(Some(log_id::<TypeConfig>(1, 0, 9)), last_applied);
+
+        let installed = sm.get_snapshot().unwrap();
+        assert_eq!(
+            Some(log_id::<TypeConfig>(1, 0, 9)),
+            *installed.sys_data().last_applied_ref(),
+            "the persisted level is the installed snapshot, not the stale build"
+        );
+
+        let res = db_to_lines(&installed).await?;
+        assert_eq!(want, res);
+    }
+
+    Ok(())
+}
+
+/// The in-memory compactor keeps serving the current state machine after a
+/// snapshot installation replaces it.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_meta_store_in_memory_compactor_survives_install_snapshot() -> anyhow::Result<()> {
+    let id = 3;
+
+    // last_applied == (1, 0, 9)
+    let data = build_snapshot_db(id).await?;
+
+    let mut tc = MetaSrvTestContext::<TokioRuntime>::new(id);
+    tc.config.raft_config.compact_immutables_ms = Some(50);
+
+    let sto = RaftStore::<TokioRuntime>::open(&tc.config.raft_config).await?;
+
+    sto.state_machine()
+        .clone()
+        .do_install_snapshot(data)
+        .await?;
+
+    info!("--- write to the installed state machine; the compactor must freeze it");
+
+    let ent = Entry {
+        log_id: new_log_id(1, 0, 10),
+        payload: EntryPayload::Normal(LogEntry::new(Cmd::UpsertKV(UpsertKV::update(
+            "after-install",
+            b"x",
+        )))),
+    };
+    let entry_stream = stream::iter([Ok((ent, None))]);
+    sto.get_sm_v003().apply_entries(entry_stream).await?;
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let n_levels = sto
+            .get_sm_v003()
+            .leveled_map()
+            .immutable_levels()
+            .stat()
+            .len();
+        if n_levels > 0 {
+            break;
+        }
+
+        assert!(
+            std::time::Instant::now() < deadline,
+            "in-memory compactor must still compact the installed state machine"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    Ok(())
+}
+
 /// Feed `snapshot_logs()` to a fresh store and build a snapshot from it.
 ///
 /// The returned snapshot DB has `last_applied == (1, 0, 9)`.
