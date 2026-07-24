@@ -23,7 +23,14 @@ use databend_meta_raft_store::raft_log_v004::util::blocking_flush;
 use databend_meta_raft_store::state_machine::testing::snapshot_logs;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_snapshot_db::DB;
+use databend_meta_types::Cmd;
+use databend_meta_types::LogEntry;
+use databend_meta_types::SeqV;
+use databend_meta_types::UpsertKV;
+use databend_meta_types::normalize_meta::NormalizeMeta;
 use databend_meta_types::raft_types::Entry;
+use databend_meta_types::raft_types::EntryPayload;
+use databend_meta_types::raft_types::EntryResponder;
 use databend_meta_types::raft_types::Membership;
 use databend_meta_types::raft_types::StorageError;
 use databend_meta_types::raft_types::StoredMembership;
@@ -329,25 +336,10 @@ async fn test_meta_store_install_snapshot() -> anyhow::Result<()> {
     // - Create a snapshot
     // - Create a new metasrv and restore it by install the snapshot
 
-    let (logs, want) = snapshot_logs();
+    let (_logs, want) = snapshot_logs();
 
     let id = 3;
-    let snap;
-    {
-        let tc = MetaSrvTestContext::<TokioRuntime>::new(id);
-
-        let sto = RaftStore::<TokioRuntime>::open(&tc.config.raft_config).await?;
-
-        info!("--- feed logs and state machine");
-
-        sto.log().clone().blocking_append(logs.clone()).await?;
-        let entry_stream = stream::iter(logs.into_iter().map(|e| Ok((e, None))));
-        sto.get_sm_v003().apply_entries(entry_stream).await?;
-
-        snap = sto.state_machine().clone().build_snapshot().await?;
-    }
-
-    let data = snap.snapshot;
+    let data = build_snapshot_db(id).await?;
 
     info!("--- reopen a new metasrv to install snapshot");
     {
@@ -407,6 +399,119 @@ async fn test_meta_store_install_snapshot() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Installing a snapshot must wait for an in-flight write and re-check
+/// freshness after acquiring the writer permit: a write batch that advances
+/// the state machine past the snapshot must survive the installation attempt.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_meta_store_install_snapshot_waits_for_in_flight_write() -> anyhow::Result<()> {
+    let id = 3;
+
+    // last_applied == (1, 0, 9)
+    let data = build_snapshot_db(id).await?;
+
+    let tc = MetaSrvTestContext::<TokioRuntime>::new(id);
+    let sto = RaftStore::<TokioRuntime>::open(&tc.config.raft_config).await?;
+
+    info!("--- apply an entry batch that stays open: the writer permit is held");
+
+    let (entry_tx, entry_rx) =
+        futures::channel::mpsc::unbounded::<Result<EntryResponder, io::Error>>();
+
+    let (logs, _want) = snapshot_logs();
+    for ent in logs {
+        entry_tx
+            .unbounded_send(Ok((ent, None)))
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+    }
+    // One more write at index 10, past the snapshot's last_applied.
+    let ent = Entry {
+        log_id: new_log_id(1, 0, 10),
+        payload: EntryPayload::Normal(LogEntry::new(Cmd::UpsertKV(UpsertKV::update(
+            "in-flight",
+            b"x",
+        )))),
+    };
+    entry_tx
+        .unbounded_send(Ok((ent, None)))
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let apply_task = {
+        let sm = sto.get_sm_v003();
+        tokio::spawn(async move { sm.apply_entries(entry_rx).await })
+    };
+
+    // Wait until the apply task holds the writer permit.
+    loop {
+        let acquired = tokio::time::timeout(
+            Duration::from_millis(10),
+            sto.get_sm_v003().acquire_writer_permit(),
+        )
+        .await;
+
+        let Ok(permit) = acquired else {
+            break;
+        };
+        drop(permit);
+        tokio::task::yield_now().await;
+    }
+
+    info!("--- install snapshot; it must block until the batch commits");
+
+    let install_task = {
+        let mut sm_store = sto.state_machine().clone();
+        let data = data.clone();
+        tokio::spawn(async move { sm_store.do_install_snapshot(data).await })
+    };
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        !install_task.is_finished(),
+        "install must wait for the in-flight write"
+    );
+
+    // Closing the entry stream commits the batch and releases the permit.
+    drop(entry_tx);
+    apply_task.await??;
+    install_task.await??;
+
+    info!("--- the write advanced past the snapshot: install must be skipped");
+    {
+        let sm = sto.get_sm_v003();
+
+        let last_applied = *sm.sys_data().last_applied_ref();
+        assert_eq!(Some(log_id::<TypeConfig>(1, 0, 10)), last_applied);
+
+        let got = sm.get_maybe_expired_kv("in-flight").await?;
+        assert_eq!(Some(SeqV::new(2, b"x".to_vec())), got.without_proposed_at());
+
+        assert!(
+            sm.get_snapshot().is_none(),
+            "the stale snapshot must not be installed"
+        );
+    }
+
+    Ok(())
+}
+
+/// Feed `snapshot_logs()` to a fresh store and build a snapshot from it.
+///
+/// The returned snapshot DB has `last_applied == (1, 0, 9)`.
+async fn build_snapshot_db(id: u64) -> anyhow::Result<DB> {
+    let tc = MetaSrvTestContext::<TokioRuntime>::new(id);
+
+    let sto = RaftStore::<TokioRuntime>::open(&tc.config.raft_config).await?;
+
+    let (logs, _want) = snapshot_logs();
+
+    sto.log().clone().blocking_append(logs.clone()).await?;
+    let entry_stream = stream::iter(logs.into_iter().map(|e| Ok((e, None))));
+    sto.get_sm_v003().apply_entries(entry_stream).await?;
+
+    let snap = sto.state_machine().clone().build_snapshot().await?;
+    Ok(snap.snapshot)
 }
 
 async fn db_to_lines(db: &DB) -> Result<Vec<String>, io::Error> {
