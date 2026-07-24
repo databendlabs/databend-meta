@@ -355,9 +355,12 @@ async fn test_meta_store_install_snapshot() -> anyhow::Result<()> {
         {
             let writer_permit = sto.get_sm_v003().acquire_writer_permit().await;
 
+            // The timeout only bounds how long a correct install stays blocked;
+            // it is generous so that a regressed, non-blocking install cannot
+            // false-pass by merely being slow on a loaded machine.
             assert!(
                 tokio::time::timeout(
-                    Duration::from_millis(10),
+                    Duration::from_millis(500),
                     sto.state_machine()
                         .clone()
                         .do_install_snapshot(data.clone()),
