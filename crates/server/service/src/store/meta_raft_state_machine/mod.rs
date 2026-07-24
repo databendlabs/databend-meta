@@ -265,15 +265,17 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
             data_size, sys_data
         );
 
-        let sm = self.get_inner();
-
         // Serialize the stale-snapshot check and replacement with writes. Otherwise, a
         // write could update the old `LeveledMap` after the check and be lost on swap.
         //
         // Compaction is not blocked: it only reorganizes the old map, while installation
         // creates a new one. Acquire the compaction permit only when installation must
         // also be serialized with the snapshot-building lifecycle.
-        let _writer_permit = sm.acquire_writer_permit().await;
+        let _writer_permit = self.get_inner().acquire_writer_permit().await;
+
+        // Fetched after acquiring the permit: `inner` is only swapped while the permit
+        // is held, so `sm` stays current through the check and swap below.
+        let sm = self.get_inner();
 
         // Do not skip install if both self.last_applied and db.last_applied are None.
         //

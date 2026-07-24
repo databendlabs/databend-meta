@@ -1353,8 +1353,6 @@ impl<SP: SpawnApi> MetaNode<SP> {
         // This approach prevents race conditions and guarantees that no events will be
         // delivered out of order to the watcher.
         let stream = {
-            let sm = mn.raft_store.get_sm_v003();
-
             // Acquire exclusive writer permit to ensure atomicity of the entire operation:
             //
             // 1. Register the watcher to dispatcher
@@ -1373,7 +1371,16 @@ impl<SP: SpawnApi> MetaNode<SP> {
             //
             // Since watch ranges are typically small and snapshot reads are fast,
             // the blocking duration is acceptable for maintaining correctness.
-            let _permit = sm.acquire_writer_permit().await;
+            //
+            // The permit is acquired BEFORE fetching the state machine handle:
+            // snapshot installation swaps the state machine while holding this permit,
+            // so a handle fetched afterwards stays current for the whole block.
+            // With the reverse order, an installation finishing in between would leave
+            // this block registering the watcher on the discarded state machine and
+            // reading its stale data.
+            let _permit = mn.raft_store.get_sm_v003().acquire_writer_permit().await;
+
+            let sm = mn.raft_store.get_sm_v003();
 
             let sender = mn.new_watch_sender(watch, tx.clone())?;
             let sender_str = sender.to_string();
