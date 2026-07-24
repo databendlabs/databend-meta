@@ -496,6 +496,81 @@ async fn test_meta_store_install_snapshot_waits_for_in_flight_write() -> anyhow:
     Ok(())
 }
 
+/// Installing a snapshot that is not newer than the current state machine
+/// must be a no-op: the state machine and its persisted level stay untouched.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_meta_store_install_snapshot_skips_stale_snapshot() -> anyhow::Result<()> {
+    let id = 3;
+
+    // last_applied == (1, 0, 9)
+    let data = build_snapshot_db(id).await?;
+
+    info!("--- state machine ahead of the snapshot: install is ignored");
+    {
+        let tc = MetaSrvTestContext::<TokioRuntime>::new(id);
+        let sto = RaftStore::<TokioRuntime>::open(&tc.config.raft_config).await?;
+
+        let (mut logs, _want) = snapshot_logs();
+        logs.push(Entry {
+            log_id: new_log_id(1, 0, 10),
+            payload: EntryPayload::Normal(LogEntry::new(Cmd::UpsertKV(UpsertKV::update(
+                "ahead", b"x",
+            )))),
+        });
+        let entry_stream = stream::iter(logs.into_iter().map(|e| Ok((e, None))));
+        sto.get_sm_v003().apply_entries(entry_stream).await?;
+
+        sto.state_machine()
+            .clone()
+            .do_install_snapshot(data.clone())
+            .await?;
+
+        let sm = sto.get_sm_v003();
+
+        let last_applied = *sm.sys_data().last_applied_ref();
+        assert_eq!(Some(log_id::<TypeConfig>(1, 0, 10)), last_applied);
+
+        let got = sm.get_maybe_expired_kv("ahead").await?;
+        assert_eq!(Some(SeqV::new(2, b"x".to_vec())), got.without_proposed_at());
+
+        assert!(
+            sm.get_snapshot().is_none(),
+            "an older snapshot must not be installed"
+        );
+    }
+
+    info!("--- state machine at the same log id as the snapshot: install is ignored");
+    {
+        let tc = MetaSrvTestContext::<TokioRuntime>::new(id);
+        let sto = RaftStore::<TokioRuntime>::open(&tc.config.raft_config).await?;
+
+        let (logs, _want) = snapshot_logs();
+        let entry_stream = stream::iter(logs.into_iter().map(|e| Ok((e, None))));
+        sto.get_sm_v003().apply_entries(entry_stream).await?;
+
+        sto.state_machine()
+            .clone()
+            .do_install_snapshot(data.clone())
+            .await?;
+
+        let sm = sto.get_sm_v003();
+
+        let last_applied = *sm.sys_data().last_applied_ref();
+        assert_eq!(Some(log_id::<TypeConfig>(1, 0, 9)), last_applied);
+
+        let got = sm.get_maybe_expired_kv("a").await?;
+        assert_eq!(Some(SeqV::new(1, b"A".to_vec())), got.without_proposed_at());
+
+        assert!(
+            sm.get_snapshot().is_none(),
+            "a snapshot at the same log id must not be installed"
+        );
+    }
+
+    Ok(())
+}
+
 /// Feed `snapshot_logs()` to a fresh store and build a snapshot from it.
 ///
 /// The returned snapshot DB has `last_applied == (1, 0, 9)`.
