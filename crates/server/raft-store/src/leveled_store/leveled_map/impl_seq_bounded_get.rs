@@ -13,17 +13,12 @@
 // limitations under the License.
 
 use std::io::Error;
-use std::ops::Bound;
 use std::ops::RangeBounds;
 
-use futures_util::StreamExt;
-use futures_util::TryStreamExt;
 use map_api::IOResultStream;
 use map_api::MapKey;
 use map_api::mvcc;
 use seq_marked::SeqMarked;
-use state_machine_api::ExpireKey;
-use state_machine_api::UserKey;
 
 use crate::leveled_store::immutable::Immutable;
 use crate::leveled_store::level::Level;
@@ -31,8 +26,6 @@ use crate::leveled_store::leveled_map::LeveledMap;
 use crate::leveled_store::map_api::MapKeyDecode;
 use crate::leveled_store::map_api::MapKeyEncode;
 use crate::leveled_store::persisted_codec::PersistedCodec;
-use crate::leveled_store::types::Key;
-use crate::leveled_store::types::Value;
 
 #[async_trait::async_trait]
 impl<K> mvcc::GetAtSeq<K> for LeveledMap
@@ -75,115 +68,6 @@ where
     {
         super::impl_scoped_seq_bounded_range::range_at_seq(self, range, snapshot_seq).await
     }
-}
-
-#[async_trait::async_trait]
-impl mvcc::GetAtSeq<Key> for LeveledMap {
-    async fn get_at_seq(&self, key: Key, snapshot_seq: u64) -> Result<SeqMarked<Value>, Error> {
-        match key {
-            Key::User(key) => {
-                let got =
-                    <LeveledMap as mvcc::GetAtSeq<UserKey>>::get_at_seq(self, key, snapshot_seq)
-                        .await?;
-                Ok(got.map(Value::User))
-            }
-            Key::Expire(key) => {
-                let got =
-                    <LeveledMap as mvcc::GetAtSeq<ExpireKey>>::get_at_seq(self, key, snapshot_seq)
-                        .await?;
-                Ok(got.map(Value::Expire))
-            }
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl mvcc::RangeAtSeq<Key> for LeveledMap {
-    async fn range_at_seq<R>(
-        &self,
-        range: R,
-        snapshot_seq: u64,
-    ) -> Result<IOResultStream<(Key, SeqMarked<Value>)>, Error>
-    where
-        R: RangeBounds<Key> + Send + Sync + Clone + 'static,
-    {
-        let start = range.start_bound().cloned();
-        let end = range.end_bound().cloned();
-
-        let user = if let Some(range) = user_range(start.clone(), end.clone()) {
-            Some(
-                <LeveledMap as mvcc::RangeAtSeq<UserKey>>::range_at_seq(self, range, snapshot_seq)
-                    .await?
-                    .map_ok(|(key, value)| (Key::User(key), value.map(Value::User)))
-                    .boxed(),
-            )
-        } else {
-            None
-        };
-
-        let expire = if let Some(range) = expire_range(start, end) {
-            Some(
-                <LeveledMap as mvcc::RangeAtSeq<ExpireKey>>::range_at_seq(
-                    self,
-                    range,
-                    snapshot_seq,
-                )
-                .await?
-                .map_ok(|(key, value)| (Key::Expire(key), value.map(Value::Expire)))
-                .boxed(),
-            )
-        } else {
-            None
-        };
-
-        let strm = match (user, expire) {
-            (Some(user), Some(expire)) => user.chain(expire).boxed(),
-            (Some(user), None) => user,
-            (None, Some(expire)) => expire,
-            (None, None) => futures::stream::empty().boxed(),
-        };
-
-        Ok(strm)
-    }
-}
-
-fn user_range(start: Bound<Key>, end: Bound<Key>) -> Option<(Bound<UserKey>, Bound<UserKey>)> {
-    let start = match start {
-        Bound::Unbounded => Bound::Unbounded,
-        Bound::Included(Key::User(key)) => Bound::Included(key),
-        Bound::Excluded(Key::User(key)) => Bound::Excluded(key),
-        Bound::Included(Key::Expire(_)) | Bound::Excluded(Key::Expire(_)) => return None,
-    };
-
-    let end = match end {
-        Bound::Unbounded => Bound::Unbounded,
-        Bound::Included(Key::User(key)) => Bound::Included(key),
-        Bound::Excluded(Key::User(key)) => Bound::Excluded(key),
-        Bound::Included(Key::Expire(_)) | Bound::Excluded(Key::Expire(_)) => Bound::Unbounded,
-    };
-
-    Some((start, end))
-}
-
-fn expire_range(
-    start: Bound<Key>,
-    end: Bound<Key>,
-) -> Option<(Bound<ExpireKey>, Bound<ExpireKey>)> {
-    let start = match start {
-        Bound::Unbounded => Bound::Unbounded,
-        Bound::Included(Key::User(_)) | Bound::Excluded(Key::User(_)) => Bound::Unbounded,
-        Bound::Included(Key::Expire(key)) => Bound::Included(key),
-        Bound::Excluded(Key::Expire(key)) => Bound::Excluded(key),
-    };
-
-    let end = match end {
-        Bound::Unbounded => Bound::Unbounded,
-        Bound::Included(Key::User(_)) | Bound::Excluded(Key::User(_)) => return None,
-        Bound::Included(Key::Expire(key)) => Bound::Included(key),
-        Bound::Excluded(Key::Expire(key)) => Bound::Excluded(key),
-    };
-
-    Some((start, end))
 }
 
 #[cfg(test)]

@@ -16,6 +16,7 @@ use futures_util::TryStreamExt;
 use map_api::SeqMarked;
 use map_api::mvcc::GetAtSeq;
 use map_api::mvcc::RangeAtSeq;
+use map_api::mvcc::ViewGet;
 use map_api::mvcc::ViewRange;
 use map_api::mvcc::ViewSet;
 use state_machine_api::KVMeta;

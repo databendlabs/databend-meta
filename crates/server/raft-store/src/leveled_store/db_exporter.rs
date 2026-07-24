@@ -136,3 +136,91 @@ impl<'a> DBExporter<'a> {
         Ok(user_key_strm.boxed())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use databend_meta_snapshot_db::DB;
+    use databend_meta_types::SeqV;
+    use futures_util::TryStreamExt;
+    use map_api::mvcc::ViewSet;
+    use rotbl::v001::Config;
+    use state_machine_api::ExpireKey;
+    use state_machine_api::ExpireValue;
+    use state_machine_api::UserKey;
+
+    use super::*;
+    use crate::leveled_store::db_builder::DBBuilder;
+    use crate::leveled_store::leveled_map::LeveledMap;
+    use crate::state_machine::StateMachineMetaKey;
+    use crate::state_machine::StateMachineMetaValue;
+
+    async fn build_db() -> anyhow::Result<(tempfile::TempDir, DB)> {
+        let temp_dir = tempfile::tempdir()?;
+        let mut map = LeveledMap::default();
+        let mut view = map.to_view();
+        view.set(UserKey::new("user"), Some((None, b"value".to_vec())));
+        view.set(ExpireKey::new(100, 1), Some("user".to_string()));
+        view.set(UserKey::new("deleted"), Some((None, b"deleted".to_vec())));
+        view.set(UserKey::new("deleted"), None);
+        view.commit().await?;
+
+        let builder = DBBuilder::new(temp_dir.path(), "snapshot", Config::default())?;
+        let db = builder
+            .build_from_leveled_map(&mut map, |_| "---1".to_string())
+            .await?;
+        Ok((temp_dir, db))
+    }
+
+    #[tokio::test]
+    async fn test_export_preserves_system_data_and_skips_tombstones() -> anyhow::Result<()> {
+        let (_temp_dir, db) = build_db().await?;
+        let exporter = DBExporter::new(&db);
+
+        let sys_entries = exporter.sys_data_sm_entries()?;
+        assert_eq!(sys_entries.len(), 2);
+        match (&sys_entries[0], &sys_entries[1]) {
+            (
+                SMEntry::Sequences { key, value },
+                SMEntry::StateMachineMeta {
+                    key: membership_key,
+                    value: membership,
+                },
+            ) => {
+                assert_eq!(key, "generic-kv");
+                assert_eq!(value.0, 2);
+                assert_eq!(*membership_key, StateMachineMetaKey::LastMembership);
+                assert_eq!(
+                    *membership,
+                    StateMachineMetaValue::Membership(db.sys_data.last_membership_ref().clone())
+                );
+            }
+            entries => panic!("unexpected system entries: {entries:?}"),
+        }
+
+        let entries = exporter.export().await?.try_collect::<Vec<_>>().await?;
+        assert_eq!(entries.len(), 4);
+        match (&entries[2], &entries[3]) {
+            (
+                SMEntry::Expire { key, value },
+                SMEntry::GenericKV {
+                    key: user_key,
+                    value: user_value,
+                },
+            ) => {
+                assert_eq!(*key, ExpireKey::new(100, 1));
+                assert_eq!(*value, ExpireValue::new("user", 1));
+                assert_eq!(user_key, "user");
+                assert_eq!(*user_value, SeqV::new(1, b"value".to_vec()));
+            }
+            entries => panic!("unexpected data entries: {entries:?}"),
+        }
+
+        let user_keys = exporter
+            .export_user_keys()
+            .await?
+            .try_collect::<Vec<_>>()
+            .await?;
+        assert_eq!(user_keys, vec!["user"]);
+        Ok(())
+    }
+}

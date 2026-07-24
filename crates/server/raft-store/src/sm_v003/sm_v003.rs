@@ -34,19 +34,20 @@ use tokio::sync::Semaphore;
 
 use crate::applier::Applier;
 use crate::applier::applier_data::ApplierData;
-use crate::leveled_store::immutable_data::ImmutableData;
 use crate::leveled_store::leveled_map::LeveledMap;
 use crate::leveled_store::leveled_map::compactor::Compactor;
-use crate::leveled_store::leveled_map::leveled_map_data::LeveledMapData;
-use crate::leveled_store::snapshot::StateMachineSnapshot;
-use crate::leveled_store::view::StateMachineView;
+use crate::leveled_store::state_machine::read_view::StateMachineReadView;
+use crate::leveled_store::state_machine::view::StateMachineView;
 use crate::sm_v003::WriterPermit;
 use crate::sm_v003::compactor_acquirer::CompactorAcquirer;
 use crate::sm_v003::compactor_acquirer::CompactorPermit;
 use crate::sm_v003::sm_v003_kv_api::SMV003KVApi;
 use crate::sm_v003::writer_acquirer::WriterAcquirer;
 
-pub type OnChange = Box<dyn Fn((String, Option<SeqV>, Option<SeqV>)) + Send + Sync>;
+/// A user-key change reported after a state-machine transaction commits.
+pub type Change = (String, Option<SeqV>, Option<SeqV>);
+
+pub type OnChange = Box<dyn Fn(Change) + Send + Sync>;
 
 pub struct SMV003 {
     leveled_map: LeveledMap,
@@ -125,12 +126,8 @@ impl StateMachineApi<SysData> for ApplierData {
         &mut self.view
     }
 
-    fn on_change_applied(&mut self, change: (String, Option<SeqV>, Option<SeqV>)) {
-        let Some(on_change_applied) = self.on_change_applied.as_ref().as_ref() else {
-            // No subscribers, do nothing.
-            return;
-        };
-        (*on_change_applied)(change);
+    fn on_change_applied(&mut self, change: Change) {
+        self.pending_changes.lock().unwrap().push(change);
     }
 
     fn with_cleanup_start_timestamp<T>(&self, f: impl FnOnce(&mut Duration) -> T) -> T {
@@ -139,12 +136,34 @@ impl StateMachineApi<SysData> for ApplierData {
     }
 
     fn with_sys_data<T>(&self, f: impl FnOnce(&mut SysData) -> T) -> T {
-        self.view.snapshot().data().with_sys_data(f)
+        self.view.with_sys_data(f)
     }
 
     async fn commit(self) -> Result<(), Error> {
         debug!("SMV003::commit: start");
-        self.view.commit().await?;
+
+        let ApplierData {
+            _permit,
+            view,
+            cleanup_start_time,
+            cleanup_start_time_target,
+            on_change_applied,
+            pending_changes,
+        } = self;
+
+        view.commit().await?;
+
+        *cleanup_start_time_target.lock().unwrap() = cleanup_start_time.into_inner().unwrap();
+        let pending_changes = pending_changes.into_inner().unwrap();
+
+        drop(_permit);
+
+        if let Some(on_change_applied) = on_change_applied.as_ref() {
+            for change in pending_changes {
+                on_change_applied(change);
+            }
+        }
+
         Ok(())
     }
 }
@@ -155,8 +174,8 @@ impl SMV003 {
         &mut self.leveled_map
     }
 
-    pub fn to_state_machine_snapshot(&self) -> StateMachineSnapshot {
-        self.leveled_map.to_state_machine_snapshot()
+    pub fn to_read_view(&self) -> StateMachineReadView {
+        self.leveled_map.to_read_view()
     }
 
     pub fn kv_api(&self) -> SMV003KVApi<'_> {
@@ -168,12 +187,7 @@ impl SMV003 {
         let sys_data = db.sys_data().clone();
 
         let new_sm = SMV003 {
-            leveled_map: LeveledMap {
-                data: Arc::new(Mutex::new(LeveledMapData {
-                    writable: Default::default(),
-                    immutable: Arc::new(ImmutableData::new(Default::default(), Some(db))),
-                })),
-            },
+            leveled_map: LeveledMap::from_persisted(db),
             compaction_semaphore: self.compaction_semaphore.clone(),
             write_semaphore: self.write_semaphore.clone(),
             cleanup_start_time: self.cleanup_start_time.clone(),
@@ -194,7 +208,7 @@ impl SMV003 {
     }
 
     pub async fn get_maybe_expired_kv(&self, key: &str) -> Result<Option<SeqV>, io::Error> {
-        let view = self.data().to_state_machine_snapshot();
+        let view = self.data().to_read_view();
         let got = view.get(UserKey::new(key.to_string())).await?;
         let seqv = Into::<Option<SeqV>>::into(got);
         Ok(seqv)
@@ -207,8 +221,10 @@ impl SMV003 {
         let applier_data = ApplierData {
             _permit: Mutex::new(permit),
             view,
-            cleanup_start_time: self.cleanup_start_time.clone(),
+            cleanup_start_time: Mutex::new(*self.cleanup_start_time.lock().unwrap()),
+            cleanup_start_time_target: self.cleanup_start_time.clone(),
             on_change_applied: self.get_on_change_applied(),
+            pending_changes: Mutex::new(Vec::new()),
         };
 
         Applier::new(applier_data)

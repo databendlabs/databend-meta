@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use seq_marked::InternalSeq;
-
 use crate::leveled_store::immutable_levels::ImmutableLevels;
 
 impl ImmutableLevels {
@@ -22,10 +20,12 @@ impl ImmutableLevels {
     /// Finds two adjacent levels `l[i]` and `l[i+1]` so that their combined size is minimal,
     /// then compacts them into a single new immutable level.
     ///
+    /// Callers must ensure no active read still needs their historical versions.
+    ///
     /// # Returns
     /// A new `ImmutableLevels` with the two smallest adjacent levels compacted into one.
     /// If there are 0 or 1 levels, returns a clone of self.
-    pub fn compact_min_adjacent(&self, min_snapshot_seq: InternalSeq) -> Self {
+    pub fn compact_min_adjacent(&self) -> Self {
         let n = self.immutables.len();
         if n <= 1 {
             return self.clone();
@@ -46,7 +46,7 @@ impl ImmutableLevels {
         let newer = immutables[min_index];
         let older = immutables[min_index + 1];
 
-        let new_immutable = newer.compact(older, min_snapshot_seq);
+        let new_immutable = newer.compact(older);
 
         let mut bt = self.immutables.clone();
         bt.remove(older.level_index());
@@ -59,7 +59,6 @@ impl ImmutableLevels {
 
 #[cfg(test)]
 mod tests {
-    use seq_marked::InternalSeq;
     use seq_marked::SeqMarked;
     use state_machine_api::UserKey;
 
@@ -82,7 +81,7 @@ mod tests {
     #[tokio::test]
     async fn test_compact_min_adjacent_empty() {
         let empty_levels = ImmutableLevels::default();
-        let result = empty_levels.compact_min_adjacent(InternalSeq::new(0));
+        let result = empty_levels.compact_min_adjacent();
         assert_eq!(result.immutables.len(), 0);
         assert!(result.immutables.is_empty());
     }
@@ -97,7 +96,7 @@ mod tests {
         let original_index = *immutable.level_index();
         let levels = ImmutableLevels::new_form_iter([immutable]);
 
-        let result = levels.compact_min_adjacent(InternalSeq::new(0));
+        let result = levels.compact_min_adjacent();
         assert_eq!(result.immutables.len(), 1);
 
         let result_indexes: Vec<_> = result.immutables.keys().cloned().collect();
@@ -130,7 +129,7 @@ mod tests {
 
         let levels = ImmutableLevels::new_form_iter([immutable1, immutable2, immutable3]);
 
-        let result = levels.compact_min_adjacent(InternalSeq::new(0));
+        let result = levels.compact_min_adjacent();
 
         assert_eq!(result.immutables.len(), 2);
 
@@ -168,7 +167,7 @@ mod tests {
         let level2_index = *immutable2.level_index();
         let levels = ImmutableLevels::new_form_iter([immutable1, immutable2]);
 
-        let result = levels.compact_min_adjacent(InternalSeq::new(0));
+        let result = levels.compact_min_adjacent();
         assert_eq!(result.immutables.len(), 1);
 
         let result_indexes: Vec<_> = result.immutables.keys().cloned().collect();
@@ -186,7 +185,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_compact_min_adjacent_with_filtering() {
+    async fn test_compact_min_adjacent_coalesces_history() {
         let mut level1 = Level::default();
         level1.with_sys_data(|s| s.update_seq(100));
         level1.kv.insert(uk("k1"), 5, mv("v1_very_old")).unwrap();
@@ -202,7 +201,7 @@ mod tests {
         let immutable2 = Immutable::new_from_level(level2);
         let levels = ImmutableLevels::new_form_iter([immutable1, immutable2]);
 
-        let result = levels.compact_min_adjacent(InternalSeq::new(18));
+        let result = levels.compact_min_adjacent();
         assert_eq!(result.immutables.len(), 1);
 
         assert_eq!(
@@ -210,17 +209,7 @@ mod tests {
             SeqMarked::new_normal(25u64, mv("v1_new"))
         );
 
-        assert_eq!(
-            result.get_at_seq(uk("k1"), 20),
-            SeqMarked::new_normal(15u64, mv("v1_old"))
-        );
-
-        assert_eq!(result.get_at_seq(uk("k1"), 12), SeqMarked::new_not_found());
-
-        assert_eq!(
-            result.get_at_seq(uk("k1"), 18),
-            SeqMarked::new_normal(15u64, mv("v1_old"))
-        );
+        assert!(result.get_at_seq(uk("k1"), 20).is_not_found());
 
         assert_eq!(
             result.get_at_seq(uk("k2"), 100),

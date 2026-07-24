@@ -135,9 +135,9 @@ where SM: StateMachineApi<SysData> + 'static
             }
         };
 
-        // Send queued change events to subscriber
+        // Queue change events for publication after commit.
         for event in self.changes.drain(..) {
-            info!("send to EventSender: {:?}", event);
+            info!("queue state-machine change: {:?}", event);
             self.sm.on_change_applied(event);
         }
 

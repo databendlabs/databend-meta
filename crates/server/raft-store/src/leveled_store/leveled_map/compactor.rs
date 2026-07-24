@@ -61,6 +61,7 @@ impl Compactor {
     ///
     /// When compact mem levels, do not remove tombstone,
     /// because tombstones are still required when compacting with the underlying db.
+    // TODO: unused, remove it
     pub async fn compact_immutable_in_place(&mut self) -> Result<(), io::Error> {
         let immutable_levels = self.immutable_data.levels().clone();
 

@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::sync::Arc;
+use std::sync::Mutex;
+
 use databend_meta_types::AppliedState;
 use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
@@ -28,6 +31,7 @@ use databend_meta_types::raft_types::EntryPayload;
 use databend_meta_types::raft_types::Membership;
 use databend_meta_types::raft_types::new_log_id;
 use maplit::btreeset;
+use state_machine_api::KVMeta;
 use state_machine_api::StateMachineApi;
 
 use crate::sm_v003::SMV003;
@@ -72,8 +76,10 @@ async fn test_apply_blank_entry() -> anyhow::Result<()> {
     // last_applied should be updated
     let last = a.sm.with_sys_data(|s| *s.last_applied());
     assert_eq!(last, Some(new_log_id(1, 0, 1)));
+    assert_eq!(*sm.sys_data().last_applied(), None);
 
     a.commit().await?;
+    assert_eq!(*sm.sys_data().last_applied(), Some(new_log_id(1, 0, 1)));
     Ok(())
 }
 
@@ -95,8 +101,10 @@ async fn test_apply_membership_entry() -> anyhow::Result<()> {
     let stored_mem =
         a.sm.with_sys_data(|s| s.last_membership_ref().membership().clone());
     assert_eq!(stored_mem, mem);
+    assert_ne!(sm.sys_data().last_membership_ref().membership(), &mem);
 
     a.commit().await?;
+    assert_eq!(sm.sys_data().last_membership_ref().membership(), &mem);
     Ok(())
 }
 
@@ -1053,6 +1061,39 @@ async fn test_push_change_ignores_no_change() -> anyhow::Result<()> {
     assert_eq!(a.changes.len(), 1);
 
     a.commit().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_change_notification_waits_for_commit() -> anyhow::Result<()> {
+    let sm = SMV003::default();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    sm.set_on_change_applied(Box::new({
+        let seen = seen.clone();
+        move |change| seen.lock().unwrap().push(change)
+    }));
+
+    let mut a = sm.new_applier().await;
+    a.apply(&normal_entry(
+        1,
+        1_000,
+        Cmd::UpsertKV(UpsertKV::update("k", b"v")),
+    ))
+    .await?;
+
+    assert!(seen.lock().unwrap().is_empty());
+
+    a.commit().await?;
+
+    assert_eq!(*seen.lock().unwrap(), vec![(
+        "k".to_string(),
+        None,
+        Some(SeqV::new_with_meta(
+            1,
+            Some(KVMeta::new(None, Some(1_000))),
+            b("v"),
+        ))
+    )]);
     Ok(())
 }
 

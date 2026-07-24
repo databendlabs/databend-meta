@@ -1399,7 +1399,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
             if flush {
                 let ctx = "watch-Dispatcher";
                 let snk = new_initialization_sink::<WatchTypes>(tx.clone(), ctx);
-                let strm = sm.to_state_machine_snapshot().range(key_range).await?;
+                let strm = sm.to_read_view().range(key_range).await?;
                 let strm = strm
                     .try_filter_map(|(k, marked)| future::ready(Ok(seq_marked_to_seqv(k, marked))));
 

@@ -12,25 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod db_builder;
-pub mod db_exporter;
-pub mod immutable;
-pub mod immutable_levels;
-pub mod level;
-pub mod level_index;
-pub mod leveled_map;
-pub mod map_api;
-pub mod persisted_codec;
-pub mod rotbl_codec;
-pub(crate) mod state_machine;
-pub mod sys_data;
-pub mod sys_data_api;
-pub mod util;
+//! State-machine read and write views over the leveled store.
 
-#[cfg(test)]
-pub(crate) mod testing_data;
-
-mod db_open_snapshot_impl;
-#[cfg(test)]
-mod db_scoped_seq_bounded_read_test;
-pub mod immutable_data;
+mod changes;
+pub(crate) mod read_view;
+pub(crate) mod view;

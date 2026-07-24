@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::time::Duration;
+
 use databend_meta_kvapi::KVApi;
 use databend_meta_kvapi::ListOptions;
 use databend_meta_types::CmdContext;
@@ -24,6 +26,7 @@ use pretty_assertions::assert_eq;
 use seq_marked::SeqMarked;
 use seq_marked::SeqValue;
 use state_machine_api::ExpireKey;
+use state_machine_api::StateMachineApi;
 
 use crate::sm_v003::SMV003;
 use crate::state_machine_api_ext::StateMachineApiExt;
@@ -249,7 +252,7 @@ async fn test_internal_expire_index() -> anyhow::Result<()> {
     let sm = build_sm_with_expire().await?;
 
     // Check internal expire index
-    let strm = sm.to_state_machine_snapshot().range(..).await?;
+    let strm = sm.to_read_view().range(..).await?;
     let got = strm.try_collect::<Vec<_>>().await?;
     assert_eq!(got, vec![
         (ExpireKey::new(5_000, 2), SeqMarked::new_normal(2, s("b"))),
@@ -302,6 +305,40 @@ async fn test_list_expire_index() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn test_cleanup_timestamp_is_published_on_commit() -> anyhow::Result<()> {
+    let sm = SMV003::default();
+
+    {
+        let mut applier = sm.new_applier().await;
+        applier
+            .sm
+            .set_cleanup_start_timestamp(Duration::from_millis(10));
+        assert_eq!(
+            applier.sm.cleanup_start_timestamp(),
+            Duration::from_millis(10)
+        );
+    }
+
+    {
+        let applier = sm.new_applier().await;
+        assert_eq!(applier.sm.cleanup_start_timestamp(), Duration::ZERO);
+    }
+
+    let mut applier = sm.new_applier().await;
+    applier
+        .sm
+        .set_cleanup_start_timestamp(Duration::from_millis(10));
+    applier.commit().await?;
+
+    let applier = sm.new_applier().await;
+    assert_eq!(
+        applier.sm.cleanup_start_timestamp(),
+        Duration::from_millis(10)
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_inserting_expired_becomes_deleting() -> anyhow::Result<()> {
     let sm = build_sm_with_expire().await?;
 
@@ -343,7 +380,7 @@ async fn test_inserting_expired_becomes_deleting() -> anyhow::Result<()> {
 
     // Check expire store
     let got = sm
-        .to_state_machine_snapshot()
+        .to_read_view()
         .range(..)
         .await?
         .try_collect::<Vec<_>>()

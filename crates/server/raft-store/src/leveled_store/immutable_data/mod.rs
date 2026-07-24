@@ -66,13 +66,6 @@ impl fmt::Display for ImmutableDataStat {
 
 #[derive(Debug, Default, Clone)]
 pub struct ImmutableData {
-    /// The last sequence of the immutable data.
-    #[allow(dead_code)]
-    last_seq: InternalSeq,
-
-    /// It is None if it is an empty levels.
-    last_level_index: Option<LevelIndex>,
-
     /// The immutable levels.
     ///
     /// Protected by compactor_semaphore
@@ -84,46 +77,26 @@ pub struct ImmutableData {
 
 impl ImmutableData {
     pub(crate) fn new(levels: ImmutableLevels, persisted: Option<DB>) -> Self {
-        let base_seq = if let Some(seq) = levels.last_seq() {
-            seq
-        } else if let Some(db) = &persisted {
-            db.last_seq()
-        } else {
-            0
-        };
+        Self { levels, persisted }
+    }
 
-        let newest_level_index = levels.newest_level_index();
-
-        Self {
-            last_seq: InternalSeq::new(base_seq),
-            last_level_index: newest_level_index,
-            levels,
-            persisted,
-        }
+    /// Returns the latest sequence represented by this immutable root.
+    pub(crate) fn last_seq(&self) -> InternalSeq {
+        InternalSeq::new(
+            self.levels
+                .last_seq()
+                .or_else(|| self.persisted.as_ref().map(DB::last_seq))
+                .unwrap_or_default(),
+        )
     }
 
     pub fn stat(&self) -> ImmutableDataStat {
         ImmutableDataStat {
-            last_seq: self.last_seq,
-            last_level_index: self.last_level_index,
+            last_seq: self.last_seq(),
+            last_level_index: self.levels.newest_level_index(),
             immutable_level_stats: self.levels.stat(),
             persisted: self.persisted.as_ref().map(|db| format!("{:?}", db)),
         }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn with_levels(&self, levels: ImmutableLevels) -> Self {
-        Self::new(levels, self.persisted.clone())
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn with_persisted(&self, persisted: Option<DB>) -> Self {
-        Self::new(self.levels.clone(), persisted)
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn last_seq(&self) -> InternalSeq {
-        self.last_seq
     }
 
     pub(crate) fn levels(&self) -> &ImmutableLevels {
@@ -131,7 +104,7 @@ impl ImmutableData {
     }
 
     pub(crate) fn latest_level_index(&self) -> Option<LevelIndex> {
-        self.last_level_index
+        self.levels.newest_level_index()
     }
 
     pub(crate) fn persisted(&self) -> Option<&DB> {
@@ -352,8 +325,9 @@ mod tests {
         let levels = ImmutableLevels::default();
         let data = ImmutableData::new(levels, None);
 
-        assert_eq!(*data.last_seq, 0);
-        assert!(data.last_level_index.is_none());
+        assert_eq!(*data.last_seq(), 0);
+        assert_eq!(*data.stat().last_seq, 0);
+        assert!(data.latest_level_index().is_none());
         assert!(data.persisted().is_none());
     }
 
@@ -453,8 +427,9 @@ mod tests {
         let levels = create_levels_with_data(entries);
         let data = ImmutableData::new(levels, None);
 
-        assert_eq!(*data.last_seq, 10); // Should have seq from levels (max of 10)
-        assert!(data.last_level_index.is_some());
+        assert_eq!(*data.last_seq(), 10);
+        assert_eq!(*data.stat().last_seq, 10); // Should have seq from levels (max of 10)
+        assert!(data.latest_level_index().is_some());
         assert!(data.persisted().is_none());
     }
 
@@ -655,8 +630,9 @@ mod tests {
         let levels = ImmutableLevels::default();
         let data = ImmutableData::new(levels, Some(db));
 
-        assert_eq!(*data.last_seq, 10); // Should use DB sequence since levels are empty
-        assert!(data.last_level_index.is_none()); // No levels
+        assert_eq!(*data.last_seq(), 10);
+        assert_eq!(*data.stat().last_seq, 10); // Should use DB sequence since levels are empty
+        assert!(data.latest_level_index().is_none()); // No levels
         assert!(data.persisted().is_some()); // Has DB
     }
 
@@ -826,8 +802,9 @@ mod tests {
         let levels = create_levels_with_data(level_entries);
         let data = ImmutableData::new(levels, Some(db));
 
-        assert_eq!(*data.last_seq, 10); // Should have seq from levels (max of 10)
-        assert!(data.last_level_index.is_some()); // Has levels
+        assert_eq!(*data.last_seq(), 10);
+        assert_eq!(*data.stat().last_seq, 10); // Should have seq from levels (max of 10)
+        assert!(data.latest_level_index().is_some()); // Has levels
         assert!(data.persisted().is_some()); // Has DB
     }
 
@@ -1026,15 +1003,15 @@ mod tests {
         let data = ImmutableData::new(levels, None);
 
         let cloned = data.clone();
-        assert_eq!(*cloned.last_seq, *data.last_seq);
-        assert_eq!(cloned.last_level_index, data.last_level_index);
+        assert_eq!(cloned.stat().last_seq, data.stat().last_seq);
+        assert_eq!(cloned.latest_level_index(), data.latest_level_index());
     }
 
     #[test]
     fn test_immutable_data_default() {
         let data = ImmutableData::default();
-        assert_eq!(*data.last_seq, 0);
-        assert!(data.last_level_index.is_none());
+        assert_eq!(*data.stat().last_seq, 0);
+        assert!(data.latest_level_index().is_none());
         assert!(data.persisted().is_none());
     }
 }

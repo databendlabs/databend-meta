@@ -210,3 +210,114 @@ where SD: OpenSnapshot
         SnapshotStoreError::read(e).with_context(context)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+    use crate::config::RaftConfig;
+    use crate::ondisk::DATA_VERSION;
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct TestSnapshot(String);
+
+    impl OpenSnapshot for TestSnapshot {
+        fn open_snapshot(
+            _storage_path: impl ToString,
+            _rel_path: impl ToString,
+            snapshot_id: SnapshotId,
+            _config: rotbl::v001::Config,
+        ) -> Result<Self, io::Error> {
+            Ok(Self(snapshot_id.to_string()))
+        }
+    }
+
+    fn loader(dir: &Path) -> SnapshotLoader<TestSnapshot> {
+        let raft_config = RaftConfig {
+            raft_dir: dir.to_string_lossy().into_owned(),
+            ..Default::default()
+        };
+        SnapshotLoader::new(SnapshotConfig::new(DATA_VERSION, raft_config))
+    }
+
+    fn snapshot(uniq: u64) -> MetaSnapshotId {
+        MetaSnapshotId::new(None, uniq)
+    }
+
+    fn write_snapshot(config: &SnapshotConfig, id: &MetaSnapshotId) -> anyhow::Result<()> {
+        let dir = config.ensure_snapshot_dir()?;
+        std::fs::write(format!("{dir}/{}.snap", id), [])?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_load_snapshot_ids_sorts_valid_ids_and_reports_invalid_files() -> anyhow::Result<()>
+    {
+        let temp_dir = tempfile::tempdir()?;
+        let loader = loader(temp_dir.path());
+        write_snapshot(&loader.snapshot_config, &snapshot(2))?;
+        write_snapshot(&loader.snapshot_config, &snapshot(1))?;
+        let dir = loader.snapshot_config.ensure_snapshot_dir()?;
+        std::fs::write(format!("{dir}/invalid.snap"), [])?;
+        std::fs::write(format!("{dir}/temporary"), [])?;
+
+        let (ids, invalid_files) = loader.load_snapshot_ids().await?;
+
+        assert_eq!(ids, vec![snapshot(1), snapshot(2)]);
+        assert_eq!(invalid_files, vec!["invalid.snap"]);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_load_last_snapshot_opens_the_newest_id() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let loader = loader(temp_dir.path());
+        write_snapshot(&loader.snapshot_config, &snapshot(1))?;
+        write_snapshot(&loader.snapshot_config, &snapshot(2))?;
+
+        let got = loader.load_last_snapshot().await?;
+
+        assert_eq!(
+            got,
+            Some((snapshot(2), TestSnapshot(snapshot(2).to_string())))
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_load_last_snapshot_returns_none_for_an_empty_directory() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let loader = loader(temp_dir.path());
+
+        assert_eq!(loader.load_last_snapshot().await?, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_clean_old_snapshots_keeps_three_valid_and_two_invalid_files() -> anyhow::Result<()>
+    {
+        let temp_dir = tempfile::tempdir()?;
+        let loader = loader(temp_dir.path());
+        for uniq in 1..=5 {
+            write_snapshot(&loader.snapshot_config, &snapshot(uniq))?;
+        }
+        let dir = loader.snapshot_config.ensure_snapshot_dir()?;
+        for file in ["invalid-a.snap", "invalid-b.snap", "invalid-c.snap"] {
+            std::fs::write(format!("{dir}/{file}"), [])?;
+        }
+
+        loader.clean_old_snapshots().await?;
+
+        for uniq in 1..=5 {
+            assert_eq!(
+                std::path::Path::new(&format!("{dir}/{}.snap", snapshot(uniq))).exists(),
+                uniq >= 3
+            );
+        }
+        assert!(!std::path::Path::new(&format!("{dir}/invalid-a.snap")).exists());
+        assert!(std::path::Path::new(&format!("{dir}/invalid-b.snap")).exists());
+        assert!(std::path::Path::new(&format!("{dir}/invalid-c.snap")).exists());
+        Ok(())
+    }
+}

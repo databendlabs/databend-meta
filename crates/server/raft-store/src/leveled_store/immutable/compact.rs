@@ -1,5 +1,3 @@
-use seq_marked::InternalSeq;
-
 use crate::leveled_store::immutable::Immutable;
 
 // Copyright 2021 Datafuse Labs
@@ -17,13 +15,10 @@ use crate::leveled_store::immutable::Immutable;
 // limitations under the License.
 
 impl Immutable {
-    /// Merge two immutable levels into a new immutable level.
-    ///
-    /// Given the seq of the known minimum snapshot, we can remove older versions if the newer version is smaller than
-    /// this seq.
-    pub fn compact(&self, other: &Self, min_snapshot_seq: InternalSeq) -> Self {
+    /// Merge two immutable levels after their historical versions are no longer visible.
+    pub fn compact(&self, other: &Self) -> Self {
         // TODO: only allows a self to be newer and other to be older.
-        let new_level = self.level.compact(&other.level, min_snapshot_seq);
+        let new_level = self.level.compact(&other.level);
 
         // Keep the greater LevelIndex of the two instances
         let greater_index = if self.level_index() > other.level_index() {
@@ -118,62 +113,13 @@ mod tests {
             *immutable1.level_index()
         };
 
-        // Test 1: Compact with min_snapshot_seq = 0 (all versions preserved)
-        {
-            let got = immutable2.compact(&immutable1, InternalSeq::new(0));
+        let mut want_level = Level::default();
+        want_level.with_sys_data(|s| s.update_seq(200));
+        want_level.kv.insert(k2(), 15, v3()).unwrap();
+        want_level.kv.insert_tombstone(k1(), 30).unwrap();
+        let want = Immutable::new_with_index(want_level, greater_index);
 
-            let mut want_level = Level::default();
-            want_level.with_sys_data(|s| s.update_seq(200)); // Higher seq wins
-            // Insert in sequence order: 10, 15, 20, 30
-            want_level.kv.insert(k1(), 10, v1()).unwrap();
-            want_level.kv.insert(k2(), 15, v3()).unwrap();
-            want_level.kv.insert(k1(), 20, v2()).unwrap();
-            want_level.kv.insert_tombstone(k1(), 30).unwrap();
-            let want = Immutable::new_with_index(want_level, greater_index);
-
-            assert_immutable_eq(&got, &want, "compact_min_seq_0");
-        }
-
-        // Test 2: Compact with min_snapshot_seq = 25 (older versions cleaned)
-        {
-            let got = immutable2.compact(&immutable1, InternalSeq::new(25));
-
-            let mut want_level = Level::default();
-            want_level.with_sys_data(|s| s.update_seq(200)); // Higher seq wins
-            // Based on actual compact behavior: seq 10 cleaned up, seq 20 preserved, seq 30 preserved
-            want_level.kv.insert(k2(), 15, v3()).unwrap(); // k2 seq 15 preserved
-            want_level.kv.insert(k1(), 20, v2()).unwrap(); // k1 seq 20 preserved
-            want_level.kv.insert_tombstone(k1(), 30).unwrap(); // k1 tombstone at seq 30
-            let want = Immutable::new_with_index(want_level, greater_index);
-
-            assert_immutable_eq(&got, &want, "compact_min_seq_25");
-        }
-
-        // Test 3: Verify LevelIndex preservation (compact preserves greater index)
-        {
-            let compacted = immutable2.compact(&immutable1, InternalSeq::new(0));
-            let result_index = *compacted.level_index();
-
-            assert_eq!(
-                result_index, greater_index,
-                "Should preserve the greater LevelIndex from input levels"
-            );
-        }
-
-        // Test 4: Reverse compact order should work too
-        {
-            let got = immutable1.compact(&immutable2, InternalSeq::new(0));
-
-            let mut want_level = Level::default();
-            want_level.with_sys_data(|s| s.update_seq(200)); // Higher seq wins
-            // Insert in sequence order: 10, 15, 20, 30 (same result as Test 1)
-            want_level.kv.insert(k1(), 10, v1()).unwrap();
-            want_level.kv.insert(k2(), 15, v3()).unwrap();
-            want_level.kv.insert(k1(), 20, v2()).unwrap();
-            want_level.kv.insert_tombstone(k1(), 30).unwrap();
-            let want = Immutable::new_with_index(want_level, greater_index);
-
-            assert_immutable_eq(&got, &want, "compact_reverse_order");
-        }
+        assert_immutable_eq(&immutable2.compact(&immutable1), &want, "compact");
+        assert_immutable_eq(&immutable1.compact(&immutable2), &want, "reverse_compact");
     }
 }

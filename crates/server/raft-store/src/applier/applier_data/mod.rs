@@ -16,7 +16,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use crate::leveled_store::view::StateMachineView;
+use crate::leveled_store::state_machine::view::StateMachineView;
+use crate::sm_v003::Change;
 use crate::sm_v003::OnChange;
 use crate::sm_v003::writer_acquirer::WriterPermit;
 
@@ -28,8 +29,19 @@ pub(crate) struct ApplierData {
 
     pub(crate) view: StateMachineView,
 
-    /// Since when to start cleaning expired keys.
-    pub(crate) cleanup_start_time: Arc<Mutex<Duration>>,
+    /// Transaction-local cleanup cursor, initialized from the live cursor.
+    ///
+    /// It is updated while applying and published only after `StateMachineView`
+    /// commits, so a dropped transaction cannot advance expiration cleanup.
+    pub(crate) cleanup_start_time: Mutex<Duration>,
+
+    /// The live cleanup cursor owned by the state machine.
+    ///
+    /// `SMV003::commit` replaces it with `cleanup_start_time` after committing
+    /// the staged state-machine changes.
+    pub(crate) cleanup_start_time_target: Arc<Mutex<Duration>>,
 
     pub(crate) on_change_applied: Arc<Option<OnChange>>,
+
+    pub(crate) pending_changes: Mutex<Vec<Change>>,
 }

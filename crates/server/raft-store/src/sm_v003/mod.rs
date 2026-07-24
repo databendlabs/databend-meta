@@ -36,6 +36,7 @@ pub(crate) mod compactor_acquirer;
 pub(crate) mod sm_v003_test;
 pub(crate) mod writer_acquirer;
 
+pub use sm_v003::Change;
 pub use sm_v003::OnChange;
 pub use sm_v003::SMV003;
 pub use snapshot_store_error::SnapshotStoreError;

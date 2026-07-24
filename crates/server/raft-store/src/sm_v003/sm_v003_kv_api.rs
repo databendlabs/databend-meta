@@ -30,7 +30,7 @@ use map_api::mvcc::ViewRange;
 use seq_marked::SeqValue;
 use state_machine_api::UserKey;
 
-use crate::leveled_store::snapshot::StateMachineSnapshot;
+use crate::leveled_store::state_machine::read_view::StateMachineReadView;
 use crate::sm_v003::SMV003;
 use crate::testing::since_epoch_millis;
 use crate::utils::add_cooperative_yielding;
@@ -55,16 +55,16 @@ impl kvapi::KVApi for SMV003KVApi<'_> {
         let local_now_ms = since_epoch_millis();
 
         // get an unchanging readonly view
-        let snapshot_view = self.sm.data().to_state_machine_snapshot();
+        let read_view = self.sm.data().to_read_view();
 
         let p = prefix.to_string();
 
         let strm = if let Some(right) = prefix_right_bound(&p) {
-            snapshot_view
+            read_view
                 .range(UserKey::new(&p)..UserKey::new(right))
                 .await?
         } else {
-            snapshot_view.range(UserKey::new(&p)..).await?
+            read_view.range(UserKey::new(&p)..).await?
         };
 
         let strm = add_cooperative_yielding(strm, format!("SMV003KVApi::list_kv: {prefix}"))
@@ -82,8 +82,8 @@ impl kvapi::KVApi for SMV003KVApi<'_> {
         keys: BoxStream<'static, Result<String, Self::Error>>,
     ) -> Result<KVStream<Self::Error>, Self::Error> {
         let local_now_ms = since_epoch_millis();
-        Ok(state_machine_snapshot_get_many_kv(
-            self.sm.to_state_machine_snapshot(),
+        Ok(state_machine_read_view_get_many_kv(
+            self.sm.to_read_view(),
             keys,
             local_now_ms,
         ))
@@ -108,8 +108,8 @@ impl SMV003KVApi<'_> {
 ///
 /// The input stream may contain errors; errors are propagated to the output stream.
 /// The stream terminates immediately after the first error (fail-fast).
-fn state_machine_snapshot_get_many_kv(
-    snapshot: StateMachineSnapshot,
+fn state_machine_read_view_get_many_kv(
+    read_view: StateMachineReadView,
     keys: BoxStream<'static, Result<String, io::Error>>,
     local_now_ms: u64,
 ) -> KVStream<io::Error> {
@@ -117,17 +117,91 @@ fn state_machine_snapshot_get_many_kv(
     use futures_util::StreamExt;
     use futures_util::TryStreamExt;
 
-    let snapshot = Arc::new(snapshot);
+    let read_view = Arc::new(read_view);
 
     fail_fast(keys)
         .and_then(move |key| {
-            let snapshot = snapshot.clone();
+            let read_view = read_view.clone();
             async move {
-                let got = snapshot.get(UserKey::new(key.clone())).await?;
+                let got = read_view.get(UserKey::new(key.clone())).await?;
                 let seqv: Option<SeqV> = got.into();
                 let non_expired = SMV003KVApi::non_expired(seqv, local_now_ms);
                 Ok(StreamItem::from((key, non_expired)))
             }
         })
         .boxed()
+}
+
+#[cfg(test)]
+mod tests {
+    use databend_meta_kvapi::KVApi;
+    use databend_meta_types::KVMeta;
+    use databend_meta_types::SeqV;
+    use databend_meta_types::UpsertKV;
+    use databend_meta_types::normalize_meta::NormalizeMeta;
+    use futures_util::StreamExt;
+    use futures_util::TryStreamExt;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_get_many_kv_preserves_input_order_and_missing_values() -> anyhow::Result<()> {
+        let sm = SMV003::default();
+        let mut applier = sm.new_applier().await;
+        applier
+            .upsert_kv(&UpsertKV::update("first", b"one"))
+            .await?;
+        applier
+            .upsert_kv(&UpsertKV::update("second", b"two"))
+            .await?;
+        applier.commit().await?;
+
+        let keys = futures_util::stream::iter(vec![
+            Ok("second".to_string()),
+            Ok("missing".to_string()),
+            Ok("first".to_string()),
+        ])
+        .boxed();
+        let stream = sm.kv_api().get_many_kv(keys).await?;
+        let got = stream
+            .map_ok(|item| item.into_option_pair())
+            .try_collect::<Vec<_>>()
+            .await?
+            .into_iter()
+            .map(|(key, value)| (key, value.without_proposed_at()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(got, vec![
+            ("second".to_string(), Some(SeqV::new(2, b"two".to_vec()))),
+            ("missing".to_string(), None),
+            ("first".to_string(), Some(SeqV::new(1, b"one".to_vec()))),
+        ]);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_many_kv_forwards_input_errors() -> anyhow::Result<()> {
+        let sm = SMV003::default();
+        let keys =
+            futures_util::stream::iter(vec![Err(std::io::Error::other("input failure"))]).boxed();
+        let stream = sm.kv_api().get_many_kv(keys).await?;
+        let error = stream.try_collect::<Vec<_>>().await.unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        assert_eq!(error.to_string(), "input failure");
+        Ok(())
+    }
+
+    #[test]
+    fn test_non_expired_filters_only_expired_values() {
+        let expired = SeqV::new_with_meta(1, Some(KVMeta::new_expires_at(1)), b"expired".to_vec());
+        let live = SeqV::new_with_meta(2, Some(KVMeta::new_expires_at(3)), b"live".to_vec());
+
+        assert_eq!(SMV003KVApi::non_expired(Some(expired), 2_000), None);
+        assert_eq!(
+            SMV003KVApi::non_expired(Some(live.clone()), 2_000),
+            Some(live)
+        );
+        assert_eq!(SMV003KVApi::non_expired::<Vec<u8>>(None, 2_000), None);
+    }
 }

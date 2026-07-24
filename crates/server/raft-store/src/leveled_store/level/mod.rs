@@ -110,21 +110,21 @@ impl Level {
         self.sys_data().nodes().clone()
     }
 
-    /// Merge two levels into a new one.
+    /// Merge two levels, retaining only each key's latest version.
     ///
-    /// Given the seq of the known minimum snapshot, we can remove older versions if the newer version is smaller than
-    /// this seq.
-    pub fn compact(&self, other: &Self, min_snapshot_seq: InternalSeq) -> Self {
+    /// Callers must ensure no active read still needs the merged history.
+    pub fn compact(&self, other: &Self) -> Self {
         let sys_data = if self.sys_data().curr_seq() > other.sys_data().curr_seq() {
             self.sys_data().clone()
         } else {
             other.sys_data().clone()
         };
+        let full_compaction_seq = InternalSeq::new(u64::MAX);
 
         Level {
             sys_data,
-            kv: mvcc::Table::compact(&self.kv, &other.kv, min_snapshot_seq),
-            expire: mvcc::Table::compact(&self.expire, &other.expire, min_snapshot_seq),
+            kv: mvcc::Table::compact(&self.kv, &other.kv, full_compaction_seq),
+            expire: mvcc::Table::compact(&self.expire, &other.expire, full_compaction_seq),
         }
     }
 }
@@ -205,63 +205,13 @@ mod tests {
         level2.kv.insert(k1(), 20, v2()).unwrap();
         level2.kv.insert_tombstone(k1(), 30).unwrap(); // Tombstone at seq 30
 
-        // Test 1: Merge with min_snapshot_seq = 0 (all versions preserved)
-        {
-            let got = level1.compact(&level2, InternalSeq::new(0));
+        let mut want = Level::default();
+        want.with_sys_data(|s| s.update_seq(200));
+        want.kv.insert(k2(), 15, v3()).unwrap();
+        want.kv.insert_tombstone(k1(), 30).unwrap();
 
-            let mut want = Level::default();
-            want.with_sys_data(|s| s.update_seq(200)); // Higher seq wins
-            // Insert in sequence order: 10, 15, 20, 30
-            want.kv.insert(k1(), 10, v1()).unwrap();
-            want.kv.insert(k2(), 15, v3()).unwrap();
-            want.kv.insert(k1(), 20, v2()).unwrap();
-            want.kv.insert_tombstone(k1(), 30).unwrap();
-
-            assert_level_eq(&got, &want, "merge_min_seq_0");
-        }
-
-        // Test 2: Merge with min_snapshot_seq = 25 (older versions cleaned)
-        {
-            let got = level1.compact(&level2, InternalSeq::new(25));
-            println!("Got level after merge with min_snapshot_seq=25: {:#?}", got);
-
-            let mut want = Level::default();
-            want.with_sys_data(|s| s.update_seq(200));
-            // Insert in sequence order: key2 at 15, then tombstone at 30
-            want.kv.insert(k2(), 15, v3()).unwrap(); // k2 preserved
-            want.kv.insert(k1(), 20, v2()).unwrap();
-            want.kv.insert_tombstone(k1(), 30).unwrap(); // Only seq 30 preserved
-
-            assert_level_eq(&got, &want, "merge_min_seq_25");
-        }
-
-        // Test 3: Merge with min_snapshot_seq = 35 (very aggressive cleanup)
-        {
-            let got = level1.compact(&level2, InternalSeq::new(35));
-
-            let mut want = Level::default();
-            want.with_sys_data(|s| s.update_seq(200));
-            // Insert in sequence order: k2 at 15, then tombstone at 30
-            want.kv.insert(k2(), 15, v3()).unwrap(); // k2 preserved
-            want.kv.insert_tombstone(k1(), 30).unwrap(); // Tombstone preserved
-
-            assert_level_eq(&got, &want, "merge_min_seq_35");
-        }
-
-        // Test 4: Reverse merge should be deterministic for sys_data
-        {
-            let got = level2.compact(&level1, InternalSeq::new(0));
-
-            let mut want = Level::default();
-            want.with_sys_data(|s| s.update_seq(200)); // Same higher seq
-            // Insert in sequence order: 10, 15, 20, 30
-            want.kv.insert(k1(), 10, v1()).unwrap();
-            want.kv.insert(k2(), 15, v3()).unwrap();
-            want.kv.insert(k1(), 20, v2()).unwrap();
-            want.kv.insert_tombstone(k1(), 30).unwrap();
-
-            assert_level_eq(&got, &want, "merge_reverse");
-        }
+        assert_level_eq(&level1.compact(&level2), &want, "merge");
+        assert_level_eq(&level2.compact(&level1), &want, "reverse_merge");
     }
 
     #[test]
@@ -295,61 +245,12 @@ mod tests {
         level2.expire.insert(ek1(), 20, ev2()).unwrap();
         level2.expire.insert_tombstone(ek1(), 30).unwrap(); // Tombstone at seq 30
 
-        // Test 1: Merge with min_snapshot_seq = 0 (all versions preserved)
-        {
-            let got = level1.compact(&level2, InternalSeq::new(0));
+        let mut want = Level::default();
+        want.with_sys_data(|s| s.update_seq(200));
+        want.expire.insert(ek2(), 15, ev3()).unwrap();
+        want.expire.insert_tombstone(ek1(), 30).unwrap();
 
-            let mut want = Level::default();
-            want.with_sys_data(|s| s.update_seq(200)); // Higher seq wins
-            // Insert in sequence order: 10, 15, 20, 30
-            want.expire.insert(ek1(), 10, ev1()).unwrap();
-            want.expire.insert(ek2(), 15, ev3()).unwrap();
-            want.expire.insert(ek1(), 20, ev2()).unwrap();
-            want.expire.insert_tombstone(ek1(), 30).unwrap();
-
-            assert_level_eq(&got, &want, "expire_merge_min_seq_0");
-        }
-
-        // Test 2: Merge with min_snapshot_seq = 25 (older versions cleaned)
-        {
-            let got = level1.compact(&level2, InternalSeq::new(25));
-
-            let mut want = Level::default();
-            want.with_sys_data(|s| s.update_seq(200));
-            // Insert in sequence order: ek2 at 15, then tombstone at 30
-            want.expire.insert(ek2(), 15, ev3()).unwrap(); // ek2 preserved
-            want.expire.insert(ek1(), 20, ev2()).unwrap();
-            want.expire.insert_tombstone(ek1(), 30).unwrap(); // Only seq 30 preserved for ek1
-
-            assert_level_eq(&got, &want, "expire_merge_min_seq_25");
-        }
-
-        // Test 3: Merge with min_snapshot_seq = 35 (very aggressive cleanup)
-        {
-            let got = level1.compact(&level2, InternalSeq::new(35));
-
-            let mut want = Level::default();
-            want.with_sys_data(|s| s.update_seq(200));
-            // Insert in sequence order: ek2 at 15, then tombstone at 30
-            want.expire.insert(ek2(), 15, ev3()).unwrap(); // ek2 preserved
-            want.expire.insert_tombstone(ek1(), 30).unwrap(); // Tombstone preserved
-
-            assert_level_eq(&got, &want, "expire_merge_min_seq_35");
-        }
-
-        // Test 4: Reverse merge should be deterministic for sys_data
-        {
-            let got = level2.compact(&level1, InternalSeq::new(0));
-
-            let mut want = Level::default();
-            want.with_sys_data(|s| s.update_seq(200)); // Same higher seq
-            // Insert in sequence order: 10, 15, 20, 30
-            want.expire.insert(ek1(), 10, ev1()).unwrap();
-            want.expire.insert(ek2(), 15, ev3()).unwrap();
-            want.expire.insert(ek1(), 20, ev2()).unwrap();
-            want.expire.insert_tombstone(ek1(), 30).unwrap();
-
-            assert_level_eq(&got, &want, "expire_merge_reverse");
-        }
+        assert_level_eq(&level1.compact(&level2), &want, "expire_merge");
+        assert_level_eq(&level2.compact(&level1), &want, "reverse_expire_merge");
     }
 }

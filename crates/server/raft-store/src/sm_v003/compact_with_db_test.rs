@@ -401,16 +401,16 @@ async fn move_bottom_to_db(
     let mut lm2 = LeveledMap::default();
     let writable = bottom.newest().unwrap().new_level();
     lm2.replace_immutable_levels(bottom);
-    {
-        let mut inner = lm2.data.lock().unwrap();
-        inner.writable = writable;
-    }
+    lm2.with_inner(|inner| inner.writable = writable);
 
     compact(&mut lm2, base_path, rel_path).await?;
 
     let persisted = lm2.persisted();
     lm.with_inner(|inner| {
-        inner.immutable = Arc::new(inner.immutable.with_persisted(persisted));
+        inner.immutable = Arc::new(ImmutableData::new(
+            inner.immutable.levels().clone(),
+            persisted,
+        ));
     });
     Ok(())
 }

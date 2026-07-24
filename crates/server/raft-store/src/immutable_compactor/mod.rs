@@ -17,7 +17,6 @@ use std::sync::Arc;
 
 use display_more::DisplaySliceExt;
 use log::info;
-use seq_marked::InternalSeq;
 
 use crate::leveled_store::leveled_map::LeveledMap;
 use crate::sm_v003::SMV003;
@@ -115,8 +114,8 @@ impl ImmutableCompactor {
         &self.name
     }
 
-    pub fn compact(self, min_snapshot_seq: InternalSeq) {
-        //
+    /// Wait until no active read predates the immutable data, then compact it.
+    pub async fn compact(self) {
         let immutable_levels = self.leveled_map.immutable_levels();
 
         let old_stat = immutable_levels.stat();
@@ -132,7 +131,11 @@ impl ImmutableCompactor {
             return;
         }
 
-        let new_immutable_levels = immutable_levels.compact_min_adjacent(min_snapshot_seq);
+        self.leveled_map
+            .wait_for_active_reads_before_compaction()
+            .await;
+
+        let new_immutable_levels = immutable_levels.compact_min_adjacent();
 
         let old_stat = immutable_levels.stat();
         let new_stat = new_immutable_levels.stat();

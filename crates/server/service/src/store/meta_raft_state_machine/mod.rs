@@ -37,7 +37,6 @@ use futures::FutureExt;
 use futures::TryStreamExt;
 use log::error;
 use log::info;
-use seq_marked::InternalSeq;
 use tokio::sync::oneshot;
 
 use crate::metrics::SnapshotBuilding;
@@ -125,16 +124,13 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
     }
 
     async fn in_memory_compact_once(sm: Arc<SMV003>) {
-        let compactor = InMemoryCompactor::new(sm, "in_memory_compactor").await;
+        let compactor = InMemoryCompactor::new(sm.clone(), "in_memory_compactor").await;
 
         // 1. freeze the writable
         let immutable_compactor = compactor.freeze();
 
-        // 2. compact two adjacent levels if needed.
-        // TODO: add snapshot seq when a mvcc is created.
-        //       currently, use the max value to eliminate all older records.
-        let min_snapshot_seq = InternalSeq::new(u64::MAX);
-        immutable_compactor.compact(min_snapshot_seq);
+        // 2. Wait for older read views before merging immutable levels.
+        immutable_compactor.compact().await;
 
         info!("in_memory_compact completed");
     }
@@ -162,6 +158,11 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
             .await;
 
         info!("do_build_snapshot compactor created");
+
+        sm_v003
+            .leveled_map()
+            .wait_for_active_reads_before_compaction()
+            .await;
 
         let (mut sys_data, mut strm) = compactor.compact_into_stream().await?;
 
@@ -227,7 +228,7 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
         {
             sm_v003
                 .leveled_map()
-                .replace_with_compacted(&mut compactor, db.clone());
+                .replace_with_compacted(&compactor, db.clone());
             info!("do_build_snapshot-replace_with_compacted returned");
         }
 
