@@ -12,12 +12,43 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt;
 use std::io;
 
+use futures::Stream;
+use futures_util::StreamExt;
+use log::info;
 use rotbl::v001::SeqMarked;
 
 /// Result type of key-value pair and io Error used in a map.
 type RotblResult = Result<(String, SeqMarked), io::Error>;
+
+/// Add cooperative yielding to a stream to prevent task starvation.
+///
+/// This yields control back to the async runtime every 100 items to prevent
+/// blocking other concurrent tasks when processing large streams.
+pub fn add_cooperative_yielding<S, T>(
+    stream: S,
+    stream_name: impl fmt::Display + Send,
+) -> impl Stream<Item = T>
+where
+    S: Stream<Item = T>,
+    T: Send + 'static,
+{
+    stream.enumerate().then(move |(index, item)| {
+        if index > 0 && index % 10_000 == 0 {
+            info!("{stream_name} processed {index} items");
+        }
+        let to_yield = index > 0 && index % 100 == 0;
+
+        async move {
+            if to_yield {
+                tokio::task::yield_now().await;
+            }
+            item
+        }
+    })
+}
 
 /// Sort by key and internal_seq.
 /// Return `true` if `a` should be placed before `b`, e.g., `a` is smaller.

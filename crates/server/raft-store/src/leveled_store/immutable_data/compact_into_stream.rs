@@ -30,7 +30,7 @@ use stream_more::StreamMore;
 use crate::leveled_store::immutable_data::ImmutableData;
 use crate::leveled_store::rotbl_codec::RotblCodec;
 use crate::leveled_store::util;
-use crate::utils::add_cooperative_yielding;
+use crate::leveled_store::util::add_cooperative_yielding;
 
 impl ImmutableData {
     /// Compacted all data into a stream.

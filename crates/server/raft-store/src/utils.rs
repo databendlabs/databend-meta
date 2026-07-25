@@ -12,44 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Stream processing utilities and string range operations.
+//! Key-range and value-conversion helpers for the state machine.
 
-use std::fmt;
-
-use futures::Stream;
-use futures_util::StreamExt;
-use log::info;
 use seq_marked::SeqMarked;
 use state_machine_api::MetaValue;
 use state_machine_api::SeqV;
 use state_machine_api::UserKey;
-
-/// Add cooperative yielding to a stream to prevent task starvation.
-///
-/// This yields control back to the async runtime every 100 items to prevent
-/// blocking other concurrent tasks when processing large streams.
-pub(crate) fn add_cooperative_yielding<S, T>(
-    stream: S,
-    stream_name: impl fmt::Display + Send,
-) -> impl Stream<Item = T>
-where
-    S: Stream<Item = T>,
-    T: Send + 'static,
-{
-    stream.enumerate().then(move |(index, item)| {
-        if index > 0 && index % 10_000 == 0 {
-            info!("{stream_name} processed {index} items");
-        }
-        let to_yield = index > 0 && index % 100 == 0;
-
-        async move {
-            if to_yield {
-                tokio::task::yield_now().await;
-            }
-            item
-        }
-    })
-}
 
 /// Return the right bound of the prefix, so that `p..right` will cover all strings with prefix `p`.
 ///

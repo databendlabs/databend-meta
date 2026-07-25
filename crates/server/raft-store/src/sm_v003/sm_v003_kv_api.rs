@@ -31,9 +31,9 @@ use seq_marked::SeqValue;
 use state_machine_api::UserKey;
 
 use crate::leveled_store::state_machine::read_view::StateMachineReadView;
+use crate::leveled_store::util::add_cooperative_yielding;
 use crate::sm_v003::SMV003;
 use crate::testing::since_epoch_millis;
-use crate::utils::add_cooperative_yielding;
 use crate::utils::prefix_right_bound;
 use crate::utils::seq_marked_to_seqv;
 
