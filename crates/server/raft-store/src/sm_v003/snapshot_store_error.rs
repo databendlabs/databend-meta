@@ -84,3 +84,59 @@ impl From<SnapshotStoreError> for io::Error {
         io::Error::other(e)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+
+    use databend_meta_types::raft_types::ErrorSubject;
+    use databend_meta_types::raft_types::StorageError;
+
+    use super::*;
+
+    fn not_found() -> io::Error {
+        io::Error::new(io::ErrorKind::NotFound, "no such file")
+    }
+
+    #[test]
+    fn test_context_accumulates_in_call_order() {
+        let e = SnapshotStoreError::read(not_found());
+        assert_eq!(
+            e.to_string(),
+            "SnapshotStoreError(Read: no such file, while: "
+        );
+
+        let e = e.with_context("opening").with_context("loading last");
+        assert_eq!(
+            e.to_string(),
+            "SnapshotStoreError(Read: no such file, while: opening; while loading last"
+        );
+
+        let e = SnapshotStoreError::write(not_found()).with_meta("opening", "/tmp/a.snap");
+        assert_eq!(
+            e.to_string(),
+            "SnapshotStoreError(Write: no such file, while: opening: /tmp/a.snap"
+        );
+        assert_eq!(e.source().unwrap().to_string(), "no such file");
+    }
+
+    #[test]
+    fn test_convert_to_storage_error_and_io_error() {
+        let storage_error = StorageError::from(SnapshotStoreError::read(not_found()));
+        assert_eq!(
+            storage_error,
+            StorageError::new(
+                ErrorSubject::Snapshot(None),
+                ErrorVerb::Read,
+                AnyError::new(&SnapshotStoreError::read(not_found())),
+            )
+        );
+
+        let io_error = io::Error::from(SnapshotStoreError::write(not_found()));
+        assert_eq!(io_error.kind(), io::ErrorKind::Other);
+        assert_eq!(
+            io_error.to_string(),
+            "SnapshotStoreError(Write: no such file, while: "
+        );
+    }
+}

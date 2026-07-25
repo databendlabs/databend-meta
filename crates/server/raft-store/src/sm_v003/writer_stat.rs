@@ -84,3 +84,42 @@ impl WriterStat {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::WriterStat;
+
+    #[test]
+    fn test_inc_counts_entries_and_schedules_progress_logging() {
+        let mut stat = WriterStat::new();
+        assert_eq!(stat.cnt, 0);
+        assert_eq!(stat.next_progress_cnt, 1000);
+
+        for _ in 0..999 {
+            stat.inc();
+        }
+        assert_eq!(stat.cnt, 999);
+        assert_eq!(stat.next_progress_cnt, 1000, "not reached yet");
+
+        // Reaching the threshold logs and pushes it forward by the 50k floor.
+        stat.inc();
+        assert_eq!(stat.cnt, 1000);
+        assert_eq!(stat.next_progress_cnt, 51_000);
+
+        // Past 16M entries the 5% step is capped at 800k; this also crosses the
+        // 10M mark where progress is reported in millions.
+        stat.cnt = 20_000_000 - 1;
+        stat.next_progress_cnt = 20_000_000;
+        stat.inc();
+        assert_eq!(stat.next_progress_cnt, 20_800_000);
+    }
+
+    #[test]
+    fn test_display_reports_the_entry_count() {
+        let mut stat = WriterStat::new();
+        stat.inc();
+        stat.inc();
+        // Only the elapsed time varies.
+        assert!(stat.to_string().starts_with("{cnt:2, elapsed:"), "{}", stat);
+    }
+}

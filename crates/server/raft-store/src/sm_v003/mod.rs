@@ -34,6 +34,8 @@ mod compact_with_db_test;
 pub(crate) mod compactor_acquirer;
 #[cfg(test)]
 pub(crate) mod sm_v003_test;
+#[cfg(test)]
+mod snapshot_store_test;
 pub(crate) mod writer_acquirer;
 
 pub use sm_v003::Change;
