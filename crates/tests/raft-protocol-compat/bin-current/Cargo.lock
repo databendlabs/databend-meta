@@ -938,7 +938,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta"
-version = "260629.1.0"
+version = "260629.2.0"
 dependencies = [
  "anyerror",
  "anyhow",
@@ -953,6 +953,7 @@ dependencies = [
  "databend-meta-raft-store",
  "databend-meta-runtime-api",
  "databend-meta-sled-store",
+ "databend-meta-snapshot-db",
  "databend-meta-types",
  "databend-meta-version",
  "deepsize",
@@ -987,14 +988,13 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-base"
-version = "260629.1.0"
+version = "260629.2.0"
 dependencies = [
  "anyerror",
  "deepsize",
  "derive_more 2.1.1",
  "display-more 0.2.6",
  "map-api",
- "seq-marked",
  "serde",
  "state-machine-api",
  "thiserror 1.0.69",
@@ -1002,7 +1002,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-client"
-version = "260629.1.0"
+version = "260629.2.0"
 dependencies = [
  "anyerror",
  "arrow-flight",
@@ -1035,7 +1035,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-client-types"
-version = "260629.1.0"
+version = "260629.2.0"
 dependencies = [
  "anyerror",
  "databend-meta-proto",
@@ -1072,7 +1072,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-kvapi"
-version = "260629.1.0"
+version = "260629.2.0"
 dependencies = [
  "async-trait",
  "databend-meta-client-types",
@@ -1085,7 +1085,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-kvapi-test-suite"
-version = "260629.1.0"
+version = "260629.2.0"
 dependencies = [
  "anyhow",
  "databend-meta-client-types",
@@ -1100,7 +1100,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-proto"
-version = "260629.1.0"
+version = "260629.2.0"
 dependencies = [
  "anyerror",
  "databend-meta-base",
@@ -1122,7 +1122,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-raft-store"
-version = "260629.1.0"
+version = "260629.2.0"
 dependencies = [
  "anyerror",
  "anyhow",
@@ -1132,6 +1132,7 @@ dependencies = [
  "databend-meta-kvapi",
  "databend-meta-runtime-api",
  "databend-meta-sled-store",
+ "databend-meta-snapshot-db",
  "databend-meta-types",
  "deepsize",
  "derive_more 2.1.1",
@@ -1163,7 +1164,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-runtime-api"
-version = "260629.1.0"
+version = "260629.2.0"
 dependencies = [
  "env_logger",
  "hickory-resolver",
@@ -1175,7 +1176,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-sled-store"
-version = "260629.1.0"
+version = "260629.2.0"
 dependencies = [
  "anyerror",
  "byteorder",
@@ -1191,8 +1192,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "databend-meta-snapshot-db"
+version = "260629.2.0"
+dependencies = [
+ "bincode",
+ "databend-meta-types",
+ "futures-util",
+ "log",
+ "map-api",
+ "openraft",
+ "rotbl",
+ "seq-marked",
+ "serde_json",
+ "state-machine-api",
+]
+
+[[package]]
 name = "databend-meta-types"
-version = "260629.1.0"
+version = "260629.2.0"
 dependencies = [
  "anyerror",
  "databend-meta-base",
@@ -1200,16 +1217,11 @@ dependencies = [
  "deepsize",
  "derive_more 2.1.1",
  "display-more 0.2.6",
- "futures-util",
  "log",
  "map-api",
- "num-derive",
  "num-traits",
  "num_cpus",
  "openraft",
- "pretty_assertions",
- "prost 0.13.5",
- "rotbl",
  "serde",
  "serde_json",
  "state-machine-api",
@@ -1219,7 +1231,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-version"
-version = "260629.1.0"
+version = "260629.2.0"
 dependencies = [
  "semver",
 ]
@@ -1288,12 +1300,6 @@ dependencies = [
  "syn 2.0.117",
  "unicode-xid",
 ]
-
-[[package]]
-name = "diff"
-version = "0.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
 
 [[package]]
 name = "dispatch2"
@@ -3000,16 +3006,6 @@ dependencies = [
  "either",
  "ipnet",
  "num-traits",
-]
-
-[[package]]
-name = "pretty_assertions"
-version = "1.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ae130e2f271fbc2ac3a40fb1d07180839cdbbe443c7a27e1e3c13c5cac0116d"
-dependencies = [
- "diff",
- "yansi",
 ]
 
 [[package]]
@@ -5191,12 +5187,6 @@ checksum = "05f360fc0b24296329c78fda852a1e9ae82de9cf7b27dae4b7f62f118f77b9ed"
 dependencies = [
  "tap",
 ]
-
-[[package]]
-name = "yansi"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfe53a6657fd280eaa890a3bc59152892ffa3e30101319d168b781ed6529b049"
 
 [[package]]
 name = "yoke"
