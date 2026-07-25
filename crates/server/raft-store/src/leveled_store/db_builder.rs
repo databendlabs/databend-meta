@@ -12,13 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! A builder to build a [`DB`] from a series of sorted key-value.
+//! A builder to build a rotbl table from a series of sorted key-value.
+//!
+//! Committing it yields a plain table; wrapping that into a
+//! [`DB`](databend_meta_snapshot_db::DB) is the snapshot store's job.
 
 use std::io;
 use std::path::Path;
 #[cfg(test)]
 use std::sync::Arc;
 
+#[cfg(test)]
 use databend_meta_snapshot_db::DB;
 use databend_meta_types::sys_data::SysData;
 use futures::Stream;
@@ -30,11 +34,6 @@ use rotbl::v001::SeqMarked;
 
 #[cfg(test)]
 use crate::leveled_store::leveled_map::LeveledMap;
-#[cfg(doc)]
-use crate::sm_v003::SnapshotStoreV004;
-use crate::sm_v003::open_snapshot::OpenSnapshot;
-use crate::snapshot_config::SnapshotConfig;
-use crate::state_machine::MetaSnapshotId;
 
 /// Builds a snapshot from series of key-value in `(String, SeqMarked)`
 pub(crate) struct DBBuilder {
@@ -78,35 +77,14 @@ impl DBBuilder {
         Ok(())
     }
 
-    /// Commit the building to the provided [`SnapshotStoreV004`].
-    pub fn commit_to_snapshot_store(
-        self,
-        snapshot_config: &SnapshotConfig,
-        snapshot_id: MetaSnapshotId,
-        sys_data: SysData,
-    ) -> Result<DB, io::Error> {
-        let config = self.rotbl_builder.config().clone();
-        let storage_path = self.rotbl_builder.storage().base_dir_str().to_string();
+    /// The rotbl config the built table is written with.
+    pub(crate) fn rotbl_config(&self) -> &rotbl::v001::Config {
+        self.rotbl_builder.config()
+    }
 
-        let (current_rel_path, _r) = self.commit(sys_data)?;
-
-        let current_path = format!("{}/{}", storage_path, current_rel_path);
-
-        let (_, rel_path) =
-            snapshot_config.move_to_final_path(&current_path, snapshot_id.to_string())?;
-
-        let db = DB::open_snapshot(&storage_path, &rel_path, snapshot_id.to_string(), config)
-            .map_err(|e| {
-                io::Error::new(
-                    e.kind(),
-                    format!(
-                        "{}; when:(open snapshot at: {}/{})",
-                        e, storage_path, rel_path
-                    ),
-                )
-            })?;
-
-        Ok(db)
+    /// Returns the base dir of the internal FS-storage.
+    pub(crate) fn storage_path(&self) -> &str {
+        self.rotbl_builder.storage().base_dir_str()
     }
 
     /// Commit the building.
@@ -155,12 +133,6 @@ impl DBBuilder {
 
         Ok(db)
     }
-
-    /// Returns the base dir of the internal FS-storage.
-    #[cfg(test)]
-    fn storage_path(&self) -> &str {
-        self.rotbl_builder.storage().base_dir_str()
-    }
 }
 
 #[cfg(test)]
@@ -170,17 +142,6 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use super::*;
-    use crate::config::RaftConfig;
-    use crate::data_version::DATA_VERSION;
-
-    fn snapshot_config(temp_dir: &tempfile::TempDir) -> SnapshotConfig {
-        let raft_config = RaftConfig {
-            raft_dir: temp_dir.path().to_str().unwrap().to_string(),
-            ..Default::default()
-        };
-
-        SnapshotConfig::new(DATA_VERSION, raft_config)
-    }
 
     fn sys_data() -> SysData {
         let mut sys_data = SysData::default();
@@ -197,17 +158,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_commit_sorted_input_to_the_snapshot_store() -> anyhow::Result<()> {
+    async fn test_commit_sorted_input() -> anyhow::Result<()> {
         let temp_dir = tempfile::tempdir()?;
-        let snapshot_config = snapshot_config(&temp_dir);
-        let (storage_path, temp_rel_path) = snapshot_config.snapshot_temp_dir_fn();
-        snapshot_config.ensure_snapshot_dir()?;
+        let storage_path = temp_dir.path().to_str().unwrap().to_string();
 
-        let mut builder = DBBuilder::new(
-            &storage_path,
-            &temp_rel_path,
-            snapshot_config.raft_config().to_rotbl_config(),
-        )?;
+        let mut builder = DBBuilder::new(&storage_path, "temp-db", debug_checked_config())?;
         assert_eq!(builder.storage_path(), storage_path);
 
         builder
@@ -215,9 +170,15 @@ mod tests {
             .await?;
         builder.append_kv("c".to_string(), SeqMarked::new_tombstone(2))?;
 
-        let snapshot_id = MetaSnapshotId::new(Some(new_log_id(1, 2, 3)), 4);
-        let db =
-            builder.commit_to_snapshot_store(&snapshot_config, snapshot_id.clone(), sys_data())?;
+        let (rel_path, r) = builder.commit(sys_data())?;
+        assert_eq!(rel_path, "temp-db");
+
+        let db = DB::new(
+            storage_path,
+            rel_path,
+            "snapshot-id".to_string(),
+            Arc::new(r),
+        )?;
 
         assert_eq!(db.sys_data, sys_data());
         assert_eq!(db.inner_range().try_collect::<Vec<_>>().await?, vec![
@@ -226,28 +187,18 @@ mod tests {
             ("c".to_string(), SeqMarked::new_tombstone(2)),
         ]);
 
-        // The temp file is gone: it was renamed to the id-derived final path.
-        assert!(!Path::new(&format!("{}/{}", storage_path, temp_rel_path)).exists());
-        assert!(Path::new(&snapshot_config.snapshot_path(&snapshot_id.to_string())).exists());
-
         Ok(())
     }
 
-    /// Out-of-order input is a caller bug, and `snapshot_db_debug_check` makes
+    /// Out-of-order input is a caller bug, and `with_debug_check` makes
     /// the builder catch it instead of writing an unreadable table.
     #[test]
     #[should_panic(expected = "this key \"a\" must be greater than prev Some(\"b\")")]
     fn test_append_kv_rejects_out_of_order_keys() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let snapshot_config = snapshot_config(&temp_dir);
-        assert!(snapshot_config.raft_config().snapshot_db_debug_check);
 
-        let mut builder = DBBuilder::new(
-            temp_dir.path(),
-            "temp-db",
-            snapshot_config.raft_config().to_rotbl_config(),
-        )
-        .unwrap();
+        let mut builder =
+            DBBuilder::new(temp_dir.path(), "temp-db", debug_checked_config()).unwrap();
 
         builder
             .append_kv("b".to_string(), SeqMarked::new_tombstone(1))
@@ -255,5 +206,9 @@ mod tests {
         builder
             .append_kv("a".to_string(), SeqMarked::new_tombstone(2))
             .unwrap();
+    }
+
+    fn debug_checked_config() -> rotbl::v001::Config {
+        rotbl::v001::Config::default().with_debug_check(true)
     }
 }

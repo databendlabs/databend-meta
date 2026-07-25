@@ -20,6 +20,7 @@ mod snapshot_store_v003;
 mod writer_v003;
 
 pub mod adapter;
+mod db_open_snapshot_impl;
 pub mod open_snapshot;
 pub mod received;
 pub mod receiver_v003;

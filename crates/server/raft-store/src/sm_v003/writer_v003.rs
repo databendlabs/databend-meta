@@ -27,6 +27,7 @@ use rotbl::v001::SeqMarked;
 use tokio::sync::mpsc;
 
 use crate::leveled_store::db_builder::DBBuilder;
+use crate::sm_v003::open_snapshot::OpenSnapshot;
 use crate::sm_v003::write_entry::WriteEntry;
 use crate::sm_v003::writer_stat::WriterStat;
 use crate::snapshot_config::SnapshotConfig;
@@ -128,8 +129,34 @@ impl<SP: SpawnApi> WriterV003<SP> {
     ///
     /// This method consumes the writer, thus the writer will not be used after commit.
     pub fn commit(self, snapshot_id: MetaSnapshotId, sys_data: SysData) -> Result<DB, io::Error> {
-        self.db_builder
-            .commit_to_snapshot_store(&self.snapshot_config, snapshot_id, sys_data)
+        let Self {
+            db_builder,
+            snapshot_config,
+            ..
+        } = self;
+
+        let config = db_builder.rotbl_config().clone();
+        let storage_path = db_builder.storage_path().to_string();
+
+        let (temp_rel_path, _r) = db_builder.commit(sys_data)?;
+
+        let temp_path = format!("{}/{}", storage_path, temp_rel_path);
+
+        let (_, rel_path) =
+            snapshot_config.move_to_final_path(&temp_path, snapshot_id.to_string())?;
+
+        let db = DB::open_snapshot(&storage_path, &rel_path, snapshot_id.to_string(), config)
+            .map_err(|e| {
+                io::Error::new(
+                    e.kind(),
+                    format!(
+                        "{}; when:(open snapshot at: {}/{})",
+                        e, storage_path, rel_path
+                    ),
+                )
+            })?;
+
+        Ok(db)
     }
 
     /// Spawn a thread to receive snapshot data `(String, SeqMarked)`

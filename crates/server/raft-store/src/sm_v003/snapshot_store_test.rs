@@ -102,6 +102,13 @@ async fn test_write_receive_and_reopen_a_multi_chunk_snapshot() -> anyhow::Resul
     assert_eq!(db.stat().key_num, entries.len() as u64);
     assert_eq!(db_entries(&db).await?, entries);
 
+    // The temp file is gone: it was renamed to the id-derived final path.
+    let mut written = fs::read_dir(sender.snapshot_config().snapshot_dir())?
+        .map(|e| Ok(e?.file_name().to_string_lossy().to_string()))
+        .collect::<Result<Vec<_>, io::Error>>()?;
+    written.sort();
+    assert_eq!(written, vec![format!("{}.snap", snapshot_id)]);
+
     // Ship the file to another node, chunk by chunk.
 
     let receiver_dir = tempfile::tempdir()?;

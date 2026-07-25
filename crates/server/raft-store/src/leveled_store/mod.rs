@@ -30,7 +30,6 @@ pub mod util;
 #[cfg(test)]
 pub(crate) mod testing_data;
 
-mod db_open_snapshot_impl;
 #[cfg(test)]
 mod db_scoped_seq_bounded_read_test;
 pub mod immutable_data;
