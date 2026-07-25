@@ -217,6 +217,36 @@ impl LeveledMap {
         (compactor_permit, writer_permit)
     }
 
+    /// Get a singleton `Compactor` instance specific to `self`.
+    pub async fn acquire_compactor(&self, name: impl ToString) -> Compactor {
+        let permit = self.acquire_compactor_permit(name).await;
+        self.new_compactor(permit)
+    }
+
+    /// Acquire permits in canonical order, freeze the writable level, and
+    /// return a compactor that retains the compaction permit.
+    pub async fn freeze_writable_for_compaction(&self, name: impl ToString) -> Compactor {
+        let (mut compactor_permit, mut writer_permit) =
+            self.acquire_compaction_and_writer(name).await;
+
+        self.freeze_writable(&mut writer_permit, &mut compactor_permit);
+
+        drop(writer_permit);
+
+        self.new_compactor(compactor_permit)
+    }
+
+    fn new_compactor(&self, permit: CompactorPermit) -> Compactor {
+        let immutable_data = self.immutable_data();
+
+        info!(
+            "new_compactor: with immutable data: {}",
+            immutable_data.stat()
+        );
+
+        Compactor::new(permit, immutable_data)
+    }
+
     /// Freeze the current writable level and create a new empty writable level.
     ///
     /// Need writer permit to reset the writable level, and compactor permit to add a new immutable level.

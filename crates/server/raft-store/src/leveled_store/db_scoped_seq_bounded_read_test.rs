@@ -15,55 +15,53 @@
 //! Test for db_map_api_ro_impl.
 
 use databend_meta_snapshot_db::ReadAtSeqDB;
-use databend_meta_types::UpsertKV;
 use futures_util::TryStreamExt;
+use map_api::mvcc::ViewSet;
 use seq_marked::SeqMarked;
 use state_machine_api::ExpireKey;
 use state_machine_api::KVMeta;
 use state_machine_api::UserKey;
 
 use crate::leveled_store::db_builder::DBBuilder;
-use crate::state_machine::StateMachine;
+use crate::leveled_store::leveled_map::LeveledMap;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_db_scoped_seq_bounded_read() -> anyhow::Result<()> {
-    // Build a state machine
-    let mut sm = {
-        let mut sm = StateMachine::default();
+    // Build two levels of kv entries and their expire index, the way an applier
+    // would: the expire entry shares the seq of the kv entry it points at.
+    let mut lm = {
+        let lm = LeveledMap::default();
 
-        let mut a = sm.new_applier().await;
-        a.upsert_kv(&UpsertKV::update("a", b"a0").with_expire_sec(10))
-            .await?;
-        a.upsert_kv(&UpsertKV::update("b", b"b0").with_expire_sec(5))
-            .await?;
+        let mut view = lm.to_view();
+        view.set(user_key("a"), Some((meta(10), b("a0"))));
+        view.set(ExpireKey::new(10_000, 1), Some(s("a")));
+        view.set(user_key("b"), Some((meta(5), b("b0"))));
+        view.set(ExpireKey::new(5_000, 2), Some(s("b")));
+        view.commit().await?;
 
-        a.commit().await?;
+        lm.freeze_writable_without_permit();
 
-        sm.levels_mut().freeze_writable_without_permit();
+        let mut view = lm.to_view();
+        view.set(user_key("c"), Some((meta(20), b("c0"))));
+        view.set(ExpireKey::new(20_000, 3), Some(s("c")));
+        view.set(user_key("a"), Some((meta(15), b("a1"))));
+        view.set(ExpireKey::new(10_000, 1), None);
+        view.set(ExpireKey::new(15_000, 4), Some(s("a")));
+        view.set(user_key("b"), None);
+        view.set(ExpireKey::new(5_000, 2), None);
+        view.commit().await?;
 
-        let mut a = sm.new_applier().await;
-
-        a.upsert_kv(&UpsertKV::update("c", b"c0").with_expire_sec(20))
-            .await?;
-        a.upsert_kv(&UpsertKV::update("a", b"a1").with_expire_sec(15))
-            .await?;
-        a.upsert_kv(&UpsertKV::delete("b")).await?;
-
-        a.commit().await?;
-
-        sm
+        lm
     };
 
-    // Build a db from all data of the state machine
+    // Build a db from all data of the leveled map
     let db = {
-        let lm = sm.levels_mut();
-
         let temp_dir = tempfile::tempdir()?;
         let path = temp_dir.path();
 
         let db_builder = DBBuilder::new(path, "temp-db", rotbl::v001::Config::default())?;
         db_builder
-            .build_from_leveled_map(lm, |_| "1-1-1-1".to_string())
+            .build_from_leveled_map(&mut lm, |_| "1-1-1-1".to_string())
             .await?
     };
 
@@ -138,6 +136,9 @@ async fn test_db_scoped_seq_bounded_read() -> anyhow::Result<()> {
 
 fn s(x: impl ToString) -> String {
     x.to_string()
+}
+fn meta(expire_at_sec: u64) -> Option<KVMeta> {
+    Some(KVMeta::new(Some(expire_at_sec), Some(0)))
 }
 fn b(x: impl ToString) -> Vec<u8> {
     x.to_string().as_bytes().to_vec()

@@ -14,17 +14,17 @@
 
 use databend_meta_types::Endpoint;
 use databend_meta_types::Node;
-use databend_meta_types::UpsertKV;
 use databend_meta_types::raft_types::Membership;
 use databend_meta_types::raft_types::StoredMembership;
 use databend_meta_types::raft_types::TypeConfig;
 use map_api::mvcc::ViewSet;
 use maplit::btreemap;
 use openraft::testing::log_id;
+use state_machine_api::ExpireKey;
+use state_machine_api::KVMeta;
 use state_machine_api::UserKey;
 
 use crate::leveled_store::leveled_map::LeveledMap;
-use crate::state_machine::StateMachine;
 
 /// Create multi levels store:
 ///
@@ -99,26 +99,28 @@ pub(crate) async fn build_3_levels_leveled_map() -> anyhow::Result<LeveledMap> {
 /// ------------------------------------------------------------
 /// l0 | a₁  b₂         |  5,2₂ -> b    10,1₁ -> a
 pub(crate) async fn build_2_levels_leveled_map_with_expire() -> anyhow::Result<LeveledMap> {
-    let mut sm = StateMachine::default();
+    let lm = LeveledMap::default();
 
-    let mut a = sm.new_applier().await;
-    a.upsert_kv(&UpsertKV::update("a", b"a0").with_expire_sec(10))
-        .await?;
-    a.upsert_kv(&UpsertKV::update("b", b"b0").with_expire_sec(5))
-        .await?;
+    // The expire entry shares the seq of the kv entry it points at, the way an
+    // applier writes them.
+    let mut view = lm.to_view();
+    view.set(user_key("a"), Some((meta(10), b("a0"))));
+    view.set(ExpireKey::new(10_000, 1), Some("a".to_string()));
+    view.set(user_key("b"), Some((meta(5), b("b0"))));
+    view.set(ExpireKey::new(5_000, 2), Some("b".to_string()));
+    view.commit().await?;
 
-    a.commit().await?;
+    lm.freeze_writable_without_permit();
 
-    sm.map_mut().freeze_writable_without_permit();
+    let mut view = lm.to_view();
+    view.set(user_key("c"), Some((meta(20), b("c0"))));
+    view.set(ExpireKey::new(20_000, 3), Some("c".to_string()));
+    view.set(user_key("a"), Some((meta(15), b("a1"))));
+    view.set(ExpireKey::new(10_000, 1), None);
+    view.set(ExpireKey::new(15_000, 4), Some("a".to_string()));
+    view.commit().await?;
 
-    let mut a = sm.new_applier().await;
-    a.upsert_kv(&UpsertKV::update("c", b"c0").with_expire_sec(20))
-        .await?;
-    a.upsert_kv(&UpsertKV::update("a", b"a1").with_expire_sec(15))
-        .await?;
-    a.commit().await?;
-
-    Ok(sm.leveled_map().clone())
+    Ok(lm)
 }
 
 fn b(x: impl ToString) -> Vec<u8> {
@@ -127,4 +129,8 @@ fn b(x: impl ToString) -> Vec<u8> {
 
 fn user_key(s: impl ToString) -> UserKey {
     UserKey::new(s)
+}
+
+fn meta(expire_at_sec: u64) -> Option<KVMeta> {
+    Some(KVMeta::new(Some(expire_at_sec), Some(0)))
 }

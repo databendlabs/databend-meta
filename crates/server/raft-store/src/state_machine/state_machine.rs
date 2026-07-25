@@ -24,7 +24,6 @@ use databend_meta_types::raft_types::EntryResponder;
 use databend_meta_types::sys_data::SysData;
 use futures::Stream;
 use futures::StreamExt;
-use log::info;
 use state_machine_api::SeqV;
 use state_machine_api::UserKey;
 
@@ -203,32 +202,12 @@ impl StateMachine {
 
     /// Get a singleton `Compactor` instance specific to `self`.
     pub async fn acquire_compactor(&self, name: impl ToString) -> Compactor {
-        let permit = self.leveled_map.acquire_compactor_permit(name).await;
-        self.new_compactor(permit)
+        self.leveled_map.acquire_compactor(name).await
     }
 
     /// Acquire permits in canonical order, freeze the writable level, and
     /// return a compactor that retains the compaction permit.
     pub async fn freeze_writable_for_compaction(&self, name: impl ToString) -> Compactor {
-        let (mut compactor_permit, mut writer_permit) =
-            self.acquire_compaction_and_writer(name).await;
-
-        self.leveled_map
-            .freeze_writable(&mut writer_permit, &mut compactor_permit);
-
-        drop(writer_permit);
-
-        self.new_compactor(compactor_permit)
-    }
-
-    fn new_compactor(&self, permit: CompactorPermit) -> Compactor {
-        let immutable_data = self.leveled_map.immutable_data();
-
-        info!(
-            "new_compactor: with immutable data: {}",
-            immutable_data.stat()
-        );
-
-        Compactor::new(permit, immutable_data)
+        self.leveled_map.freeze_writable_for_compaction(name).await
     }
 }

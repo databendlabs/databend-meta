@@ -30,7 +30,6 @@ use crate::leveled_store::db_builder::DBBuilder;
 use crate::leveled_store::leveled_map::LeveledMap;
 use crate::leveled_store::leveled_map::compactor::Compactor;
 use crate::leveled_store::map_api::MapApiHelper;
-use crate::state_machine::StateMachine;
 
 #[tokio::test]
 async fn test_freeze() -> anyhow::Result<()> {
@@ -613,15 +612,14 @@ async fn test_two_level_update_meta() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_replace_with_compacted() -> anyhow::Result<()> {
-    let sm = StateMachine::default();
-    let l = sm.leveled_map().clone();
+    let l = LeveledMap::default();
 
     let mut view = l.to_view();
     view.set(user_key("a"), Some((None, b("a0"))));
     view.set(user_key("b"), Some((None, b("b0"))));
     view.commit().await?;
 
-    let mut compactor = sm.freeze_writable_for_compaction("t").await;
+    let mut compactor = l.freeze_writable_for_compaction("t").await;
     assert!(compactor.db().is_none(), "nothing persisted yet");
     assert_eq!(compactor.immutable_levels().indexes().len(), 1);
 
@@ -668,8 +666,7 @@ async fn test_replace_with_compacted() -> anyhow::Result<()> {
     expected = "replace_with_compacted requires all active reads to reach ISeq(2); oldest active read: ISeq(1)"
 )]
 async fn test_replace_with_compacted_rejects_an_unreleased_older_read() {
-    let sm = StateMachine::default();
-    let l = sm.leveled_map().clone();
+    let l = LeveledMap::default();
 
     let mut view = l.to_view();
     view.set(user_key("a"), Some((None, b("a0"))));
@@ -681,7 +678,7 @@ async fn test_replace_with_compacted_rejects_an_unreleased_older_read() {
     view.set(user_key("b"), Some((None, b("b0"))));
     view.commit().await.unwrap();
 
-    let mut compactor = sm.freeze_writable_for_compaction("t").await;
+    let mut compactor = l.freeze_writable_for_compaction("t").await;
     let (db, _temp_dir) = build_db(&mut compactor).await.unwrap();
 
     l.replace_with_compacted(&compactor, db);
