@@ -10,7 +10,6 @@ edition = { workspace = true }
 [dependencies]
 anyerror = { workspace = true }
 anyhow = { workspace = true }
-bincode = { workspace = true }
 databend-meta-leveled-store = { workspace = true }
 databend-meta-raft-config = { workspace = true }
 databend-meta-raft-log = { workspace = true }
