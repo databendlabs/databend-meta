@@ -27,6 +27,7 @@ use state_machine_api::KVMeta;
 use state_machine_api::MetaValue;
 use state_machine_api::UserKey;
 
+#[cfg(test)]
 use crate::leveled_store::leveled_map::LeveledMap;
 
 pub(crate) struct MapApiHelper;
