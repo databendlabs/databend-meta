@@ -116,6 +116,10 @@ impl LeveledMap {
     /// Call this while holding the compactor permit, so the immutable root that
     /// defines the boundary cannot change while waiting.
     ///
+    /// The boundary is the newest immutable level's last sequence. Merging two
+    /// older levels would be safe with an older boundary; one conservative
+    /// boundary is used for every compaction shape for simplicity.
+    ///
     /// The wait is unbounded: a read view held open by a slow consumer, e.g. a
     /// client streaming `get_many_kv`, delays compaction until it is dropped.
     /// A warning is logged periodically while blocked.
