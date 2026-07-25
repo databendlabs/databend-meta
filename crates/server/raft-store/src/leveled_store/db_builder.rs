@@ -163,3 +163,98 @@ impl DBBuilder {
         self.rotbl_builder.storage().base_dir_str()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use databend_meta_types::raft_types::new_log_id;
+    use futures_util::TryStreamExt;
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+    use crate::config::RaftConfig;
+    use crate::ondisk::DATA_VERSION;
+
+    fn snapshot_config(temp_dir: &tempfile::TempDir) -> SnapshotConfig {
+        let raft_config = RaftConfig {
+            raft_dir: temp_dir.path().to_str().unwrap().to_string(),
+            ..Default::default()
+        };
+
+        SnapshotConfig::new(DATA_VERSION, raft_config)
+    }
+
+    fn sys_data() -> SysData {
+        let mut sys_data = SysData::default();
+        sys_data.update_seq(64);
+        *sys_data.last_applied_mut() = Some(new_log_id(1, 2, 3));
+        sys_data
+    }
+
+    fn kv(key: &str) -> (String, SeqMarked) {
+        (
+            key.to_string(),
+            SeqMarked::new_normal(1, key.as_bytes().to_vec()),
+        )
+    }
+
+    #[tokio::test]
+    async fn test_commit_sorted_input_to_the_snapshot_store() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let snapshot_config = snapshot_config(&temp_dir);
+        let (storage_path, temp_rel_path) = snapshot_config.snapshot_temp_dir_fn();
+        snapshot_config.ensure_snapshot_dir()?;
+
+        let mut builder = DBBuilder::new(
+            &storage_path,
+            &temp_rel_path,
+            snapshot_config.raft_config().to_rotbl_config(),
+        )?;
+        assert_eq!(builder.storage_path(), storage_path);
+
+        builder
+            .append_kv_stream(futures::stream::iter(["a", "b"].map(|k| Ok(kv(k)))))
+            .await?;
+        builder.append_kv("c".to_string(), SeqMarked::new_tombstone(2))?;
+
+        let snapshot_id = MetaSnapshotId::new(Some(new_log_id(1, 2, 3)), 4);
+        let db =
+            builder.commit_to_snapshot_store(&snapshot_config, snapshot_id.clone(), sys_data())?;
+
+        assert_eq!(db.sys_data, sys_data());
+        assert_eq!(db.inner_range().try_collect::<Vec<_>>().await?, vec![
+            kv("a"),
+            kv("b"),
+            ("c".to_string(), SeqMarked::new_tombstone(2)),
+        ]);
+
+        // The temp file is gone: it was renamed to the id-derived final path.
+        assert!(!Path::new(&format!("{}/{}", storage_path, temp_rel_path)).exists());
+        assert!(Path::new(&snapshot_config.snapshot_path(&snapshot_id.to_string())).exists());
+
+        Ok(())
+    }
+
+    /// Out-of-order input is a caller bug, and `snapshot_db_debug_check` makes
+    /// the builder catch it instead of writing an unreadable table.
+    #[test]
+    #[should_panic(expected = "this key \"a\" must be greater than prev Some(\"b\")")]
+    fn test_append_kv_rejects_out_of_order_keys() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let snapshot_config = snapshot_config(&temp_dir);
+        assert!(snapshot_config.raft_config().snapshot_db_debug_check);
+
+        let mut builder = DBBuilder::new(
+            temp_dir.path(),
+            "temp-db",
+            snapshot_config.raft_config().to_rotbl_config(),
+        )
+        .unwrap();
+
+        builder
+            .append_kv("b".to_string(), SeqMarked::new_tombstone(1))
+            .unwrap();
+        builder
+            .append_kv("a".to_string(), SeqMarked::new_tombstone(2))
+            .unwrap();
+    }
+}

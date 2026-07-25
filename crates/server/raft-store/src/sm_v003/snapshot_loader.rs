@@ -294,6 +294,28 @@ mod tests {
         Ok(())
     }
 
+    /// The last two invalid files may still be receiving a snapshot, and three
+    /// snapshots are kept: below those limits nothing is removed.
+    #[tokio::test]
+    async fn test_clean_old_snapshots_removes_nothing_below_the_limits() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let loader = loader(temp_dir.path());
+        for uniq in 1..=3 {
+            write_snapshot(&loader.snapshot_config, &snapshot(uniq))?;
+        }
+        let dir = loader.snapshot_config.ensure_snapshot_dir()?;
+        for file in ["invalid-a.snap", "invalid-b.snap"] {
+            std::fs::write(format!("{dir}/{file}"), [])?;
+        }
+
+        loader.clean_old_snapshots().await?;
+
+        let (ids, invalid_files) = loader.load_snapshot_ids().await?;
+        assert_eq!(ids, vec![snapshot(1), snapshot(2), snapshot(3)]);
+        assert_eq!(invalid_files, vec!["invalid-a.snap", "invalid-b.snap"]);
+        Ok(())
+    }
+
     #[tokio::test]
     async fn test_clean_old_snapshots_keeps_three_valid_and_two_invalid_files() -> anyhow::Result<()>
     {

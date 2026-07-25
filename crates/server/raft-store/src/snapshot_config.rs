@@ -142,8 +142,23 @@ impl SnapshotConfig {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::io;
+
+    use pretty_assertions::assert_eq;
+
+    use super::SnapshotConfig;
     use crate::config::RaftConfig;
     use crate::ondisk::DATA_VERSION;
+
+    fn snapshot_config(raft_dir: &str) -> SnapshotConfig {
+        let raft_config = RaftConfig {
+            raft_dir: raft_dir.to_string(),
+            ..Default::default()
+        };
+
+        SnapshotConfig::new(DATA_VERSION, raft_config)
+    }
 
     #[test]
     fn test_temp_path_no_dup() -> anyhow::Result<()> {
@@ -162,6 +177,94 @@ mod tests {
             assert_ne!(prev, Some(path.clone()), "dup: {}", path);
             prev = Some(path);
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_paths_are_scoped_by_raft_dir_and_data_version() {
+        let c = snapshot_config("/data/meta");
+        let version_dir = format!("/data/meta/df_meta/{}", DATA_VERSION);
+        let snapshot_dir = format!("{}/snapshot", version_dir);
+        let id = "1-2-3-4".to_string();
+
+        assert_eq!(c.data_version(), DATA_VERSION);
+        assert_eq!(c.raft_config().raft_dir, "/data/meta");
+        assert_eq!(c.version_dir(), version_dir);
+        assert_eq!(c.snapshot_dir(), snapshot_dir);
+        assert_eq!(SnapshotConfig::snapshot_fn(&id), "1-2-3-4.snap");
+        assert_eq!(
+            c.snapshot_dir_fn(&id),
+            (snapshot_dir.clone(), "1-2-3-4.snap".to_string())
+        );
+        assert_eq!(
+            c.snapshot_path(&id),
+            format!("{}/1-2-3-4.snap", snapshot_dir)
+        );
+
+        // The temp name ends with a timestamp, so only its shape is fixed.
+        let (dir, temp_fn) = c.snapshot_temp_dir_fn();
+        assert_eq!(dir, snapshot_dir);
+        assert!(temp_fn.starts_with("0.snap-"), "temp fn: {}", temp_fn);
+
+        let temp_path = c.snapshot_temp_path();
+        assert!(
+            temp_path.starts_with(&format!("{}/0.snap-", snapshot_dir)),
+            "temp path: {}",
+            temp_path
+        );
+    }
+
+    #[test]
+    fn test_ensure_snapshot_dir_creates_it_once() -> anyhow::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let c = snapshot_config(temp.path().to_str().unwrap());
+
+        // Creating it twice must succeed: the second call finds it in place.
+        assert_eq!(c.ensure_snapshot_dir()?, c.snapshot_dir());
+        assert_eq!(c.ensure_snapshot_dir()?, c.snapshot_dir());
+        assert!(std::path::Path::new(&c.snapshot_dir()).is_dir());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_ensure_snapshot_dir_reports_a_file_in_the_way() -> anyhow::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let c = snapshot_config(temp.path().to_str().unwrap());
+
+        // A plain file where `df_meta` should be makes the whole path unusable.
+        fs::write(temp.path().join("df_meta"), [])?;
+
+        let err = c.ensure_snapshot_dir().unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::NotADirectory);
+        assert!(
+            err.to_string().ends_with(&format!(
+                ": while create_dir_all(); path: {}",
+                c.snapshot_dir()
+            )),
+            "{}",
+            err
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_move_to_final_path() -> anyhow::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let c = snapshot_config(temp.path().to_str().unwrap());
+        let dir = c.ensure_snapshot_dir()?;
+
+        let temp_path = c.snapshot_temp_path();
+        fs::write(&temp_path, b"snapshot-data")?;
+
+        let got = c.move_to_final_path(&temp_path, "1-2-3-4".to_string())?;
+
+        assert_eq!(got, (dir.clone(), "1-2-3-4.snap".to_string()));
+        assert!(!std::path::Path::new(&temp_path).exists());
+        assert_eq!(fs::read(format!("{}/1-2-3-4.snap", dir))?, b"snapshot-data");
 
         Ok(())
     }
