@@ -15,7 +15,6 @@
 use std::fmt;
 use std::fmt::Formatter;
 use std::io;
-use std::io::Error;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -25,26 +24,19 @@ use databend_meta_types::raft_types::EntryResponder;
 use databend_meta_types::sys_data::SysData;
 use futures::Stream;
 use futures::StreamExt;
-use log::debug;
 use log::info;
 use state_machine_api::SeqV;
-use state_machine_api::StateMachineApi;
 use state_machine_api::UserKey;
 
 use crate::applier::Applier;
 use crate::applier::applier_data::ApplierData;
+use crate::applier::applier_data::OnChange;
 use crate::leveled_store::leveled_map::CompactorPermit;
 use crate::leveled_store::leveled_map::LeveledMap;
 use crate::leveled_store::leveled_map::WriterPermit;
 use crate::leveled_store::leveled_map::compactor::Compactor;
 use crate::leveled_store::state_machine::read_view::StateMachineReadView;
-use crate::leveled_store::state_machine::view::StateMachineView;
 use crate::sm_v003::sm_v003_kv_api::SMV003KVApi;
-
-/// A user-key change reported after a state-machine transaction commits.
-pub type Change = (String, Option<SeqV>, Option<SeqV>);
-
-pub type OnChange = Box<dyn Fn(Change) + Send + Sync>;
 
 pub struct SMV003 {
     leveled_map: LeveledMap,
@@ -79,70 +71,6 @@ impl fmt::Debug for SMV003 {
                     .map(|_x| "is_set"),
             )
             .finish()
-    }
-}
-
-#[async_trait::async_trait]
-impl StateMachineApi<SysData> for ApplierData {
-    type UserMap = StateMachineView;
-
-    fn user_map(&self) -> &Self::UserMap {
-        &self.view
-    }
-
-    fn user_map_mut(&mut self) -> &mut Self::UserMap {
-        &mut self.view
-    }
-
-    type ExpireMap = StateMachineView;
-
-    fn expire_map(&self) -> &Self::ExpireMap {
-        &self.view
-    }
-
-    fn expire_map_mut(&mut self) -> &mut Self::ExpireMap {
-        &mut self.view
-    }
-
-    fn on_change_applied(&mut self, change: Change) {
-        self.pending_changes.lock().unwrap().push(change);
-    }
-
-    fn with_cleanup_start_timestamp<T>(&self, f: impl FnOnce(&mut Duration) -> T) -> T {
-        let mut ts = self.cleanup_start_time.lock().unwrap();
-        f(&mut ts)
-    }
-
-    fn with_sys_data<T>(&self, f: impl FnOnce(&mut SysData) -> T) -> T {
-        self.view.with_sys_data(f)
-    }
-
-    async fn commit(self) -> Result<(), Error> {
-        debug!("SMV003::commit: start");
-
-        let ApplierData {
-            _permit,
-            view,
-            cleanup_start_time,
-            cleanup_start_time_target,
-            on_change_applied,
-            pending_changes,
-        } = self;
-
-        view.commit().await?;
-
-        *cleanup_start_time_target.lock().unwrap() = cleanup_start_time.into_inner().unwrap();
-        let pending_changes = pending_changes.into_inner().unwrap();
-
-        // Dispatch before `_permit` drops: releasing the writer permit first
-        // would let the next transaction publish its events ahead of these.
-        if let Some(on_change_applied) = on_change_applied.as_ref() {
-            for change in pending_changes {
-                on_change_applied(change);
-            }
-        }
-
-        Ok(())
     }
 }
 

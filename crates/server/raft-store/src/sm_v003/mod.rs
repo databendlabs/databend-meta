@@ -37,8 +37,6 @@ pub(crate) mod sm_v003_test;
 #[cfg(test)]
 mod snapshot_store_test;
 
-pub use sm_v003::Change;
-pub use sm_v003::OnChange;
 pub use sm_v003::SMV003;
 pub use snapshot_store_error::SnapshotStoreError;
 pub use snapshot_store_v003::SnapshotStoreV003;
