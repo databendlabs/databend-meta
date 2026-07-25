@@ -25,7 +25,7 @@ use display_more::DisplayUnixTimeStampExt;
 use log::debug;
 use log::error;
 
-use crate::log_store::io_phase::IOPhase;
+use crate::io_phase::IOPhase;
 
 /// Describe an IO operation.
 #[derive(Clone)]

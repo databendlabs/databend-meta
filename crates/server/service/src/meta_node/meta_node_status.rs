@@ -15,7 +15,7 @@
 use std::collections::BTreeMap;
 
 use databend_meta_raft_config::data_version::DataVersion;
-use databend_meta_raft_store::log_store::RaftLogStat;
+use databend_meta_raft_log::RaftLogStat;
 use databend_meta_types::node::Node;
 use databend_meta_types::raft_types::LogId;
 use databend_meta_types::raft_types::NodeId;

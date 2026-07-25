@@ -15,11 +15,11 @@ bincode = { workspace = true }
 databend-meta-kvapi = { workspace = true }
 databend-meta-leveled-store = { workspace = true }
 databend-meta-raft-config = { workspace = true }
+databend-meta-raft-log = { workspace = true }
 databend-meta-runtime-api = { workspace = true }
 databend-meta-sled-store = { workspace = true }
 databend-meta-snapshot-db = { workspace = true }
 databend-meta-types = { workspace = true }
-deepsize = { workspace = true }
 derive_more = { workspace = true }
 display-more = { workspace = true }
 fastrace = { workspace = true }
@@ -31,7 +31,6 @@ map-api = { workspace = true }
 maplit = { workspace = true }
 openraft = { workspace = true }
 raft-log = { workspace = true }
-rmp-serde = { workspace = true }
 rotbl = { workspace = true }
 seq-marked = { workspace = true }
 serde = { workspace = true }

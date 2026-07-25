@@ -23,6 +23,9 @@ use std::sync::MutexGuard;
 
 use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_raft_config::data_version::DataVersion;
+use databend_meta_raft_log::Cw;
+use databend_meta_raft_log::LogStoreMeta;
+use databend_meta_raft_log::RaftLog;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_sled_store::SledTree;
 use databend_meta_sled_store::drop_sled_db;
@@ -36,9 +39,6 @@ use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 
 use crate::header::Header;
-use crate::log_store::Cw;
-use crate::log_store::LogStoreMeta;
-use crate::log_store::RaftLog;
 use crate::ondisk::OnDisk;
 use crate::ondisk::TREE_HEADER;
 use crate::sled_compat::LogMetaKey;

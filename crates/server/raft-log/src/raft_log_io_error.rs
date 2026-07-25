@@ -14,19 +14,18 @@
 
 use std::io;
 
-use raft_log::api::raft_log_writer::RaftLogWriter;
-use tokio::sync::oneshot;
+use databend_meta_types::raft_types::ErrorSubject;
+use databend_meta_types::raft_types::ErrorVerb;
 
-use crate::log_store::IODesc;
-use crate::log_store::RaftLog;
-use crate::log_store::callback::Callback;
+use crate::io_phase::IOPhase;
 
-pub async fn blocking_flush(rl: &mut RaftLog) -> Result<(), io::Error> {
-    let (tx, rx) = oneshot::channel();
-    let callback = Callback::new_oneshot(tx, IODesc::unknown("blocking_flush(RaftLog)"));
-
-    rl.flush(true, Some(callback))?;
-    rx.await
-        .map_err(|_e| io::Error::other("Failed to receive flush completion"))??;
-    Ok(())
+/// Describe the error that occurred during IO operations to RaftLog.
+#[derive(Debug, thiserror::Error)]
+#[error("RaftLogIOError: {verb}-{subject:?}: {ctx}: failed to {phase}; error: {error}")]
+pub struct RaftLogIOError {
+    pub subject: ErrorSubject,
+    pub verb: ErrorVerb,
+    pub phase: IOPhase,
+    pub error: io::Error,
+    pub ctx: String,
 }

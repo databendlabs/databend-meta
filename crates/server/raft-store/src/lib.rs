@@ -25,7 +25,6 @@
 //! - **`state_machine`**: The replicated state machine over the leveled store
 //! - **`applier`**: Log entry application and state transitions
 //! - **`snapshot_store`**: Snapshot files: building, shipping and loading them
-//! - **`log_store`**: Current WAL-based raft log storage
 //! - **`sled_compat`**: The pre-V004 sled layout, read only by the upgrader and exporter
 //!
 //! ## Version Compatibility
@@ -46,7 +45,7 @@ pub mod applier;
 pub mod db_exporter;
 pub mod header;
 pub mod immutable_compactor;
-pub mod log_store;
+pub mod log_importer;
 pub mod ondisk;
 pub mod sled_compat;
 pub mod snapshot_store;

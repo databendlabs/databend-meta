@@ -35,7 +35,7 @@ use prometheus_client::encoding::text::encode as prometheus_encode;
 pub mod server_metrics {
     use std::sync::LazyLock;
 
-    use databend_meta_raft_store::log_store::RaftLogStat;
+    use databend_meta_raft_log::RaftLogStat;
     use databend_meta_types::raft_types::NodeId;
     use prometheus_client::metrics::counter::Counter;
     use prometheus_client::metrics::family::Family;

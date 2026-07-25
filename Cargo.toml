@@ -24,6 +24,7 @@ members = [
     "crates/server/snapshot-db",
     "crates/server/leveled-store",
     "crates/server/raft-config",
+    "crates/server/raft-log",
     "crates/server/raft-store",
     "crates/server/service",
     "benchmark",
@@ -43,6 +44,7 @@ databend-meta-kvapi-tests = { path = "crates/client/kvapi-tests" }
 databend-meta-proto = { path = "crates/common/proto" }
 databend-meta-leveled-store = { path = "crates/server/leveled-store" }
 databend-meta-raft-config = { path = "crates/server/raft-config" }
+databend-meta-raft-log = { path = "crates/server/raft-log" }
 databend-meta-raft-store = { path = "crates/server/raft-store" }
 databend-meta-runtime-api = { path = "crates/common/runtime-api" }
 databend-meta-sled-store = { path = "crates/server/sled-store" }

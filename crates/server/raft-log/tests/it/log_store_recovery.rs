@@ -24,10 +24,10 @@ use std::fs::OpenOptions;
 use std::path::Path;
 use std::sync::Arc;
 
-use databend_meta_raft_store::log_store::Cw;
-use databend_meta_raft_store::log_store::RaftLog;
-use databend_meta_raft_store::log_store::RaftLogConfig;
-use databend_meta_raft_store::log_store::util::blocking_flush;
+use databend_meta_raft_log::Cw;
+use databend_meta_raft_log::RaftLog;
+use databend_meta_raft_log::RaftLogConfig;
+use databend_meta_raft_log::util::blocking_flush;
 use databend_meta_types::raft_types::EntryPayload;
 use databend_meta_types::raft_types::new_log_id;
 use raft_log::DumpApi;

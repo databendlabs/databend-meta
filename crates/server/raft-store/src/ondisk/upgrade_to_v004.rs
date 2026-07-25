@@ -19,6 +19,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use databend_meta_raft_config::data_version::DataVersion;
+use databend_meta_raft_log::RaftLog;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_sled_store::SledTree;
 use databend_meta_sled_store::drop_sled_db;
@@ -29,8 +30,7 @@ use openraft::LogIdOptionExt;
 use raft_log::codeq::error_context_ext::ErrorContextExt;
 use tokio::io;
 
-use crate::log_store::RaftLog;
-use crate::log_store::importer;
+use crate::log_importer;
 use crate::ondisk::OnDisk;
 use crate::sled_compat::LogMetaKey;
 use crate::sled_compat::key_spaces::LogMeta;
@@ -57,7 +57,7 @@ impl OnDisk {
         let raft_log_config = self.config.clone().to_raft_log_config();
         let raft_log_config = Arc::new(raft_log_config);
         let raft_log = RaftLog::open(raft_log_config)?;
-        let mut importer = importer::Importer::new(raft_log);
+        let mut importer = log_importer::Importer::new(raft_log);
 
         let db = init_get_sled_db(self.config.raft_dir.clone(), 1024 * 1024 * 1024);
 

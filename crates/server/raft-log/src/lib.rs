@@ -12,10 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! The WAL-backed raft log.
+//!
+//! A thin layer over the `raft-log` crate: codecs for this project's log
+//! entries, the callback plumbing that reports fsync completion back to
+//! openraft, and the type aliases that pin the generic WAL to those types.
+
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::collapsible_if)]
+
 pub mod callback;
 pub mod callback_data;
 pub mod codec_wrapper;
-pub mod importer;
 pub mod io_desc;
 pub mod io_phase;
 pub mod log_store_meta;
@@ -32,7 +40,6 @@ pub type RaftLogStat = raft_log::Stat<RaftLogTypes>;
 pub use callback::Callback;
 pub use callback_data::CallbackData;
 pub use codec_wrapper::Cw;
-pub use importer::Importer;
 pub use io_desc::IODesc;
 pub use io_phase::IOPhase;
 pub use log_store_meta::LogStoreMeta;

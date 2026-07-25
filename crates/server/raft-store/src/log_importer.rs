@@ -14,13 +14,13 @@
 
 use std::io;
 
+use databend_meta_raft_log::RaftLog;
+use databend_meta_raft_log::codec_wrapper::Cw;
+use databend_meta_raft_log::log_store_meta::LogStoreMeta;
+use databend_meta_raft_log::util;
 use databend_meta_types::raft_types::LogId;
 use raft_log::api::raft_log_writer::RaftLogWriter;
 
-use crate::log_store::RaftLog;
-use crate::log_store::codec_wrapper::Cw;
-use crate::log_store::log_store_meta::LogStoreMeta;
-use crate::log_store::util;
 use crate::sled_compat::RaftStateKey;
 use crate::sled_compat::key_spaces::RaftStoreEntry;
 
@@ -127,6 +127,8 @@ impl Importer {
 mod tests {
     use std::sync::Arc;
 
+    use databend_meta_raft_log::LogStoreMeta;
+    use databend_meta_raft_log::RaftLogConfig;
     use databend_meta_types::raft_types::Entry;
     use databend_meta_types::raft_types::EntryPayload;
     use databend_meta_types::raft_types::Vote;
@@ -136,8 +138,6 @@ mod tests {
 
     use super::*;
     use crate::header::Header;
-    use crate::log_store::LogStoreMeta;
-    use crate::log_store::RaftLogConfig;
     use crate::sled_compat::RaftStateValue;
 
     fn new_raft_log(dir: &tempfile::TempDir) -> anyhow::Result<RaftLog> {

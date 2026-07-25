@@ -16,7 +16,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use databend_meta_raft_config::config::RaftConfig;
-use databend_meta_raft_store::log_store::RaftLog;
+use databend_meta_raft_log::RaftLog;
 use databend_meta_types::raft_types::NodeId;
 use tokio::sync::RwLock;
 
