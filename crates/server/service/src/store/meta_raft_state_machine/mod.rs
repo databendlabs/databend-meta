@@ -23,14 +23,14 @@ use std::time::Duration;
 
 use databend_base::counter::Counter;
 use databend_meta_raft_config::config::RaftConfig;
-use databend_meta_raft_store::immutable_compactor::InMemoryCompactor;
 use databend_meta_raft_store::snapshot_store::MetaSnapshotId;
 use databend_meta_raft_store::snapshot_store::SnapshotStore;
 use databend_meta_raft_store::snapshot_store::WriteEntry;
-use databend_meta_raft_store::state_machine::StateMachine;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DB;
 use databend_meta_snapshot_db::Snapshot;
+use databend_meta_state_machine::StateMachine;
+use databend_meta_state_machine::immutable_compactor::InMemoryCompactor;
 use databend_meta_types::raft_types::NodeId;
 use databend_meta_types::raft_types::SnapshotMeta;
 use futures::FutureExt;
