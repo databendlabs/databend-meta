@@ -21,12 +21,12 @@ databend-meta-kvapi = { workspace = true }
 databend-meta-leveled-store = { workspace = true }
 databend-meta-raft-config = { workspace = true }
 databend-meta-raft-log = { workspace = true }
-databend-meta-store-compat = { workspace = true }
 databend-meta-runtime-api = { workspace = true }
 databend-meta-sled-store = { workspace = true }
 databend-meta-snapshot-db = { workspace = true }
 databend-meta-snapshot-store = { workspace = true }
 databend-meta-state-machine = { workspace = true }
+databend-meta-store-compat = { workspace = true }
 databend-meta-types = { workspace = true }
 databend-meta-version = { workspace = true }
 deepsize = { workspace = true }

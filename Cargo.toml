@@ -43,8 +43,8 @@ databend-meta-client-types = { path = "crates/client/types" }
 databend-meta-kvapi = { path = "crates/client/kvapi" }
 databend-meta-kvapi-test-suite = { path = "crates/client/kvapi-test-suite" }
 databend-meta-kvapi-tests = { path = "crates/client/kvapi-tests" }
-databend-meta-proto = { path = "crates/common/proto" }
 databend-meta-leveled-store = { path = "crates/server/leveled-store" }
+databend-meta-proto = { path = "crates/common/proto" }
 databend-meta-raft-config = { path = "crates/server/raft-config" }
 databend-meta-raft-log = { path = "crates/server/raft-log" }
 databend-meta-runtime-api = { path = "crates/common/runtime-api" }
