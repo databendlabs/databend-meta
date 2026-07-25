@@ -26,7 +26,6 @@ use raft_log::chunked_wal::Config as WalConfig;
 
 use crate::MetaStartupError;
 use crate::data_version::DATA_VERSION;
-use crate::raft_log_v004;
 
 // Size unit constants
 const KB: u64 = 1024;
@@ -254,8 +253,8 @@ impl RaftConfig {
             )
     }
 
-    /// Build [`RaftLogV004`](crate::raft_log_v004::RaftLogV004) config from [`RaftConfig`].
-    pub fn to_raft_log_config(&self) -> raft_log_v004::RaftLogConfig {
+    /// Build [`raft_log::RaftLog`] config from [`RaftConfig`].
+    pub fn to_raft_log_config(&self) -> raft_log::Config {
         let p = Path::new(&self.raft_dir)
             .join("df_meta")
             .join(format!("{}", DATA_VERSION))
@@ -263,7 +262,7 @@ impl RaftConfig {
 
         let dir = p.to_str().unwrap().to_string();
 
-        raft_log_v004::RaftLogConfig {
+        raft_log::Config {
             wal: WalConfig {
                 dir,
                 read_buffer_size: None,
