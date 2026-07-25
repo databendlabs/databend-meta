@@ -28,9 +28,9 @@ use openraft::LogIdOptionExt;
 use raft_log::codeq::error_context_ext::ErrorContextExt;
 use tokio::io;
 
+use crate::data_version::DataVersion;
 use crate::key_spaces::LogMeta;
 use crate::key_spaces::RaftStoreEntry;
-use crate::ondisk::DataVersion;
 use crate::ondisk::OnDisk;
 use crate::raft_log_v004::RaftLogV004;
 use crate::raft_log_v004::importer;

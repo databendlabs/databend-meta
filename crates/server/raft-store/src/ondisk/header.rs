@@ -18,8 +18,8 @@ use databend_meta_sled_store::IVec;
 use databend_meta_sled_store::SledBytesError;
 use databend_meta_sled_store::SledSerde;
 
-use crate::ondisk::DATA_VERSION;
-use crate::ondisk::DataVersion;
+use crate::data_version::DATA_VERSION;
+use crate::data_version::DataVersion;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,

@@ -17,7 +17,7 @@ use std::fmt;
 
 use maplit::btreemap;
 
-use crate::ondisk::DataVersion;
+use crate::data_version::DataVersion;
 
 #[derive(Debug, Clone)]
 pub struct VersionInfo {

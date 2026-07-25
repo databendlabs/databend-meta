@@ -22,7 +22,7 @@ use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DB;
 
 use crate::config::RaftConfig;
-use crate::ondisk::DataVersion;
+use crate::data_version::DataVersion;
 use crate::sm_v003::WriterV003;
 use crate::sm_v003::receiver_v003::ReceiverV003;
 use crate::sm_v003::snapshot_loader::SnapshotLoader;

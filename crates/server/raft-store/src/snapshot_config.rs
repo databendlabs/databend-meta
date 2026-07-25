@@ -23,7 +23,7 @@ use log::info;
 use openraft::SnapshotId;
 
 use crate::config::RaftConfig;
-use crate::ondisk::DataVersion;
+use crate::data_version::DataVersion;
 
 /// Path related config for Raft store.
 #[derive(Debug, Clone)]
@@ -149,7 +149,7 @@ mod tests {
 
     use super::SnapshotConfig;
     use crate::config::RaftConfig;
-    use crate::ondisk::DATA_VERSION;
+    use crate::data_version::DATA_VERSION;
 
     fn snapshot_config(raft_dir: &str) -> SnapshotConfig {
         let raft_config = RaftConfig {

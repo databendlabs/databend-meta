@@ -38,7 +38,7 @@ use rotbl::v001::SeqMarked;
 use tempfile::TempDir;
 
 use crate::config::RaftConfig;
-use crate::ondisk::DataVersion;
+use crate::data_version::DataVersion;
 use crate::sm_v003::SnapshotStoreV003;
 use crate::sm_v003::SnapshotStoreV004;
 use crate::sm_v003::open_snapshot::OpenSnapshot;

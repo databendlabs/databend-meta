@@ -12,10 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub(crate) mod version_info;
+
 use std::fmt;
 
-use crate::ondisk::version_info::VERSION_INFOS;
-use crate::ondisk::version_info::VersionInfo;
+use crate::data_version::version_info::VERSION_INFOS;
+use crate::data_version::version_info::VersionInfo;
+
+/// The working data version the program runs on
+pub static DATA_VERSION: DataVersion = DataVersion::V004;
 
 /// Available data versions this program can work upon.
 ///

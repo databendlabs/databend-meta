@@ -452,7 +452,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use super::*;
-    use crate::ondisk::DataVersion;
+    use crate::data_version::DataVersion;
     use crate::state_machine::StateMachineMetaValue;
 
     fn log_id() -> LogId {

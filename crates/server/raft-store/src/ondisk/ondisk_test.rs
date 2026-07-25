@@ -34,9 +34,9 @@ use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 
 use crate::config::RaftConfig;
+use crate::data_version::DataVersion;
 use crate::key_spaces::DataHeader;
 use crate::key_spaces::RaftStoreEntry;
-use crate::ondisk::DataVersion;
 use crate::ondisk::Header;
 use crate::ondisk::OnDisk;
 use crate::ondisk::TREE_HEADER;

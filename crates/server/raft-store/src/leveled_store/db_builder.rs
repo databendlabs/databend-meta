@@ -171,7 +171,7 @@ mod tests {
 
     use super::*;
     use crate::config::RaftConfig;
-    use crate::ondisk::DATA_VERSION;
+    use crate::data_version::DATA_VERSION;
 
     fn snapshot_config(temp_dir: &tempfile::TempDir) -> SnapshotConfig {
         let raft_config = RaftConfig {

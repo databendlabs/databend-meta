@@ -25,7 +25,7 @@ use databend_meta_types::raft_types::NodeId;
 use raft_log::chunked_wal::Config as WalConfig;
 
 use crate::MetaStartupError;
-use crate::ondisk::DATA_VERSION;
+use crate::data_version::DATA_VERSION;
 use crate::raft_log_v004;
 
 // Size unit constants

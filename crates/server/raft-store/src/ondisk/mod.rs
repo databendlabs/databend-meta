@@ -14,12 +14,10 @@
 
 //! This mod defines on-disk data version, the storage of the data version, and provide upgrade functions.
 
-mod data_version;
 mod header;
 #[cfg(test)]
 mod ondisk_test;
 pub(crate) mod upgrade_to_v004;
-pub(crate) mod version_info;
 
 use std::fmt;
 use std::fmt::Debug;
@@ -28,7 +26,6 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 
-pub use data_version::DataVersion;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_sled_store::SledTree;
 use databend_meta_sled_store::init_get_sled_db;
@@ -37,13 +34,12 @@ use log::info;
 use raft_log::codeq::error_context_ext::ErrorContextExt;
 
 use crate::config::RaftConfig;
+use crate::data_version::DATA_VERSION;
+use crate::data_version::DataVersion;
 use crate::key_spaces::DataHeader;
 
 /// The sled tree name to store the data versions.
 pub const TREE_HEADER: &str = "header";
-
-/// The working data version the program runs on
-pub static DATA_VERSION: DataVersion = DataVersion::V004;
 
 /// On disk data descriptor.
 ///

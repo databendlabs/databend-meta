@@ -217,7 +217,7 @@ mod tests {
 
     use super::*;
     use crate::config::RaftConfig;
-    use crate::ondisk::DATA_VERSION;
+    use crate::data_version::DATA_VERSION;
 
     #[derive(Debug, PartialEq, Eq)]
     struct TestSnapshot(String);
