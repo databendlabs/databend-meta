@@ -156,8 +156,8 @@ impl StateMachineApi<SysData> for ApplierData {
         *cleanup_start_time_target.lock().unwrap() = cleanup_start_time.into_inner().unwrap();
         let pending_changes = pending_changes.into_inner().unwrap();
 
-        drop(_permit);
-
+        // Dispatch before `_permit` drops: releasing the writer permit first
+        // would let the next transaction publish its events ahead of these.
         if let Some(on_change_applied) = on_change_applied.as_ref() {
             for change in pending_changes {
                 on_change_applied(change);
