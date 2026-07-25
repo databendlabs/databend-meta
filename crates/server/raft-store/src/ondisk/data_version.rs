@@ -120,3 +120,97 @@ impl DataVersion {
         VERSION_INFOS.get(self).unwrap().clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ALL: [DataVersion; 5] = [
+        DataVersion::V0,
+        DataVersion::V001,
+        DataVersion::V002,
+        DataVersion::V003,
+        DataVersion::V004,
+    ];
+
+    #[test]
+    fn test_next_chains_all_versions() {
+        let chain = ALL.map(|v| v.next());
+        assert_eq!(chain, [
+            Some(DataVersion::V001),
+            Some(DataVersion::V002),
+            Some(DataVersion::V003),
+            Some(DataVersion::V004),
+            None,
+        ]);
+    }
+
+    #[test]
+    fn test_min_compatible_data_version() {
+        assert_eq!(ALL.map(|v| v.min_compatible_data_version()), [
+            DataVersion::V0,
+            DataVersion::V0,
+            DataVersion::V001,
+            DataVersion::V002,
+            DataVersion::V002,
+        ]);
+    }
+
+    /// `is_compatible` accepts exactly the closed range
+    /// `[min_compatible_data_version(), self]`.
+    #[test]
+    fn test_is_compatible_boundaries() {
+        let matrix = ALL.map(|working| ALL.map(|on_disk| working.is_compatible(on_disk)));
+
+        assert_eq!(matrix, [
+            //     V0     V001   V002   V003   V004     on-disk
+            [true, false, false, false, false], // working V0
+            [true, true, false, false, false],  // working V001
+            [false, true, true, false, false],  // working V002
+            [false, false, true, true, false],  // working V003
+            [false, false, true, true, true],   // working V004
+        ]);
+    }
+
+    #[test]
+    fn test_max_compatible_working_version() {
+        assert_eq!(ALL.map(|v| v.max_compatible_working_version()), [
+            DataVersion::V001,
+            DataVersion::V002,
+            DataVersion::V004,
+            DataVersion::V004,
+            DataVersion::V004,
+        ]);
+    }
+
+    #[test]
+    fn test_display_and_debug() {
+        assert_eq!(ALL.map(|v| v.to_string()), [
+            "V0", "V001", "V002", "V003", "V004"
+        ]);
+
+        assert_eq!(ALL.map(|v| format!("{:?}", v)), [
+            "V0(2023-04-21: compatible with openraft v07 and v08, using openraft::compat)",
+            "V001(2023-05-15: Get rid of compat, use only openraft v08 data types)",
+            "V002(2023-07-22: Store snapshot in a file)",
+            "V003(2024-06-27: Store snapshot in rotbl)",
+            "V004(2024-11-11: WAL based raft-log)",
+        ]);
+    }
+
+    #[test]
+    fn test_version_info_is_defined_for_every_version() {
+        assert_eq!(ALL.map(|v| v.version_info().to_string()), [
+            "1.1.13: Add data version V0",
+            "1.1.40: Get rid of compat, use only openraft v08 data types",
+            "1.2.53: Persistent snapshot, in-memory state-machine",
+            "1.2.547: Persistent snapshot in rotbl, rotbl backed in-memory state-machine",
+            "1.2.655: WAL based raft-log",
+        ]);
+
+        assert_eq!(
+            DataVersion::V004.version_info().download_url(),
+            "https://github.com/datafuselabs/databend/releases/tag/v1.2.655-nightly"
+        );
+    }
+}

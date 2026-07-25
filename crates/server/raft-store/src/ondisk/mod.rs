@@ -16,6 +16,8 @@
 
 mod data_version;
 mod header;
+#[cfg(test)]
+mod ondisk_test;
 pub(crate) mod upgrade_to_v004;
 pub(crate) mod version_info;
 
