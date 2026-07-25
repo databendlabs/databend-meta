@@ -18,7 +18,6 @@ use crate::leveled_store::immutable_levels::ImmutableLevels;
 
 impl ImmutableLevels {
     /// Determine if the layout needs compaction based on the total size of all levels.
-    #[allow(dead_code)]
     pub(crate) fn need_compact(&self) -> Result<(), String> {
         let min_size = self.newest_to_oldest().map(|l| l.size()).min().unwrap_or(0);
         let max_size = self.newest_to_oldest().map(|l| l.size()).max().unwrap_or(0);

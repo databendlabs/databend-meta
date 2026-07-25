@@ -135,7 +135,6 @@ impl DBBuilder {
     ///
     /// Only used by tests.
     #[cfg(test)]
-    #[allow(dead_code)]
     pub async fn build_from_leveled_map(
         mut self,
         lm: &mut LeveledMap,

@@ -64,16 +64,6 @@ impl VersionInfo {
         )
     }
 
-    #[allow(dead_code)]
-    const fn openraft_0708() -> Self {
-        Self::new(
-            "ea6002919d100c3880916e937b864be9f2f4cc38",
-            "2023-02-28",
-            new_semver(1, 0, 6),
-            "Add compatible with openraft v07 and v08",
-        )
-    }
-
     const fn v0() -> Self {
         Self::new(
             "6a4181d8320a700d0c3d103e4d21188f451557a3",

@@ -56,22 +56,6 @@ impl Compactor {
         self.immutable_data.persisted().cloned()
     }
 
-    /// Compact in-memory immutable levels(excluding on disk db)
-    /// into one level and keep tombstone record.
-    ///
-    /// When compact mem levels, do not remove tombstone,
-    /// because tombstones are still required when compacting with the underlying db.
-    // TODO: unused, remove it
-    pub async fn compact_immutable_in_place(&mut self) -> Result<(), io::Error> {
-        let immutable_levels = self.immutable_data.levels().clone();
-
-        let levels = immutable_levels.compact_all().await;
-        let immutable = ImmutableData::new(levels, self.immutable_data.persisted().cloned());
-        self.immutable_data = Arc::new(immutable);
-
-        Ok(())
-    }
-
     /// Compacted all data into a stream.
     ///
     /// Tombstones are removed because no more compact with lower levels.

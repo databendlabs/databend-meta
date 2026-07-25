@@ -15,11 +15,6 @@
 use std::time::Duration;
 use std::time::SystemTime;
 
-#[allow(dead_code)]
-pub(crate) fn since_epoch_secs() -> u64 {
-    since_epoch().as_secs()
-}
-
 pub(crate) fn since_epoch_millis() -> u64 {
     since_epoch().as_millis() as u64
 }

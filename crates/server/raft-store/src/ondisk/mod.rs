@@ -325,7 +325,6 @@ impl OnDisk {
     /// Set upgrading flag indicating the upgrading is in progress.
     ///
     /// When it crashes before upgrading finishes, it can redo the upgrading.
-    #[allow(dead_code)]
     async fn begin_upgrading(&mut self, from_ver: DataVersion) -> Result<(), io::Error> {
         assert_eq!(from_ver, self.header.version);
 
