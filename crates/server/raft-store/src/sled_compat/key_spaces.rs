@@ -445,13 +445,13 @@ impl TryInto<SMEntry> for RaftStoreEntry {
 
 #[cfg(test)]
 mod tests {
+    use databend_meta_raft_config::data_version::DataVersion;
     use databend_meta_types::Endpoint;
     use databend_meta_types::raft_types::EntryPayload;
     use databend_meta_types::raft_types::new_log_id;
     use pretty_assertions::assert_eq;
 
     use super::*;
-    use crate::data_version::DataVersion;
     use crate::sled_compat::StateMachineMetaValue;
 
     fn log_id() -> LogId {

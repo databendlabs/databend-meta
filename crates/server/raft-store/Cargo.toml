@@ -14,6 +14,7 @@ async-trait = { workspace = true }
 bincode = { workspace = true }
 databend-base = { workspace = true }
 databend-meta-kvapi = { workspace = true }
+databend-meta-raft-config = { workspace = true }
 databend-meta-runtime-api = { workspace = true }
 databend-meta-sled-store = { workspace = true }
 databend-meta-snapshot-db = { workspace = true }
@@ -26,7 +27,6 @@ fs_extra = { workspace = true }
 futures = { workspace = true }
 futures-async-stream = { workspace = true }
 futures-util = { workspace = true }
-hostname = { workspace = true }
 log = { workspace = true }
 map-api = { workspace = true }
 maplit = { workspace = true }
@@ -34,14 +34,11 @@ openraft = { workspace = true }
 raft-log = { workspace = true }
 rmp-serde = { workspace = true }
 rotbl = { workspace = true }
-semver = { workspace = true }
 seq-marked = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 state-machine-api = { workspace = true }
 stream-more = { workspace = true }
-strum = { workspace = true }
-strum_macros = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 

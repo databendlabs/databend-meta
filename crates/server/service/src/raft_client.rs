@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use databend_base::counter;
-use databend_meta_raft_store::config::RaftConfig;
+use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_types::Endpoint;
 use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
 use databend_meta_types::raft_types::NodeId;

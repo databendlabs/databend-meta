@@ -57,7 +57,7 @@ impl VersionInfo {
         }
     }
 
-    pub(crate) fn download_url(&self) -> String {
+    pub fn download_url(&self) -> String {
         format!(
             "https://github.com/datafuselabs/databend/releases/tag/v{}-nightly",
             self.build

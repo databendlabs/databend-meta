@@ -22,7 +22,7 @@ use std::sync::Weak;
 use std::time::Duration;
 
 use databend_base::counter::Counter;
-use databend_meta_raft_store::config::RaftConfig;
+use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_raft_store::immutable_compactor::InMemoryCompactor;
 use databend_meta_raft_store::snapshot_store::MetaSnapshotId;
 use databend_meta_raft_store::snapshot_store::SnapshotStore;

@@ -22,6 +22,8 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
+use databend_meta_raft_config::config::RaftConfig;
+use databend_meta_raft_config::data_version::DataVersion;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_snapshot_db::DB;
 use databend_meta_types::protobuf::SnapshotChunkRequestV003;
@@ -37,8 +39,6 @@ use pretty_assertions::assert_eq;
 use rotbl::v001::SeqMarked;
 use tempfile::TempDir;
 
-use crate::config::RaftConfig;
-use crate::data_version::DataVersion;
 use crate::snapshot_store::MetaSnapshotId;
 use crate::snapshot_store::SnapshotStore;
 use crate::snapshot_store::SnapshotStoreV003;

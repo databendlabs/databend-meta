@@ -16,5 +16,4 @@
 #![allow(clippy::diverging_sub_expression)]
 #![allow(clippy::collapsible_if)]
 
-mod log_store_recovery;
-mod types;
+mod config;

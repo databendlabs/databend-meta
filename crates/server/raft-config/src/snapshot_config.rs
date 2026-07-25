@@ -103,7 +103,7 @@ impl SnapshotConfig {
     }
 
     /// Make directory for snapshot if it does not exist and return the snapshot directory.
-    pub(crate) fn ensure_snapshot_dir(&self) -> Result<String, io::Error> {
+    pub fn ensure_snapshot_dir(&self) -> Result<String, io::Error> {
         let dir = self.snapshot_dir();
 
         fs::create_dir_all(&dir).map_err(|e| {

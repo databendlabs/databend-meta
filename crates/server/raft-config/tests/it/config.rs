@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use databend_meta_raft_store::MetaStartupError;
-use databend_meta_raft_store::config::RaftConfig;
-use databend_meta_raft_store::config::get_default_raft_advertise_host;
-use databend_meta_raft_store::data_version::DATA_VERSION;
+use databend_meta_raft_config::MetaStartupError;
+use databend_meta_raft_config::config::RaftConfig;
+use databend_meta_raft_config::config::get_default_raft_advertise_host;
+use databend_meta_raft_config::data_version::DATA_VERSION;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_types::Endpoint;
 use pretty_assertions::assert_eq;

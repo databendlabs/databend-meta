@@ -18,6 +18,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
+use databend_meta_raft_config::data_version::DataVersion;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_sled_store::SledTree;
 use databend_meta_sled_store::drop_sled_db;
@@ -28,7 +29,6 @@ use openraft::LogIdOptionExt;
 use raft_log::codeq::error_context_ext::ErrorContextExt;
 use tokio::io;
 
-use crate::data_version::DataVersion;
 use crate::log_store::RaftLog;
 use crate::log_store::importer;
 use crate::ondisk::OnDisk;

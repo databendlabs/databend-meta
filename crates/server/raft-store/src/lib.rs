@@ -43,8 +43,6 @@
 #![allow(clippy::collapsible_if)]
 
 pub mod applier;
-pub mod config;
-pub mod data_version;
 pub mod db_exporter;
 pub mod header;
 pub mod immutable_compactor;
@@ -52,15 +50,8 @@ pub mod leveled_store;
 pub mod log_store;
 pub mod ondisk;
 pub mod sled_compat;
-pub mod snapshot_config;
 pub mod snapshot_store;
 pub mod state_machine;
 pub mod state_machine_api_ext;
 pub(crate) mod testing;
 pub mod utils;
-
-pub mod meta_startup_error;
-mod state_machine_features;
-
-pub use meta_startup_error::MetaStartupError;
-pub use state_machine_features::StateMachineFeature;

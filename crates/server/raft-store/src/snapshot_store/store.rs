@@ -18,12 +18,12 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
+use databend_meta_raft_config::config::RaftConfig;
+use databend_meta_raft_config::data_version::DataVersion;
+use databend_meta_raft_config::snapshot_config::SnapshotConfig;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DB;
 
-use crate::config::RaftConfig;
-use crate::data_version::DataVersion;
-use crate::snapshot_config::SnapshotConfig;
 use crate::snapshot_store::SnapshotWriter;
 use crate::snapshot_store::receiver::SnapshotReceiver;
 use crate::snapshot_store::snapshot_loader::SnapshotLoader;

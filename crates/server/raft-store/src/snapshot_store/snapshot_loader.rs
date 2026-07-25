@@ -17,12 +17,12 @@ use std::io;
 use std::marker::PhantomData;
 use std::str::FromStr;
 
+use databend_meta_raft_config::snapshot_config::SnapshotConfig;
 use log::error;
 use log::info;
 use log::warn;
 use openraft::SnapshotId;
 
-use crate::snapshot_config::SnapshotConfig;
 use crate::snapshot_store::MetaSnapshotId;
 use crate::snapshot_store::SnapshotStoreError;
 use crate::snapshot_store::open_snapshot::OpenSnapshot;
@@ -215,9 +215,10 @@ where SD: OpenSnapshot
 mod tests {
     use std::path::Path;
 
+    use databend_meta_raft_config::config::RaftConfig;
+    use databend_meta_raft_config::data_version::DATA_VERSION;
+
     use super::*;
-    use crate::config::RaftConfig;
-    use crate::data_version::DATA_VERSION;
 
     #[derive(Debug, PartialEq, Eq)]
     struct TestSnapshot(String);

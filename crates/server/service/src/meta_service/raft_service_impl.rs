@@ -20,9 +20,9 @@ use std::sync::Arc;
 
 use databend_base::counter::Counter;
 use databend_meta_client::MetaGrpcReadReq;
-use databend_meta_raft_store::data_version::DATA_VERSION;
+use databend_meta_raft_config::data_version::DATA_VERSION;
+use databend_meta_raft_config::snapshot_config::SnapshotConfig;
 use databend_meta_raft_store::leveled_store::persisted_codec::PersistedCodec;
-use databend_meta_raft_store::snapshot_config::SnapshotConfig;
 use databend_meta_raft_store::snapshot_store::MetaSnapshotId;
 use databend_meta_raft_store::snapshot_store::SnapshotWriter;
 use databend_meta_raft_store::snapshot_store::open_snapshot::OpenSnapshot;

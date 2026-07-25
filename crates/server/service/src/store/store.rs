@@ -20,8 +20,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyerror::AnyError;
-use databend_meta_raft_store::MetaStartupError;
-use databend_meta_raft_store::config::RaftConfig;
+use databend_meta_raft_config::MetaStartupError;
+use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_raft_store::db_exporter::DBExporter;
 use databend_meta_raft_store::header::Header;
 use databend_meta_raft_store::log_store;

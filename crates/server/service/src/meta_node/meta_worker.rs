@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use databend_meta_raft_store::MetaStartupError;
+use databend_meta_raft_config::MetaStartupError;
 use databend_meta_runtime_api::RuntimeApi;
 use log::error;
 use log::info;
