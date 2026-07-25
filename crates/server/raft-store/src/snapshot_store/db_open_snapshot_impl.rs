@@ -22,7 +22,7 @@ use openraft::SnapshotId;
 use rotbl::storage::impls::fs::FsStorage;
 use rotbl::v001::Rotbl;
 
-use crate::sm_v003::open_snapshot::OpenSnapshot;
+use crate::snapshot_store::open_snapshot::OpenSnapshot;
 
 impl OpenSnapshot for DB {
     fn open_snapshot(

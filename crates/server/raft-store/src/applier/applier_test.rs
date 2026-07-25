@@ -34,7 +34,7 @@ use maplit::btreeset;
 use state_machine_api::KVMeta;
 use state_machine_api::StateMachineApi;
 
-use crate::sm_v003::SMV003;
+use crate::state_machine::SMV003;
 
 type Entry = databend_meta_types::raft_types::Entry;
 

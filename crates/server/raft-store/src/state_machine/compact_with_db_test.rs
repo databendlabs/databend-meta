@@ -39,7 +39,7 @@ use crate::leveled_store::immutable_data::ImmutableData;
 use crate::leveled_store::immutable_levels::ImmutableLevels;
 use crate::leveled_store::leveled_map::LeveledMap;
 use crate::leveled_store::sys_data_api::SysDataApiRO;
-use crate::sm_v003::sm_v003::SMV003;
+use crate::state_machine::SMV003;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_leveled_query_with_db() -> anyhow::Result<()> {

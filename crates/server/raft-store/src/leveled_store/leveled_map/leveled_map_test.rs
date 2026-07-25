@@ -30,7 +30,7 @@ use crate::leveled_store::db_builder::DBBuilder;
 use crate::leveled_store::leveled_map::LeveledMap;
 use crate::leveled_store::leveled_map::compactor::Compactor;
 use crate::leveled_store::map_api::MapApiHelper;
-use crate::sm_v003::SMV003;
+use crate::state_machine::SMV003;
 
 #[tokio::test]
 async fn test_freeze() -> anyhow::Result<()> {

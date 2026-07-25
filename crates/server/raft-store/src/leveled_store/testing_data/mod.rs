@@ -24,7 +24,7 @@ use openraft::testing::log_id;
 use state_machine_api::UserKey;
 
 use crate::leveled_store::leveled_map::LeveledMap;
-use crate::sm_v003::SMV003;
+use crate::state_machine::SMV003;
 
 /// Create multi levels store:
 ///

@@ -15,7 +15,7 @@
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 
-use crate::sm_v003::SMV003;
+use crate::state_machine::SMV003;
 
 #[tokio::test]
 async fn test_blocking_wait_timeout() -> anyhow::Result<()> {

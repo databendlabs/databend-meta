@@ -20,7 +20,7 @@ use databend_meta::meta_node::meta_node::SMStore;
 use databend_meta::store::RaftStore;
 use databend_meta_raft_store::db_exporter::DBExporter;
 use databend_meta_raft_store::raft_log_v004::util::blocking_flush;
-use databend_meta_raft_store::sm_v003::MetaSnapshotId;
+use databend_meta_raft_store::snapshot_store::MetaSnapshotId;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_snapshot_db::DB;
 use databend_meta_test_harness::snapshot_logs;

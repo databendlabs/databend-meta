@@ -23,7 +23,7 @@ use state_machine_api::KVMeta;
 use state_machine_api::UserKey;
 
 use crate::leveled_store::db_builder::DBBuilder;
-use crate::sm_v003::SMV003;
+use crate::state_machine::SMV003;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_db_scoped_seq_bounded_read() -> anyhow::Result<()> {

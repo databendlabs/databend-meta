@@ -23,10 +23,10 @@ use databend_meta_snapshot_db::DB;
 
 use crate::config::RaftConfig;
 use crate::data_version::DataVersion;
-use crate::sm_v003::WriterV003;
-use crate::sm_v003::receiver_v003::ReceiverV003;
-use crate::sm_v003::snapshot_loader::SnapshotLoader;
 use crate::snapshot_config::SnapshotConfig;
+use crate::snapshot_store::WriterV003;
+use crate::snapshot_store::receiver_v003::ReceiverV003;
+use crate::snapshot_store::snapshot_loader::SnapshotLoader;
 
 #[derive(Debug)]
 pub struct SnapshotStoreV003<SP> {

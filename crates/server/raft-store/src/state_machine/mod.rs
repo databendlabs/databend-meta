@@ -12,36 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[allow(clippy::module_inception)]
-mod sm_v003;
-mod sm_v003_kv_api;
-mod snapshot_id;
-mod snapshot_store_error;
-mod snapshot_store_v003;
-mod writer_v003;
+//! The replicated state machine: applies raft log entries and serves reads.
 
-pub mod adapter;
-mod db_open_snapshot_impl;
-pub mod open_snapshot;
-pub mod received;
-pub mod receiver_v003;
-pub mod snapshot_loader;
-pub mod write_entry;
-pub mod writer_stat;
+mod kv_api;
+#[allow(clippy::module_inception)]
+mod state_machine;
 
 #[cfg(test)]
 mod acquire_compactor_test;
 #[cfg(test)]
 mod compact_with_db_test;
 #[cfg(test)]
-pub(crate) mod sm_v003_test;
-#[cfg(test)]
-mod snapshot_store_test;
+pub(crate) mod state_machine_test;
 
-pub use sm_v003::SMV003;
-pub use snapshot_id::MetaSnapshotId;
-pub use snapshot_store_error::SnapshotStoreError;
-pub use snapshot_store_v003::SnapshotStoreV003;
-pub use snapshot_store_v003::SnapshotStoreV004;
-pub use write_entry::WriteEntry;
-pub use writer_v003::WriterV003;
+pub use state_machine::SMV003;

@@ -36,7 +36,7 @@ use crate::leveled_store::leveled_map::LeveledMap;
 use crate::leveled_store::leveled_map::WriterPermit;
 use crate::leveled_store::leveled_map::compactor::Compactor;
 use crate::leveled_store::state_machine::read_view::StateMachineReadView;
-use crate::sm_v003::sm_v003_kv_api::SMV003KVApi;
+use crate::state_machine::kv_api::SMV003KVApi;
 
 pub struct SMV003 {
     leveled_map: LeveledMap,

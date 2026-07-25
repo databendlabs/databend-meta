@@ -39,11 +39,11 @@ use tempfile::TempDir;
 
 use crate::config::RaftConfig;
 use crate::data_version::DataVersion;
-use crate::sm_v003::MetaSnapshotId;
-use crate::sm_v003::SnapshotStoreV003;
-use crate::sm_v003::SnapshotStoreV004;
-use crate::sm_v003::open_snapshot::OpenSnapshot;
-use crate::sm_v003::receiver_v003::ReceiverV003;
+use crate::snapshot_store::MetaSnapshotId;
+use crate::snapshot_store::SnapshotStoreV003;
+use crate::snapshot_store::SnapshotStoreV004;
+use crate::snapshot_store::open_snapshot::OpenSnapshot;
+use crate::snapshot_store::receiver_v003::ReceiverV003;
 
 /// Bytes per chunk of the simulated snapshot stream.
 const CHUNK_SIZE: usize = 4096;

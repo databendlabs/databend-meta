@@ -30,7 +30,7 @@ use tokio::time::timeout;
 
 use crate::immutable_compactor::InMemoryCompactor;
 use crate::leveled_store::leveled_map::LeveledMap;
-use crate::sm_v003::SMV003;
+use crate::state_machine::SMV003;
 
 /// Failure bound for an operation that is expected to finish.
 const MUST_FINISH: Duration = Duration::from_secs(5);

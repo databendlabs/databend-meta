@@ -21,12 +21,12 @@
 //! ## Core Components
 //!
 //! - **`config`**: Raft cluster configuration and tuning parameters
-//! - **`key_spaces`**: Storage partitioning by data type with unique prefixes
 //! - **`leveled_store`**: Multi-level storage engine for efficient data organization
-//! - **`sm_v003`**: Legacy sled-based state machine implementation
-//! - **`raft_log_v004`**: Current WAL-based raft log storage
-//! - **`state_machine`**: Core state machine API and metadata management
+//! - **`state_machine`**: The replicated state machine over the leveled store
 //! - **`applier`**: Log entry application and state transitions
+//! - **`snapshot_store`**: Snapshot files: building, shipping and loading them
+//! - **`raft_log_v004`**: Current WAL-based raft log storage
+//! - **`sled_compat`**: The pre-V004 sled layout, read only by the upgrader and exporter
 //!
 //! ## Version Compatibility
 //!
@@ -52,8 +52,9 @@ pub mod leveled_store;
 pub mod ondisk;
 pub mod raft_log_v004;
 pub mod sled_compat;
-pub mod sm_v003;
 pub mod snapshot_config;
+pub mod snapshot_store;
+pub mod state_machine;
 pub mod state_machine_api_ext;
 pub(crate) mod testing;
 pub mod utils;

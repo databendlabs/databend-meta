@@ -18,8 +18,8 @@ use std::fs;
 use std::io::Read;
 
 use databend_meta::meta_service::MetaNode;
-use databend_meta_raft_store::sm_v003::MetaSnapshotId;
-use databend_meta_raft_store::sm_v003::SnapshotStoreV004;
+use databend_meta_raft_store::snapshot_store::MetaSnapshotId;
+use databend_meta_raft_store::snapshot_store::SnapshotStoreV004;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;

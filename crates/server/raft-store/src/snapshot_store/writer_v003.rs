@@ -27,11 +27,11 @@ use rotbl::v001::SeqMarked;
 use tokio::sync::mpsc;
 
 use crate::leveled_store::db_builder::DBBuilder;
-use crate::sm_v003::MetaSnapshotId;
-use crate::sm_v003::open_snapshot::OpenSnapshot;
-use crate::sm_v003::write_entry::WriteEntry;
-use crate::sm_v003::writer_stat::WriterStat;
 use crate::snapshot_config::SnapshotConfig;
+use crate::snapshot_store::MetaSnapshotId;
+use crate::snapshot_store::open_snapshot::OpenSnapshot;
+use crate::snapshot_store::write_entry::WriteEntry;
+use crate::snapshot_store::writer_stat::WriterStat;
 
 /// Write kv pair snapshot data to `SnapshotStoreV002`.
 pub struct WriterV003<SP: SpawnApi> {

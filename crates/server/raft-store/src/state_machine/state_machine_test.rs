@@ -30,7 +30,7 @@ use state_machine_api::StateMachineApi;
 
 use crate::leveled_store::db_builder::DBBuilder;
 use crate::leveled_store::leveled_map::LeveledMap;
-use crate::sm_v003::SMV003;
+use crate::state_machine::SMV003;
 use crate::state_machine_api_ext::StateMachineApiExt;
 
 #[tokio::test]

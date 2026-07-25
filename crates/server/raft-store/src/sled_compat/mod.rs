@@ -20,6 +20,7 @@
 //! entry format. This module is the unit to delete once V003 compatibility is
 //! dropped.
 
+pub mod adapter;
 pub mod key_spaces;
 pub mod log_meta;
 pub mod raft_state_kv;

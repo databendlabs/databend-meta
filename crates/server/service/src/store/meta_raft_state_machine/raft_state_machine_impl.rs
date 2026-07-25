@@ -14,8 +14,8 @@
 
 use std::io;
 
-use databend_meta_raft_store::sm_v003::SnapshotStoreV004;
-use databend_meta_raft_store::sm_v003::open_snapshot::OpenSnapshot;
+use databend_meta_raft_store::snapshot_store::SnapshotStoreV004;
+use databend_meta_raft_store::snapshot_store::open_snapshot::OpenSnapshot;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DB;
 use databend_meta_snapshot_db::Snapshot;
