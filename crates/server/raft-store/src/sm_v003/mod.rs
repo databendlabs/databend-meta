@@ -31,12 +31,10 @@ pub mod writer_stat;
 mod acquire_compactor_test;
 #[cfg(test)]
 mod compact_with_db_test;
-pub(crate) mod compactor_acquirer;
 #[cfg(test)]
 pub(crate) mod sm_v003_test;
 #[cfg(test)]
 mod snapshot_store_test;
-pub(crate) mod writer_acquirer;
 
 pub use sm_v003::Change;
 pub use sm_v003::OnChange;
@@ -45,5 +43,4 @@ pub use snapshot_store_error::SnapshotStoreError;
 pub use snapshot_store_v003::SnapshotStoreV003;
 pub use snapshot_store_v003::SnapshotStoreV004;
 pub use write_entry::WriteEntry;
-pub use writer_acquirer::WriterPermit;
 pub use writer_v003::WriterV003;

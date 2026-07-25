@@ -18,10 +18,10 @@ use std::sync::Arc;
 use display_more::DisplaySliceExt;
 use log::info;
 
+use crate::leveled_store::leveled_map::CompactorPermit;
 use crate::leveled_store::leveled_map::LeveledMap;
+use crate::leveled_store::leveled_map::WriterPermit;
 use crate::sm_v003::SMV003;
-use crate::sm_v003::compactor_acquirer::CompactorPermit;
-use crate::sm_v003::writer_acquirer::WriterPermit;
 
 #[cfg(test)]
 mod immutable_compactor_test;

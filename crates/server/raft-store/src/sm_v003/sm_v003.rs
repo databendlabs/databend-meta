@@ -30,19 +30,16 @@ use log::info;
 use state_machine_api::SeqV;
 use state_machine_api::StateMachineApi;
 use state_machine_api::UserKey;
-use tokio::sync::Semaphore;
 
 use crate::applier::Applier;
 use crate::applier::applier_data::ApplierData;
+use crate::leveled_store::leveled_map::CompactorPermit;
 use crate::leveled_store::leveled_map::LeveledMap;
+use crate::leveled_store::leveled_map::WriterPermit;
 use crate::leveled_store::leveled_map::compactor::Compactor;
 use crate::leveled_store::state_machine::read_view::StateMachineReadView;
 use crate::leveled_store::state_machine::view::StateMachineView;
-use crate::sm_v003::WriterPermit;
-use crate::sm_v003::compactor_acquirer::CompactorAcquirer;
-use crate::sm_v003::compactor_acquirer::CompactorPermit;
 use crate::sm_v003::sm_v003_kv_api::SMV003KVApi;
-use crate::sm_v003::writer_acquirer::WriterAcquirer;
 
 /// A user-key change reported after a state-machine transaction commits.
 pub type Change = (String, Option<SeqV>, Option<SeqV>);
@@ -51,21 +48,6 @@ pub type OnChange = Box<dyn Fn(Change) + Send + Sync>;
 
 pub struct SMV003 {
     leveled_map: LeveledMap,
-
-    /// A semaphore that permits at most one compactor to run.
-    compaction_semaphore: Arc<Semaphore>,
-
-    /// Semaphore for exclusive write access to the state machine.
-    ///
-    /// Capacity is 1, ensuring only one writer at a time. This achieves serialization for:
-    /// - Applying Raft log entries to state machine
-    /// - Setting up watch streams with atomic snapshot reads
-    /// - Any operation requiring consistent state machine view
-    ///
-    /// Historical context: Inserting tombstones does not increase the seq,
-    /// so MVCC isolation with seq alone cannot completely separate concurrent writers.
-    /// This semaphore provides the necessary serialization.
-    write_semaphore: Arc<Semaphore>,
 
     /// Since when to start cleaning expired keys.
     cleanup_start_time: Arc<Mutex<Duration>>,
@@ -78,10 +60,6 @@ impl Default for SMV003 {
     fn default() -> Self {
         Self {
             leveled_map: Default::default(),
-            // Only one compactor is allowed a time.
-            compaction_semaphore: Arc::new(Semaphore::new(1)),
-            // Only one writer is allowed a time.
-            write_semaphore: Arc::new(Semaphore::new(1)),
             cleanup_start_time: Arc::new(Mutex::new(Duration::ZERO)),
             on_change_applied: Arc::new(Mutex::new(Arc::new(None))),
         }
@@ -187,9 +165,7 @@ impl SMV003 {
         let sys_data = db.sys_data().clone();
 
         let new_sm = SMV003 {
-            leveled_map: LeveledMap::from_persisted(db),
-            compaction_semaphore: self.compaction_semaphore.clone(),
-            write_semaphore: self.write_semaphore.clone(),
+            leveled_map: self.leveled_map.install_persisted(db),
             cleanup_start_time: self.cleanup_start_time.clone(),
             on_change_applied: self.on_change_applied.clone(),
         };
@@ -236,35 +212,16 @@ impl SMV003 {
 
     /// Acquire exclusive writer permit for state machine operations.
     ///
-    /// This returns a permit that grants exclusive write access to the state machine.
-    /// The permit is backed by a semaphore with capacity 1, ensuring only one writer
-    /// can hold the permit at a time.
-    ///
-    /// This is used to serialize operations that require atomicity across multiple steps,
-    /// such as:
-    /// - Applying Raft log entries (via `new_applier()`)
-    /// - Setting up watch streams with consistent snapshot reads
-    /// - Any operation that needs to prevent concurrent state machine modifications
-    ///
-    /// The permit is automatically released when dropped.
+    /// See [`LeveledMap::acquire_writer_permit`].
     pub async fn acquire_writer_permit(&self) -> WriterPermit {
-        let acquirer = self.new_writer_acquirer();
-        let permit = acquirer.acquire().await;
-        permit
-    }
-
-    fn new_writer_acquirer(&self) -> WriterAcquirer {
-        WriterAcquirer::new(self.write_semaphore.clone())
+        self.leveled_map.acquire_writer_permit().await
     }
 
     pub(crate) async fn acquire_compaction_and_writer(
         &self,
         name: impl ToString,
     ) -> (CompactorPermit, WriterPermit) {
-        let compactor_permit = self.new_compactor_acquirer(name).acquire().await;
-        let writer_permit = self.acquire_writer_permit().await;
-
-        (compactor_permit, writer_permit)
+        self.leveled_map.acquire_compaction_and_writer(name).await
     }
 
     /// Apply entries from the stream to the state machine.
@@ -318,7 +275,7 @@ impl SMV003 {
 
     /// Get a singleton `Compactor` instance specific to `self`.
     pub async fn acquire_compactor(&self, name: impl ToString) -> Compactor {
-        let permit = self.new_compactor_acquirer(name).acquire().await;
+        let permit = self.leveled_map.acquire_compactor_permit(name).await;
         self.new_compactor(permit)
     }
 
@@ -345,9 +302,5 @@ impl SMV003 {
         );
 
         Compactor::new(permit, immutable_data)
-    }
-
-    fn new_compactor_acquirer(&self, name: impl ToString) -> CompactorAcquirer {
-        CompactorAcquirer::new(self.compaction_semaphore.clone(), name)
     }
 }

@@ -17,7 +17,9 @@
 mod active_read_guard;
 mod active_read_registration;
 mod active_read_tracker;
+mod compactor_acquirer;
 mod map;
+mod writer_acquirer;
 
 pub mod compactor;
 mod impl_commit;
@@ -26,7 +28,9 @@ mod impl_seq_bounded_get;
 pub mod leveled_map_data;
 
 pub(crate) use active_read_guard::ActiveReadGuard;
+pub(crate) use compactor_acquirer::CompactorPermit;
 pub use map::LeveledMap;
+pub use writer_acquirer::WriterPermit;
 
 #[cfg(test)]
 mod leveled_map_test;

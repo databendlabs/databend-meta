@@ -29,10 +29,15 @@ use display_more::DisplaySliceExt;
 use log::info;
 use log::warn;
 use seq_marked::InternalSeq;
+use tokio::sync::Semaphore;
 
 use super::ActiveReadGuard;
+use super::CompactorPermit;
+use super::WriterPermit;
 use super::active_read_tracker::ActiveReadTracker;
 use super::compactor::Compactor;
+use super::compactor_acquirer::CompactorAcquirer;
+use super::writer_acquirer::WriterAcquirer;
 use crate::leveled_store::immutable::Immutable;
 use crate::leveled_store::immutable_data::ImmutableData;
 use crate::leveled_store::immutable_levels::ImmutableLevels;
@@ -40,8 +45,6 @@ use crate::leveled_store::level::LevelStat;
 use crate::leveled_store::leveled_map::leveled_map_data::LeveledMapData;
 use crate::leveled_store::state_machine::read_view::StateMachineReadView;
 use crate::leveled_store::state_machine::view::StateMachineView;
-use crate::sm_v003::compactor_acquirer::CompactorPermit;
-use crate::sm_v003::writer_acquirer::WriterPermit;
 
 /// Multi-level storage similar to LevelDB with single-writer concurrency control.
 ///
@@ -72,6 +75,21 @@ pub struct LeveledMap {
 
     /// Active sequence-bounded readers that constrain compaction.
     active_reads: Arc<ActiveReadTracker>,
+
+    /// A semaphore that permits at most one compactor to run.
+    compaction_semaphore: Arc<Semaphore>,
+
+    /// Semaphore for exclusive write access to this map.
+    ///
+    /// Capacity is 1, ensuring only one writer at a time. This achieves serialization for:
+    /// - Applying Raft log entries to state machine
+    /// - Setting up watch streams with atomic snapshot reads
+    /// - Any operation requiring consistent state machine view
+    ///
+    /// Historical context: Inserting tombstones does not increase the seq,
+    /// so MVCC isolation with seq alone cannot completely separate concurrent writers.
+    /// This semaphore provides the necessary serialization.
+    write_semaphore: Arc<Semaphore>,
 }
 
 impl Default for LeveledMap {
@@ -79,18 +97,29 @@ impl Default for LeveledMap {
         Self {
             data: Arc::new(Mutex::new(LeveledMapData::default())),
             active_reads: Default::default(),
+            // Only one compactor is allowed a time.
+            compaction_semaphore: Arc::new(Semaphore::new(1)),
+            // Only one writer is allowed a time.
+            write_semaphore: Arc::new(Semaphore::new(1)),
         }
     }
 }
 
 impl LeveledMap {
-    pub(crate) fn from_persisted(db: DB) -> Self {
+    /// Return a map holding only `db`, sharing this map's permit semaphores.
+    ///
+    /// Installing a snapshot swaps in a fresh map, but the semaphores must stay
+    /// the same objects: a writer or compactor still holding a permit from the
+    /// replaced map has to keep excluding those of the new one.
+    pub(crate) fn install_persisted(&self, db: DB) -> Self {
         Self {
             data: Arc::new(Mutex::new(LeveledMapData {
                 writable: Default::default(),
                 immutable: Arc::new(ImmutableData::new(Default::default(), Some(db))),
             })),
             active_reads: Default::default(),
+            compaction_semaphore: self.compaction_semaphore.clone(),
+            write_semaphore: self.write_semaphore.clone(),
         }
     }
 
@@ -150,6 +179,42 @@ impl LeveledMap {
 
     pub(crate) fn with_sys_data<T>(&self, f: impl FnOnce(&mut SysData) -> T) -> T {
         self.with_inner(|inner| inner.writable.with_sys_data(f))
+    }
+
+    /// Acquire exclusive writer permit for this map.
+    ///
+    /// This returns a permit that grants exclusive write access to the map.
+    /// The permit is backed by a semaphore with capacity 1, ensuring only one writer
+    /// can hold the permit at a time.
+    ///
+    /// This is used to serialize operations that require atomicity across multiple steps,
+    /// such as:
+    /// - Applying Raft log entries
+    /// - Setting up watch streams with consistent snapshot reads
+    /// - Any operation that needs to prevent concurrent state machine modifications
+    ///
+    /// The permit is automatically released when dropped.
+    pub async fn acquire_writer_permit(&self) -> WriterPermit {
+        WriterAcquirer::new(self.write_semaphore.clone())
+            .acquire()
+            .await
+    }
+
+    pub(crate) async fn acquire_compactor_permit(&self, name: impl ToString) -> CompactorPermit {
+        CompactorAcquirer::new(self.compaction_semaphore.clone(), name)
+            .acquire()
+            .await
+    }
+
+    /// Acquire the compactor and writer permits in canonical order.
+    pub(crate) async fn acquire_compaction_and_writer(
+        &self,
+        name: impl ToString,
+    ) -> (CompactorPermit, WriterPermit) {
+        let compactor_permit = self.acquire_compactor_permit(name).await;
+        let writer_permit = self.acquire_writer_permit().await;
+
+        (compactor_permit, writer_permit)
     }
 
     /// Freeze the current writable level and create a new empty writable level.
