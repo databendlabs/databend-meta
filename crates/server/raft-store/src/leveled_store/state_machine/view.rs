@@ -52,6 +52,10 @@ impl StateMachineView {
         f(&mut self.changes.sys_data.lock().unwrap())
     }
 
+    /// Publish the staged changes to the underlying `LeveledMap`.
+    ///
+    /// The publish itself is synchronous and infallible; `async` and `Result`
+    /// only mirror `StateMachineApi::commit`, which drives this method.
     pub(crate) async fn commit(self) -> Result<(), io::Error> {
         self.read_view.store().commit(self.changes.into_level());
         Ok(())
