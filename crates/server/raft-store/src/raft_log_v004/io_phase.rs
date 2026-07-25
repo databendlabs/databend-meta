@@ -37,3 +37,29 @@ impl fmt::Display for IOPhase {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+
+    #[test]
+    fn test_display() {
+        let phases = [
+            IOPhase::Submit,
+            IOPhase::SubmitFlush,
+            IOPhase::AwaitFlush,
+            IOPhase::ReceiveFlushCallback,
+            IOPhase::Done,
+        ];
+
+        assert_eq!(phases.map(|p| p.to_string()), [
+            "submit io",
+            "submit flush",
+            "await flush",
+            "receive flush callback",
+            "done"
+        ]);
+    }
+}

@@ -188,11 +188,25 @@ impl IODesc {
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+
+    use pretty_assertions::assert_eq;
+
     use super::*;
+
+    const NOW_US: u64 = 1754708580036171;
+    const RENDERED: &str = "IODesc(ctx): (Write-Vote)[start: 2025-08-09T03:03:00.036]";
+
+    /// An `IODesc` with a fixed start time, so its rendering is stable.
+    fn desc() -> IODesc {
+        let mut desc = IODesc::save_vote("ctx");
+        desc.start_time = Duration::from_micros(NOW_US);
+        desc
+    }
 
     #[test]
     fn test_display() {
-        let now_us = 1754708580036171;
+        let now_us = NOW_US;
 
         let mut desc = IODesc::start(ErrorSubject::Logs, ErrorVerb::Write, "test");
         assert!(desc.start_time.as_secs() > 0);
@@ -220,5 +234,96 @@ mod tests {
             format!("{}", desc),
             "IODesc(test): (Write-Logs)[start: 2025-08-09T03:03:00.036, flush: +1s, flushed: +1s, total: 3s]"
         );
+    }
+
+    #[test]
+    fn test_constructors_carry_subject_verb_and_context() {
+        type New = fn(&'static str) -> IODesc;
+
+        let constructors: [(New, &str); 7] = [
+            (IODesc::unknown, "Write-None"),
+            (IODesc::save_vote, "Write-Vote"),
+            (IODesc::save_committed, "Write-Store"),
+            (IODesc::append, "Write-Logs"),
+            (IODesc::truncate, "Write-Logs"),
+            (IODesc::purge, "Write-Logs"),
+            (IODesc::read_logs, "Read-Logs"),
+        ];
+
+        for (new, expected) in constructors {
+            let desc = new("ctx");
+
+            assert_eq!(format!("{}-{:?}", desc.verb, desc.subject), expected);
+            assert_eq!(desc.ctx, "ctx");
+            assert!(desc.start_time.as_secs() > 0);
+            assert_eq!(
+                (desc.flush_time, desc.flush_done_time, desc.done_time),
+                (None, None, None)
+            );
+        }
+    }
+
+    #[test]
+    fn test_timestamps_advance_and_total_duration_ends_at_flush() {
+        let mut desc = IODesc::append("ctx");
+        assert_eq!(desc.total_duration(), None);
+
+        desc.set_flush_time();
+        // The total is measured up to the flush completion, so it is still
+        // unknown while the flush is in flight.
+        assert_eq!(desc.total_duration(), None);
+
+        desc.set_flush_done_time();
+        desc.set_done_time();
+
+        let flush_time = desc.flush_time.unwrap();
+        let flush_done_time = desc.flush_done_time.unwrap();
+        let done_time = desc.done_time.unwrap();
+
+        assert!(desc.start_time <= flush_time);
+        assert!(flush_time <= flush_done_time);
+        assert!(flush_done_time <= done_time);
+        assert_eq!(
+            desc.total_duration(),
+            Some(flush_done_time - desc.start_time)
+        );
+    }
+
+    #[test]
+    fn test_ok_messages_name_the_phase() {
+        let desc = desc();
+
+        assert_eq!(
+            [desc.ok_submit(), desc.ok_submit_flush(), desc.ok_done()],
+            [
+                format!("{}: successfully submit io", RENDERED),
+                format!("{}: successfully submit flush", RENDERED),
+                format!("{}: successfully done", RENDERED),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_errors_carry_the_subject_verb_and_context() {
+        let desc = desc();
+
+        // The phase only reaches the log line; every wrapper must build the
+        // same `StorageError` from the description and the source error.
+        let builders: [fn(&IODesc, io::Error) -> StorageError; 4] = [
+            IODesc::err_submit,
+            IODesc::err_submit_flush,
+            IODesc::err_await_flush,
+            IODesc::err_recv_flush_cb,
+        ];
+
+        let expected = StorageError::new(
+            ErrorSubject::Vote,
+            ErrorVerb::Write,
+            AnyError::from(&io::Error::other("disk on fire")).add_context(|| "ctx"),
+        );
+
+        for build in builders {
+            assert_eq!(build(&desc, io::Error::other("disk on fire")), expected);
+        }
     }
 }

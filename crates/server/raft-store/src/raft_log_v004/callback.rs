@@ -88,3 +88,65 @@ impl raft_log::Callback for Callback {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc::sync_channel;
+
+    use pretty_assertions::assert_eq;
+    use raft_log::Callback as _;
+
+    use super::*;
+
+    /// Every constructor stamps the flush time, so the callback can report the
+    /// flush latency when it is called.
+    #[test]
+    fn test_constructors_stamp_the_flush_time() {
+        let (tx, _rx) = oneshot::channel();
+        assert!(
+            Callback::new_oneshot(tx, IODesc::append("test"))
+                .io_desc
+                .flush_time
+                .is_some()
+        );
+
+        let (tx, _rx) = sync_channel(1);
+        assert!(
+            Callback::new_sync_oneshot(tx, IODesc::append("test"))
+                .io_desc
+                .flush_time
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_oneshot_callback_delivers_success_and_error() {
+        let (tx, rx) = oneshot::channel();
+        Callback::new_oneshot(tx, IODesc::append("test")).send(Ok(()));
+        assert!(rx.await.unwrap().is_ok());
+
+        let (tx, rx) = oneshot::channel();
+        Callback::new_oneshot(tx, IODesc::append("test")).send(Err(io::Error::other("flush fail")));
+        assert_eq!(rx.await.unwrap().unwrap_err().to_string(), "flush fail");
+    }
+
+    #[test]
+    fn test_sync_oneshot_callback_delivers_success_and_error() {
+        let (tx, rx) = sync_channel(1);
+        Callback::new_sync_oneshot(tx, IODesc::append("test")).send(Ok(()));
+        assert!(rx.recv().unwrap().is_ok());
+
+        let (tx, rx) = sync_channel(1);
+        Callback::new_sync_oneshot(tx, IODesc::append("test"))
+            .send(Err(io::Error::other("flush fail")));
+        assert_eq!(rx.recv().unwrap().unwrap_err().to_string(), "flush fail");
+    }
+
+    /// A caller that gave up waiting must not bring the IO thread down.
+    #[test]
+    fn test_a_gone_receiver_is_only_logged() {
+        let (tx, rx) = oneshot::channel();
+        drop(rx);
+        Callback::new_oneshot(tx, IODesc::append("test")).send(Ok(()));
+    }
+}

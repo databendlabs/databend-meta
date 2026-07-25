@@ -158,3 +158,118 @@ impl SledSerde for RaftStateValue {
         Ok(s)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use databend_meta_types::raft_types::new_log_id;
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+
+    const ALL_KEYS: [RaftStateKey; 4] = [
+        RaftStateKey::Id,
+        RaftStateKey::HardState,
+        RaftStateKey::StateMachineId,
+        RaftStateKey::Committed,
+    ];
+
+    fn log_id() -> LogId {
+        new_log_id(1, 2, 3)
+    }
+
+    #[test]
+    fn test_key_round_trip_and_ordering() -> Result<(), SledBytesError> {
+        let encoded = ALL_KEYS
+            .iter()
+            .map(|k| Ok(k.ser()?.to_vec()))
+            .collect::<Result<Vec<_>, SledBytesError>>()?;
+        assert_eq!(encoded, vec![vec![1], vec![2], vec![3], vec![4]]);
+
+        for key in ALL_KEYS {
+            assert_eq!(RaftStateKey::de(key.ser()?)?, key);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_key_de_rejects_an_unknown_discriminant() {
+        let err = RaftStateKey::de([5]).unwrap_err();
+        assert_eq!(err.to_string(), "SledBytesError: invalid key IVec");
+    }
+
+    #[test]
+    fn test_key_display() {
+        assert_eq!(ALL_KEYS.map(|k| k.to_string()), [
+            "Id",
+            "HardState",
+            "StateMachineId",
+            "Committed"
+        ]);
+    }
+
+    #[test]
+    fn test_value_round_trip() -> Result<(), SledBytesError> {
+        let values = [
+            RaftStateValue::NodeId(7),
+            RaftStateValue::HardState(Vote::new(3, 1)),
+            RaftStateValue::StateMachineId((1, 2)),
+            RaftStateValue::Committed(Some(log_id())),
+        ];
+
+        for value in values {
+            let got = RaftStateValue::de(value.ser()?)?;
+            assert_eq!(format!("{:?}", got), format!("{:?}", value));
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_value_de_rejects_malformed_json() {
+        assert!(RaftStateValue::de(b"not-json").is_err());
+    }
+
+    #[test]
+    fn test_value_accessors_and_conversions() {
+        assert_eq!(RaftStateValue::NodeId(7).node_id(), 7);
+        assert_eq!(NodeId::from(RaftStateValue::NodeId(7)), 7);
+
+        let vote = Vote::new(3, 1);
+        assert_eq!(RaftStateValue::HardState(vote).vote(), vote);
+        assert_eq!(Vote::from(RaftStateValue::HardState(vote)), vote);
+
+        assert_eq!(
+            <(u64, u64)>::from(RaftStateValue::StateMachineId((1, 2))),
+            (1, 2)
+        );
+
+        let committed = RaftStateValue::Committed(Some(log_id()));
+        assert_eq!(committed.committed(), Some(log_id()));
+        assert_eq!(Option::<LogId>::from(committed), Some(log_id()));
+    }
+
+    #[test]
+    #[should_panic(expected = "expect NodeId")]
+    fn test_node_id_of_a_non_node_id_value_panics() {
+        RaftStateValue::Committed(None).node_id();
+    }
+
+    #[test]
+    #[should_panic(expected = "expect HardState")]
+    fn test_vote_of_a_non_hard_state_value_panics() {
+        RaftStateValue::NodeId(7).vote();
+    }
+
+    #[test]
+    #[should_panic(expected = "expect Committed")]
+    fn test_committed_of_a_non_committed_value_panics() {
+        RaftStateValue::NodeId(7).committed();
+    }
+
+    #[test]
+    #[should_panic(expected = "expect StateMachineId")]
+    fn test_converting_a_non_state_machine_id_value_panics() {
+        let _ = <(u64, u64)>::from(RaftStateValue::NodeId(7));
+    }
+}

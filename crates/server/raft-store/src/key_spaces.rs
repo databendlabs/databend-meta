@@ -187,6 +187,28 @@ fn sled_bytes_err(e: databend_meta_sled_store::SledBytesError) -> io::Error {
     io::Error::from(e)
 }
 
+/// Split a sled key into its key-space prefix and the key bytes.
+///
+/// The input comes from on-disk data, so a corrupt or foreign key must be
+/// reported instead of panicking.
+fn split_prefix(prefix_key: &[u8]) -> Result<(u8, &[u8]), io::Error> {
+    let Some((prefix, key)) = prefix_key.split_first() else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "empty sled key: no key space prefix",
+        ));
+    };
+
+    Ok((*prefix, key))
+}
+
+fn unknown_prefix(prefix: u8) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!("unknown key space prefix: {}", prefix),
+    )
+}
+
 /// Serialize SledKeySpace key value pair
 macro_rules! serialize_for_sled {
     ($ks:tt, $key:expr, $value:expr) => {
@@ -250,8 +272,7 @@ impl SMEntry {
     /// It is able to deserialize openraft-v7 or openraft-v8 key-value pairs.
     /// The compatibility is provided by [`SledSerde`] implementation for value types.
     pub fn deserialize(prefix_key: &[u8], vec_value: &[u8]) -> Result<Self, io::Error> {
-        let prefix = prefix_key[0];
-        let vec_key = &prefix_key[1..];
+        let (prefix, vec_key) = split_prefix(prefix_key)?;
 
         deserialize_by_prefix!(
             prefix,
@@ -266,7 +287,7 @@ impl SMEntry {
             Sequences
         );
 
-        unreachable!("unknown prefix: {}", prefix);
+        Err(unknown_prefix(prefix))
     }
 
     pub fn last_applied(&self) -> Option<LogId> {
@@ -366,8 +387,7 @@ impl RaftStoreEntry {
     /// It is able to deserialize openraft-v7 or openraft-v8 key-value pairs.
     /// The compatibility is provided by [`SledSerde`] implementation for value types.
     pub fn deserialize(prefix_key: &[u8], vec_value: &[u8]) -> Result<Self, io::Error> {
-        let prefix = prefix_key[0];
-        let vec_key = &prefix_key[1..];
+        let (prefix, vec_key) = split_prefix(prefix_key)?;
 
         deserialize_by_prefix!(
             prefix,
@@ -385,7 +405,7 @@ impl RaftStoreEntry {
             LogMeta
         );
 
-        unreachable!("unknown prefix: {}", prefix);
+        Err(unknown_prefix(prefix))
     }
 
     pub fn new_header(header: Header) -> Self {
@@ -421,5 +441,255 @@ impl TryInto<SMEntry> for RaftStoreEntry {
             Self::Purged          (_) => {Err("SMEntry does not contain Purged".to_string())}
 
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use databend_meta_types::Endpoint;
+    use databend_meta_types::raft_types::EntryPayload;
+    use databend_meta_types::raft_types::new_log_id;
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+    use crate::ondisk::DataVersion;
+    use crate::state_machine::StateMachineMetaValue;
+
+    fn log_id() -> LogId {
+        new_log_id(1, 2, 3)
+    }
+
+    fn header() -> Header {
+        Header {
+            version: DataVersion::V003,
+            upgrading: Some(DataVersion::V004),
+            cleaning: true,
+        }
+    }
+
+    /// One entry per V003 sled key space, in key-space prefix order.
+    fn all_raft_store_entries() -> Vec<(u8, RaftStoreEntry)> {
+        vec![
+            (Logs::PREFIX, RaftStoreEntry::Logs {
+                key: 3,
+                value: Entry {
+                    log_id: log_id(),
+                    payload: EntryPayload::Blank,
+                },
+            }),
+            (Nodes::PREFIX, RaftStoreEntry::Nodes {
+                key: 7,
+                value: Node::new("7", Endpoint::new("7", 7)),
+            }),
+            (StateMachineMeta::PREFIX, RaftStoreEntry::StateMachineMeta {
+                key: StateMachineMetaKey::LastApplied,
+                value: StateMachineMetaValue::LogId(log_id()),
+            }),
+            (RaftStateKV::PREFIX, RaftStoreEntry::RaftStateKV {
+                key: RaftStateKey::HardState,
+                value: RaftStateValue::HardState(Vote::new(3, 1)),
+            }),
+            (Expire::PREFIX, RaftStoreEntry::Expire {
+                key: ExpireKey::new(1000, 2),
+                value: ExpireValue::new("a", 2),
+            }),
+            (GenericKV::PREFIX, RaftStoreEntry::GenericKV {
+                key: "k".to_string(),
+                value: SeqV::new(5, b"v".to_vec()),
+            }),
+            (Sequences::PREFIX, RaftStoreEntry::Sequences {
+                key: "s".to_string(),
+                value: SeqNum(9),
+            }),
+            (DataHeader::PREFIX, RaftStoreEntry::new_header(header())),
+            (LogMeta::PREFIX, RaftStoreEntry::LogMeta {
+                key: LogMetaKey::LastPurged,
+                value: LogMetaValue::LogId(log_id()),
+            }),
+        ]
+    }
+
+    #[test]
+    fn test_raft_store_entry_round_trip() -> anyhow::Result<()> {
+        for (prefix, entry) in all_raft_store_entries() {
+            let (k, v) = RaftStoreEntry::serialize(&entry)?;
+            assert_eq!(k[0], prefix, "{:?} is stored under its own prefix", entry);
+
+            let got = RaftStoreEntry::deserialize(&k, &v)?;
+            assert_eq!(format!("{:?}", got), format!("{:?}", entry));
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_sm_entry_round_trip() -> anyhow::Result<()> {
+        for (_prefix, entry) in all_raft_store_entries() {
+            let Ok(sm_entry): Result<SMEntry, _> = entry.clone().try_into() else {
+                continue;
+            };
+
+            let (k, v) = SMEntry::serialize(&sm_entry)?;
+            let got = SMEntry::deserialize(&k, &v)?;
+            assert_eq!(format!("{:?}", got), format!("{:?}", sm_entry));
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_try_into_sm_entry_rejects_log_only_key_spaces() {
+        let rejected = all_raft_store_entries()
+            .into_iter()
+            .chain([
+                (
+                    0,
+                    RaftStoreEntry::LogEntry(Entry {
+                        log_id: log_id(),
+                        payload: EntryPayload::Blank,
+                    }),
+                ),
+                (0, RaftStoreEntry::NodeId(Some(7))),
+                (0, RaftStoreEntry::Vote(Some(Vote::new(3, 1)))),
+                (0, RaftStoreEntry::Committed(Some(log_id()))),
+                (0, RaftStoreEntry::Purged(Some(log_id()))),
+            ])
+            .filter_map(|(_, e)| TryInto::<SMEntry>::try_into(e).err())
+            .collect::<Vec<_>>();
+
+        assert_eq!(rejected, vec![
+            "SMEntry does not contain Logs",
+            "SMEntry does not contain RaftStateKV",
+            "SMEntry does not contain LogMeta",
+            "SMEntry does not contain LogEntry",
+            "SMEntry does not contain NodeId",
+            "SMEntry does not contain Vote",
+            "SMEntry does not contain Committed",
+            "SMEntry does not contain Purged",
+        ]);
+    }
+
+    #[test]
+    fn test_upgrade_maps_v003_entries_to_v004() {
+        let upgraded = all_raft_store_entries()
+            .into_iter()
+            .map(|(_, e)| format!("{:?}", e.upgrade()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(upgraded, vec![
+            // Logs become plain log entries.
+            format!(
+                "{:?}",
+                RaftStoreEntry::LogEntry(Entry {
+                    log_id: log_id(),
+                    payload: EntryPayload::Blank
+                })
+            ),
+            // Key spaces owned by the state machine are unchanged.
+            format!("{:?}", RaftStoreEntry::Nodes {
+                key: 7,
+                value: Node::new("7", Endpoint::new("7", 7))
+            }),
+            format!("{:?}", RaftStoreEntry::StateMachineMeta {
+                key: StateMachineMetaKey::LastApplied,
+                value: StateMachineMetaValue::LogId(log_id())
+            }),
+            // Raft state is split into its V004 counterparts.
+            format!("{:?}", RaftStoreEntry::Vote(Some(Vote::new(3, 1)))),
+            format!("{:?}", RaftStoreEntry::Expire {
+                key: ExpireKey::new(1000, 2),
+                value: ExpireValue::new("a", 2)
+            }),
+            format!("{:?}", RaftStoreEntry::GenericKV {
+                key: "k".to_string(),
+                value: SeqV::new(5, b"v".to_vec())
+            }),
+            format!("{:?}", RaftStoreEntry::Sequences {
+                key: "s".to_string(),
+                value: SeqNum(9)
+            }),
+            format!("{:?}", RaftStoreEntry::new_header(header())),
+            // The purged marker becomes the V004 purged log id.
+            format!("{:?}", RaftStoreEntry::Purged(Some(log_id()))),
+        ]);
+    }
+
+    #[test]
+    fn test_upgrade_maps_the_remaining_raft_state_keys() {
+        let node_id = RaftStoreEntry::RaftStateKV {
+            key: RaftStateKey::Id,
+            value: RaftStateValue::NodeId(7),
+        };
+        assert_eq!(
+            format!("{:?}", node_id.upgrade()),
+            format!("{:?}", RaftStoreEntry::NodeId(Some(7)))
+        );
+
+        let committed = RaftStoreEntry::RaftStateKV {
+            key: RaftStateKey::Committed,
+            value: RaftStateValue::Committed(Some(log_id())),
+        };
+        assert_eq!(
+            format!("{:?}", committed.upgrade()),
+            format!("{:?}", RaftStoreEntry::Committed(Some(log_id())))
+        );
+
+        // `StateMachineId` has no V004 counterpart and stays as it is.
+        let sm_id = RaftStoreEntry::RaftStateKV {
+            key: RaftStateKey::StateMachineId,
+            value: RaftStateValue::StateMachineId((1, 2)),
+        };
+        assert_eq!(
+            format!("{:?}", sm_id.clone().upgrade()),
+            format!("{:?}", sm_id)
+        );
+    }
+
+    #[test]
+    fn test_sm_entry_last_applied() {
+        let last_applied = SMEntry::StateMachineMeta {
+            key: StateMachineMetaKey::LastApplied,
+            value: StateMachineMetaValue::LogId(log_id()),
+        };
+        assert_eq!(last_applied.last_applied(), Some(log_id()));
+
+        let other_meta = SMEntry::StateMachineMeta {
+            key: StateMachineMetaKey::Initialized,
+            value: StateMachineMetaValue::Bool(true),
+        };
+        assert_eq!(other_meta.last_applied(), None);
+
+        let not_meta = SMEntry::Sequences {
+            key: "s".to_string(),
+            value: SeqNum(9),
+        };
+        assert_eq!(not_meta.last_applied(), None);
+    }
+
+    /// On-disk bytes may be truncated or come from a removed key space; both
+    /// must be reported rather than panic.
+    #[test]
+    fn test_deserialize_rejects_malformed_keys() {
+        for got in [
+            RaftStoreEntry::deserialize(&[], b"").unwrap_err(),
+            SMEntry::deserialize(&[], b"").unwrap_err(),
+        ] {
+            assert_eq!(got.kind(), io::ErrorKind::InvalidData);
+            assert_eq!(got.to_string(), "empty sled key: no key space prefix");
+        }
+
+        // 10 was `ClientLastResps`, removed from both enums.
+        for got in [
+            RaftStoreEntry::deserialize(&[10, 0], b"").unwrap_err(),
+            SMEntry::deserialize(&[10, 0], b"").unwrap_err(),
+        ] {
+            assert_eq!(got.kind(), io::ErrorKind::InvalidData);
+            assert_eq!(got.to_string(), "unknown key space prefix: 10");
+        }
+
+        // The prefix is known but the value is not decodable.
+        let err = RaftStoreEntry::deserialize(&[Sequences::PREFIX, b's'], b"not-json").unwrap_err();
+        let expected = sled_bytes_err(<SeqNum as SledSerde>::de(b"not-json").unwrap_err());
+        assert_eq!(err.to_string(), expected.to_string());
     }
 }

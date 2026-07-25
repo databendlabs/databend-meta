@@ -22,6 +22,7 @@ use crate::raft_log_v004::RaftLogV004;
 use crate::raft_log_v004::codec_wrapper::Cw;
 use crate::raft_log_v004::log_store_meta::LogStoreMeta;
 use crate::raft_log_v004::util;
+use crate::state::RaftStateKey;
 
 /// Import series of [`RaftStoreEntry`] record into [`RaftLogV004`].
 ///
@@ -86,6 +87,13 @@ impl Importer {
             RaftStoreEntry::Logs { .. } => {
                 unreachable!("V003 Logs should be written to V004 log");
             }
+            // `StateMachineId` is a V003 leftover with no V004 counterpart, and
+            // `RaftStoreEntry::upgrade()` passes it through unchanged. Drop it
+            // instead of aborting the upgrade of a store that still has one.
+            RaftStoreEntry::RaftStateKV {
+                key: RaftStateKey::StateMachineId,
+                ..
+            } => {}
             RaftStoreEntry::RaftStateKV { .. } => {
                 unreachable!("V003 RaftStateKV should be written to V004 log");
             }
@@ -110,6 +118,138 @@ impl Importer {
                 unreachable!("Sequences should be written to log");
             }
         }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use databend_meta_types::raft_types::Entry;
+    use databend_meta_types::raft_types::EntryPayload;
+    use databend_meta_types::raft_types::Vote;
+    use databend_meta_types::raft_types::new_log_id;
+    use pretty_assertions::assert_eq;
+    use raft_log::chunked_wal::Config as WalConfig;
+
+    use super::*;
+    use crate::ondisk::Header;
+    use crate::raft_log_v004::LogStoreMeta;
+    use crate::raft_log_v004::RaftLogConfig;
+    use crate::state::RaftStateValue;
+
+    fn new_raft_log(dir: &tempfile::TempDir) -> anyhow::Result<RaftLogV004> {
+        let config = RaftLogConfig {
+            wal: WalConfig {
+                dir: dir.path().to_str().unwrap().to_string(),
+                read_buffer_size: None,
+                chunk_max_records: Some(100),
+                chunk_max_size: Some(1024 * 1024),
+                truncate_incomplete_record: None,
+                flush_batch_wait: None,
+                flush_batch_max_items: None,
+            },
+            log_cache_max_items: Some(1000),
+            log_cache_capacity: Some(1024 * 1024),
+        };
+        Ok(RaftLogV004::open(Arc::new(config))?)
+    }
+
+    fn log_entry(index: u64) -> RaftStoreEntry {
+        RaftStoreEntry::LogEntry(Entry {
+            log_id: new_log_id(1, 1, index),
+            payload: EntryPayload::Blank,
+        })
+    }
+
+    #[tokio::test]
+    async fn test_import_writes_logs_and_state() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let mut importer = Importer::new(new_raft_log(&temp_dir)?);
+
+        // Logs first, then state: the importer must not depend on the order in
+        // which the exported entries arrive.
+        for index in 0..3 {
+            importer.import_raft_store_entry(log_entry(index))?;
+        }
+        importer.import_raft_store_entry(RaftStoreEntry::NodeId(Some(7)))?;
+        importer.import_raft_store_entry(RaftStoreEntry::Vote(Some(Vote::new(3, 1))))?;
+        importer.import_raft_store_entry(RaftStoreEntry::Committed(Some(new_log_id(1, 1, 2))))?;
+        importer.import_raft_store_entry(RaftStoreEntry::Purged(Some(new_log_id(1, 1, 0))))?;
+
+        assert_eq!(importer.max_log_id, Some(new_log_id(1, 1, 2)));
+
+        let raft_log = importer.flush().await?;
+        let state = raft_log.log_state();
+
+        assert_eq!(state.vote(), Some(&Cw(Vote::new(3, 1))));
+        assert_eq!(state.committed(), Some(&Cw(new_log_id(1, 1, 2))));
+        assert_eq!(state.purged(), Some(&Cw(new_log_id(1, 1, 0))));
+        assert_eq!(state.last(), Some(&Cw(new_log_id(1, 1, 2))));
+        assert_eq!(state.user_data, Some(LogStoreMeta { node_id: Some(7) }));
+
+        let log_ids = raft_log
+            .read(0, 3)
+            .map(|r| r.map(|(id, _)| id.0))
+            .collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(log_ids, vec![new_log_id(1, 1, 1), new_log_id(1, 1, 2)]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_import_ignores_absent_state_and_repeated_writes() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let mut importer = Importer::new(new_raft_log(&temp_dir)?);
+
+        // `None` state carries nothing to write.
+        importer.import_raft_store_entry(RaftStoreEntry::Vote(None))?;
+        importer.import_raft_store_entry(RaftStoreEntry::Committed(None))?;
+        importer.import_raft_store_entry(RaftStoreEntry::Purged(None))?;
+        // The header lives in the version file, not in the raft log.
+        importer.import_raft_store_entry(RaftStoreEntry::new_header(Header::this_version()))?;
+        // A V003 state-machine id has no V004 counterpart.
+        importer.import_raft_store_entry(RaftStoreEntry::RaftStateKV {
+            key: RaftStateKey::StateMachineId,
+            value: RaftStateValue::StateMachineId((1, 2)),
+        })?;
+
+        assert_eq!(importer.max_log_id, None);
+
+        // A later write of the same kind wins.
+        importer.import_raft_store_entry(RaftStoreEntry::Vote(Some(Vote::new(1, 1))))?;
+        importer.import_raft_store_entry(RaftStoreEntry::Vote(Some(Vote::new(4, 2))))?;
+        importer.import_raft_store_entry(RaftStoreEntry::NodeId(Some(1)))?;
+        importer.import_raft_store_entry(RaftStoreEntry::NodeId(Some(9)))?;
+
+        let raft_log = importer.flush().await?;
+        let state = raft_log.log_state();
+
+        assert_eq!(state.vote(), Some(&Cw(Vote::new(4, 2))));
+        assert_eq!(state.committed(), None);
+        assert_eq!(state.purged(), None);
+        assert_eq!(state.last(), None);
+        assert_eq!(state.user_data, Some(LogStoreMeta { node_id: Some(9) }));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_flushed_data_survives_a_reopen() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let mut importer = Importer::new(new_raft_log(&temp_dir)?);
+
+        importer.import_raft_store_entry(log_entry(0))?;
+        importer.import_raft_store_entry(RaftStoreEntry::Vote(Some(Vote::new(3, 1))))?;
+        drop(importer.flush().await?);
+
+        let reopened = new_raft_log(&temp_dir)?;
+        let state = reopened.log_state();
+
+        assert_eq!(state.vote(), Some(&Cw(Vote::new(3, 1))));
+        assert_eq!(state.last(), Some(&Cw(new_log_id(1, 1, 0))));
 
         Ok(())
     }
