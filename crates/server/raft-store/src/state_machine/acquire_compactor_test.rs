@@ -15,11 +15,11 @@
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 
-use crate::state_machine::SMV003;
+use crate::state_machine::StateMachine;
 
 #[tokio::test]
 async fn test_blocking_wait_timeout() -> anyhow::Result<()> {
-    let lm = SMV003::default();
+    let lm = StateMachine::default();
 
     let _c = lm.acquire_compactor("").await;
 
@@ -42,7 +42,7 @@ async fn test_blocking_wait_timeout() -> anyhow::Result<()> {
 #[tokio::test]
 #[allow(clippy::disallowed_methods)]
 async fn test_blocking_wait_ok() -> anyhow::Result<()> {
-    let lm = SMV003::default();
+    let lm = StateMachine::default();
 
     let _c = lm.acquire_compactor("").await;
 

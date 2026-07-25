@@ -36,9 +36,9 @@ use crate::leveled_store::leveled_map::LeveledMap;
 use crate::leveled_store::leveled_map::WriterPermit;
 use crate::leveled_store::leveled_map::compactor::Compactor;
 use crate::leveled_store::state_machine::read_view::StateMachineReadView;
-use crate::state_machine::kv_api::SMV003KVApi;
+use crate::state_machine::kv_api::StateMachineKVApi;
 
-pub struct SMV003 {
+pub struct StateMachine {
     leveled_map: LeveledMap,
 
     /// Since when to start cleaning expired keys.
@@ -48,7 +48,7 @@ pub struct SMV003 {
     pub(crate) on_change_applied: Arc<Mutex<Arc<Option<OnChange>>>>,
 }
 
-impl Default for SMV003 {
+impl Default for StateMachine {
     fn default() -> Self {
         Self {
             leveled_map: Default::default(),
@@ -58,9 +58,9 @@ impl Default for SMV003 {
     }
 }
 
-impl fmt::Debug for SMV003 {
+impl fmt::Debug for StateMachine {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SMV003")
+        f.debug_struct("StateMachine")
             .field("levels", &self.leveled_map)
             .field(
                 "on_change_applied",
@@ -74,7 +74,7 @@ impl fmt::Debug for SMV003 {
     }
 }
 
-impl SMV003 {
+impl StateMachine {
     /// Return a mutable reference to the map that stores app data.
     pub(crate) fn map_mut(&mut self) -> &mut LeveledMap {
         &mut self.leveled_map
@@ -84,15 +84,15 @@ impl SMV003 {
         self.leveled_map.to_read_view()
     }
 
-    pub fn kv_api(&self) -> SMV003KVApi<'_> {
-        SMV003KVApi { sm: self }
+    pub fn kv_api(&self) -> StateMachineKVApi<'_> {
+        StateMachineKVApi { sm: self }
     }
 
     /// Install and replace state machine with the content of a snapshot.
-    pub fn install_snapshot_v003(&self, db: DB) -> SMV003 {
+    pub fn install_snapshot(&self, db: DB) -> StateMachine {
         let sys_data = db.sys_data().clone();
 
-        let new_sm = SMV003 {
+        let new_sm = StateMachine {
             leveled_map: self.leveled_map.install_persisted(db),
             cleanup_start_time: self.cleanup_start_time.clone(),
             on_change_applied: self.on_change_applied.clone(),

@@ -34,7 +34,7 @@ use maplit::btreeset;
 use state_machine_api::KVMeta;
 use state_machine_api::StateMachineApi;
 
-use crate::state_machine::SMV003;
+use crate::state_machine::StateMachine;
 
 type Entry = databend_meta_types::raft_types::Entry;
 
@@ -62,7 +62,7 @@ fn normal_entry_no_time(index: u64, cmd: Cmd) -> Entry {
 
 #[tokio::test]
 async fn test_apply_blank_entry() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let entry = Entry {
@@ -85,7 +85,7 @@ async fn test_apply_blank_entry() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_apply_membership_entry() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let mem = Membership::new_with_defaults(vec![btreeset![1, 2, 3]], []);
@@ -110,7 +110,7 @@ async fn test_apply_membership_entry() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_apply_normal_upsert_kv() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let entry = normal_entry(1, 1000, Cmd::UpsertKV(UpsertKV::update("k1", b"v1")));
@@ -134,7 +134,7 @@ async fn test_apply_normal_upsert_kv() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_apply_add_node_new() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let node = Node::default();
@@ -160,7 +160,7 @@ async fn test_apply_add_node_new() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_apply_add_node_no_override_existing() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let node1 = Node::default();
@@ -199,7 +199,7 @@ async fn test_apply_add_node_no_override_existing() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_apply_add_node_override_existing() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let node1 = Node::default();
@@ -239,7 +239,7 @@ async fn test_apply_add_node_override_existing() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_apply_remove_node_existing() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let node = Node::default();
@@ -266,7 +266,7 @@ async fn test_apply_remove_node_existing() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_apply_remove_node_nonexistent() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let result = a.apply_cmd(&Cmd::RemoveNode { node_id: 99 }).await?;
@@ -287,7 +287,7 @@ async fn test_apply_remove_node_nonexistent() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_apply_set_feature_enable_disable() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let result = a
@@ -319,7 +319,7 @@ async fn test_apply_set_feature_enable_disable() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_apply_upsert_kv_insert_and_update() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     // Insert
@@ -358,7 +358,7 @@ async fn test_apply_upsert_kv_insert_and_update() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_apply_upsert_kv_delete() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     a.apply_cmd(&Cmd::UpsertKV(UpsertKV::update("k1", b"v1")))
@@ -381,7 +381,7 @@ async fn test_apply_upsert_kv_delete() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_kv_txn_unconditional_branch() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let txn = kv_transaction::Transaction {
@@ -408,7 +408,7 @@ async fn test_kv_txn_unconditional_branch() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_kv_txn_first_match_wins() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     // k1 does not exist → seq==0
@@ -438,7 +438,7 @@ async fn test_kv_txn_first_match_wins() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_kv_txn_fallthrough_to_second_branch() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     // k1 does not exist → seq==0, not 5
@@ -468,7 +468,7 @@ async fn test_kv_txn_fallthrough_to_second_branch() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_kv_txn_no_branch_matches() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let txn = kv_transaction::Transaction {
@@ -495,7 +495,7 @@ async fn test_kv_txn_no_branch_matches() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_eval_predicate_and_short_circuit() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     // k1 does not exist → seq==0
@@ -516,7 +516,7 @@ async fn test_eval_predicate_and_short_circuit() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_eval_predicate_or_short_circuit() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     // Or(eq_seq("k1",99), eq_seq("k1",0)) → false OR true → true
@@ -538,7 +538,7 @@ async fn test_eval_predicate_or_short_circuit() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_eval_condition_seq() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     // k1 doesn't exist → seq==0
@@ -567,7 +567,7 @@ async fn test_eval_condition_seq() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_eval_condition_value() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     a.upsert_kv(&UpsertKV::update("k1", b"hello")).await?;
@@ -608,7 +608,7 @@ async fn test_eval_condition_value() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_eval_condition_keys_with_prefix() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     a.upsert_kv(&UpsertKV::update("pfx/a", b"1")).await?;
@@ -650,7 +650,7 @@ async fn test_eval_condition_keys_with_prefix() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_execute_get_existing() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     a.upsert_kv(&UpsertKV::update("k1", b"val")).await?;
@@ -671,7 +671,7 @@ async fn test_execute_get_existing() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_execute_get_missing() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let txn = kv_transaction::Transaction {
@@ -692,7 +692,7 @@ async fn test_execute_get_missing() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_execute_put() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let txn = kv_transaction::Transaction {
@@ -716,7 +716,7 @@ async fn test_execute_put() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_execute_put_with_match_seq_mismatch() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     a.upsert_kv(&UpsertKV::update("k1", b"old")).await?;
@@ -746,7 +746,7 @@ async fn test_execute_put_with_match_seq_mismatch() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_execute_put_with_match_seq_match() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     a.upsert_kv(&UpsertKV::update("k1", b"old")).await?;
@@ -775,7 +775,7 @@ async fn test_execute_put_with_match_seq_match() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_execute_delete_existing() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     a.upsert_kv(&UpsertKV::update("k1", b"val")).await?;
@@ -800,7 +800,7 @@ async fn test_execute_delete_existing() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_execute_delete_nonexistent() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let txn = kv_transaction::Transaction {
@@ -819,7 +819,7 @@ async fn test_execute_delete_nonexistent() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_execute_delete_with_match_seq_mismatch() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     a.upsert_kv(&UpsertKV::update("k1", b"val")).await?;
@@ -848,7 +848,7 @@ async fn test_execute_delete_with_match_seq_mismatch() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_execute_delete_by_prefix() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     a.upsert_kv(&UpsertKV::update("pfx/a", b"1")).await?;
@@ -881,7 +881,7 @@ async fn test_execute_delete_by_prefix() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_execute_fetch_increase_u64_new_key() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     use databend_meta_types::kv_transaction::operation;
@@ -905,7 +905,7 @@ async fn test_execute_fetch_increase_u64_new_key() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_execute_fetch_increase_u64_with_floor() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     use databend_meta_types::kv_transaction::operation;
@@ -931,7 +931,7 @@ async fn test_execute_fetch_increase_u64_with_floor() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_execute_fetch_increase_u64_match_seq_mismatch() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     use databend_meta_types::kv_transaction::operation;
@@ -959,7 +959,7 @@ async fn test_execute_fetch_increase_u64_match_seq_mismatch() -> anyhow::Result<
 
 #[tokio::test]
 async fn test_execute_put_sequential() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let txn = kv_transaction::Transaction {
@@ -1007,7 +1007,7 @@ async fn test_execute_put_sequential() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_multiple_ops_in_branch() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     a.upsert_kv(&UpsertKV::update("k1", b"old")).await?;
@@ -1048,7 +1048,7 @@ async fn test_multiple_ops_in_branch() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_push_change_ignores_no_change() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     let sv = Some(SeqV::new(1, b("v")));
@@ -1066,7 +1066,7 @@ async fn test_push_change_ignores_no_change() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_change_notification_waits_for_commit() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let seen = Arc::new(Mutex::new(Vec::new()));
     sm.set_on_change_applied(Box::new({
         let seen = seen.clone();
@@ -1181,7 +1181,7 @@ async fn test_eval_compare_all_ops() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_apply_cmd_legacy_transaction() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     use databend_meta_types::TxnCondition;

@@ -26,13 +26,13 @@ use databend_meta_raft_store::db_exporter::DBExporter;
 use databend_meta_raft_store::header::Header;
 use databend_meta_raft_store::log_store;
 use databend_meta_raft_store::log_store::Cw;
-use databend_meta_raft_store::log_store::RaftLogV004;
+use databend_meta_raft_store::log_store::RaftLog;
 use databend_meta_raft_store::log_store::util;
 use databend_meta_raft_store::ondisk::TREE_HEADER;
 use databend_meta_raft_store::sled_compat::key_spaces::RaftStoreEntry;
 use databend_meta_raft_store::snapshot_store::MetaSnapshotId;
-use databend_meta_raft_store::snapshot_store::SnapshotStoreV004;
-use databend_meta_raft_store::state_machine::SMV003;
+use databend_meta_raft_store::snapshot_store::SnapshotStore;
+use databend_meta_raft_store::state_machine::StateMachine;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DB;
 use databend_meta_snapshot_db::DBStat;
@@ -98,7 +98,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
             to_startup_err(err)
         })?;
 
-        let mut log = RaftLogV004::open(raft_log_config.clone()).map_err(to_startup_err)?;
+        let mut log = RaftLog::open(raft_log_config.clone()).map_err(to_startup_err)?;
         info!("RaftLog opened at: {}", raft_log_config.wal.dir);
 
         let state = log.log_state();
@@ -121,7 +121,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
                 .map_err(to_startup_err)?;
         }
 
-        let ss_store: SnapshotStoreV004<SP> = SnapshotStoreV004::new(config.as_ref().clone());
+        let ss_store: SnapshotStore<SP> = SnapshotStore::new(config.as_ref().clone());
         let loader = ss_store.new_loader();
         let last = loader.load_last_snapshot().await.map_err(to_startup_err)?;
 
@@ -176,15 +176,18 @@ impl<SP: SpawnApi> RaftStore<SP> {
         &self.state_machine
     }
 
-    pub fn get_sm_v003(&self) -> Arc<SMV003> {
+    pub fn get_state_machine(&self) -> Arc<StateMachine> {
         self.state_machine.get_inner()
     }
 
-    async fn rebuild_state_machine(id: &MetaSnapshotId, snapshot: DB) -> Result<SMV003, io::Error> {
+    async fn rebuild_state_machine(
+        id: &MetaSnapshotId,
+        snapshot: DB,
+    ) -> Result<StateMachine, io::Error> {
         info!("rebuild state machine from last snapshot({:?})", id);
 
-        let sm = SMV003::default();
-        let sm = sm.install_snapshot_v003(snapshot);
+        let sm = StateMachine::default();
+        let sm = sm.install_snapshot(snapshot);
 
         Ok(sm)
     }
@@ -193,7 +196,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
     ///
     /// It returns None if there is no snapshot or there is an error parsing snapshot meta or id.
     pub(crate) async fn try_get_snapshot_key_count(&self) -> Option<u64> {
-        let sm = self.get_sm_v003();
+        let sm = self.get_state_machine();
         let db = sm.leveled_map().persisted()?;
         Some(db.stat().key_num)
     }
@@ -206,7 +209,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
     ///
     /// Returns an empty map if no snapshot exists.
     pub(crate) async fn get_snapshot_key_space_stat(&self) -> BTreeMap<String, u64> {
-        let sm = self.get_sm_v003();
+        let sm = self.get_state_machine();
         let Some(db) = sm.leveled_map().persisted() else {
             return Default::default();
         };
@@ -215,7 +218,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
 
     /// Get the statistics of the snapshot database.
     pub(crate) async fn get_snapshot_db_stat(&self) -> DBStat {
-        let sm = self.get_sm_v003();
+        let sm = self.get_state_machine();
         let Some(db) = sm.leveled_map().persisted() else {
             return Default::default();
         };
@@ -242,7 +245,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
             Ok(line)
         }
 
-        let sm = self.get_sm_v003();
+        let sm = self.get_state_machine();
         let compactor = sm.acquire_compactor("export").await;
 
         let mut dump = {
@@ -325,7 +328,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
     }
 
     pub async fn get_node(&self, node_id: &NodeId) -> Option<Node> {
-        let sm = self.get_sm_v003();
+        let sm = self.get_state_machine();
         let n = sm.sys_data().nodes_ref().get(node_id).cloned();
         n
     }
@@ -335,7 +338,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
         &self,
         list_ids: impl Fn(&Membership) -> Vec<NodeId>,
     ) -> Vec<Node> {
-        let sm = self.get_sm_v003();
+        let sm = self.get_state_machine();
         let membership = sm.sys_data().last_membership_ref().membership().clone();
 
         debug!("in-statemachine membership: {:?}", membership);

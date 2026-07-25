@@ -19,7 +19,7 @@ use std::io::Read;
 
 use databend_meta::meta_service::MetaNode;
 use databend_meta_raft_store::snapshot_store::MetaSnapshotId;
-use databend_meta_raft_store::snapshot_store::SnapshotStoreV004;
+use databend_meta_raft_store::snapshot_store::SnapshotStore;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
@@ -144,7 +144,7 @@ async fn test_meta_node_snapshot_replication() -> anyhow::Result<()> {
 
     for i in 0..n_req {
         let key = format!("test_meta_node_snapshot_replication-key-{}", i);
-        let sm = mn1.raft_store.get_sm_v003();
+        let sm = mn1.raft_store.get_state_machine();
         let got = sm.get_maybe_expired_kv(&key).await?;
         match got {
             None => {
@@ -180,8 +180,7 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
     };
 
     // build a temp snapshot data
-    let ss_store: SnapshotStoreV004<TokioRuntime> =
-        SnapshotStoreV004::new(tc0.config.raft_config.clone());
+    let ss_store: SnapshotStore<TokioRuntime> = SnapshotStore::new(tc0.config.raft_config.clone());
     let writer = ss_store.new_writer()?;
 
     let snapshot_data = {
@@ -253,7 +252,7 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
 
     // The installed snapshot replaced the state machine wholesale.
     {
-        let sm = meta_node.raft_store.get_sm_v003();
+        let sm = meta_node.raft_store.get_state_machine();
 
         assert_eq!(Some(last_log_id), *sm.sys_data().last_applied_ref());
 
@@ -296,8 +295,7 @@ async fn test_raft_service_install_snapshot_v004() -> anyhow::Result<()> {
     let snapshot_id = MetaSnapshotId::new(Some(last_log_id), 1);
 
     // build a temp snapshot data
-    let ss_store: SnapshotStoreV004<TokioRuntime> =
-        SnapshotStoreV004::new(tc0.config.raft_config.clone());
+    let ss_store: SnapshotStore<TokioRuntime> = SnapshotStore::new(tc0.config.raft_config.clone());
     let writer = ss_store.new_writer()?;
 
     let db = {
@@ -357,7 +355,7 @@ async fn test_raft_service_install_snapshot_v004() -> anyhow::Result<()> {
         .snapshot(last_log_id, "snapshot is installed")
         .await?;
 
-    let sm = meta_node.raft_store.get_sm_v003();
+    let sm = meta_node.raft_store.get_state_machine();
     let got = sm.get_maybe_expired_kv("a").await?;
     assert_eq!(got, Some(SeqV::new(1, b"foo".to_vec())));
 
@@ -692,7 +690,7 @@ async fn test_raft_service_append_v002_upsert_kv() -> anyhow::Result<()> {
         .applied_index(Some(6), "learner applied UpsertKV via append_v002")
         .await?;
 
-    let sm = follower.raft_store.get_sm_v003();
+    let sm = follower.raft_store.get_state_machine();
     let got = sm.get_maybe_expired_kv(key).await?;
     let seq_v = got.unwrap_or_else(|| panic!("expected key {} after apply", key));
     assert_eq!(seq_v.data, value);
@@ -770,7 +768,7 @@ async fn test_raft_service_append_v002_transaction() -> anyhow::Result<()> {
         .applied_index(Some(6), "learner applied Transaction via append_v002")
         .await?;
 
-    let sm = follower.raft_store.get_sm_v003();
+    let sm = follower.raft_store.get_state_machine();
     let got = sm.get_maybe_expired_kv(key).await?;
     let seq_v = got.unwrap_or_else(|| panic!("expected key {} after apply", key));
     assert_eq!(seq_v.data, value);

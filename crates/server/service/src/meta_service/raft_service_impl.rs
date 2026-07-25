@@ -24,7 +24,7 @@ use databend_meta_raft_store::data_version::DATA_VERSION;
 use databend_meta_raft_store::leveled_store::persisted_codec::PersistedCodec;
 use databend_meta_raft_store::snapshot_config::SnapshotConfig;
 use databend_meta_raft_store::snapshot_store::MetaSnapshotId;
-use databend_meta_raft_store::snapshot_store::WriterV003;
+use databend_meta_raft_store::snapshot_store::SnapshotWriter;
 use databend_meta_raft_store::snapshot_store::open_snapshot::OpenSnapshot;
 use databend_meta_raft_store::snapshot_store::received::Received;
 use databend_meta_raft_store::snapshot_store::write_entry::WriteEntry;
@@ -143,7 +143,7 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
     }
 
     /// Install snapshot using V004 streaming protocol.
-    /// Receives KV entries and builds snapshot incrementally using WriterV003.
+    /// Receives KV entries and builds snapshot incrementally using SnapshotWriter.
     /// More memory efficient than V003 as it processes data as it arrives.
     async fn do_install_snapshot_v004(
         &self,
@@ -155,13 +155,13 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
 
         let mut strm = request.into_inner();
 
-        // Create snapshot config and WriterV003
+        // Create snapshot config and SnapshotWriter
         let snapshot_config = SnapshotConfig::new(
             DATA_VERSION,
             self.meta_node.raft_store.config.as_ref().clone(),
         );
-        let writer = WriterV003::<SP>::new(&snapshot_config)
-            .map_err(|e| Status::internal(format!("Failed to create WriterV003: {}", e)))?;
+        let writer = SnapshotWriter::<SP>::new(&snapshot_config)
+            .map_err(|e| Status::internal(format!("Failed to create SnapshotWriter: {}", e)))?;
 
         let (write_tx, jh) = writer.spawn_writer_thread("install_snapshot_v004");
 
@@ -271,10 +271,10 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
 
         let ss_store = self.meta_node.raft_store.state_machine().snapshot_store();
 
-        let mut receiver_v003 = ss_store.new_receiver(&addr).map_err(io_err_to_status)?;
-        receiver_v003.set_on_recv_callback(new_incr_recvfrom_bytes(addr.clone()));
+        let mut receiver = ss_store.new_receiver(&addr).map_err(io_err_to_status)?;
+        receiver.set_on_recv_callback(new_incr_recvfrom_bytes(addr.clone()));
 
-        let (tx, join_handle) = receiver_v003.spawn_receiving_thread("receive_binary_snapshot");
+        let (tx, join_handle) = receiver.spawn_receiving_thread("receive_binary_snapshot");
 
         let mut strm = request.into_inner();
 
@@ -286,9 +286,7 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
                 })? {
                     let res = tx.send(chunk).await;
                     if res.is_err() {
-                        info!(
-                            "fail to send snapshot chunk to receiver_v003 thread; Stop receiving"
-                        );
+                        info!("fail to send snapshot chunk to receiver thread; Stop receiving");
                         break;
                     }
                 }
@@ -301,7 +299,7 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
             .await
             // join error
             .map_err(|_e| {
-                warn!("receiver_v003 thread quit");
+                warn!("receiver thread quit");
                 Status::aborted("snapshot receiver thread is closed without finishing")
             })?
             // io error

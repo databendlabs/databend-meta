@@ -253,7 +253,7 @@ async fn test_meta_store_build_snapshot() -> anyhow::Result<()> {
 
     sto.log().clone().blocking_append(logs.clone()).await?;
     let entry_stream = stream::iter(logs.into_iter().map(|e| Ok((e, None))));
-    sto.get_sm_v003().apply_entries(entry_stream).await?;
+    sto.get_state_machine().apply_entries(entry_stream).await?;
 
     let curr_snap = sto.state_machine().clone().build_snapshot().await?;
     assert_eq!(Some(new_log_id(1, 0, 9)), curr_snap.meta.last_log_id);
@@ -302,7 +302,7 @@ async fn test_meta_store_current_snapshot() -> anyhow::Result<()> {
 
     sto.log().clone().blocking_append(logs.clone()).await?;
     {
-        let sm = sto.get_sm_v003();
+        let sm = sto.get_state_machine();
         let entry_stream = stream::iter(logs.into_iter().map(|e| Ok((e, None))));
         sm.apply_entries(entry_stream).await?;
     }
@@ -353,7 +353,7 @@ async fn test_meta_store_install_snapshot() -> anyhow::Result<()> {
 
         info!("--- install snapshot");
         {
-            let writer_permit = sto.get_sm_v003().acquire_writer_permit().await;
+            let writer_permit = sto.get_state_machine().acquire_writer_permit().await;
 
             // The timeout only bounds how long a correct install stays blocked;
             // it is generous so that a regressed, non-blocking install cannot
@@ -379,7 +379,11 @@ async fn test_meta_store_install_snapshot() -> anyhow::Result<()> {
 
         info!("--- check installed meta");
         {
-            let mem = sto.get_sm_v003().sys_data().last_membership_ref().clone();
+            let mem = sto
+                .get_state_machine()
+                .sys_data()
+                .last_membership_ref()
+                .clone();
 
             assert_eq!(
                 StoredMembership::new(
@@ -389,7 +393,7 @@ async fn test_meta_store_install_snapshot() -> anyhow::Result<()> {
                 mem
             );
 
-            let last_applied = *sto.get_sm_v003().sys_data().last_applied_ref();
+            let last_applied = *sto.get_state_machine().sys_data().last_applied_ref();
             assert_eq!(Some(log_id::<TypeConfig>(1, 0, 9)), last_applied);
         }
 
@@ -446,7 +450,7 @@ async fn test_meta_store_install_snapshot_waits_for_in_flight_write() -> anyhow:
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let apply_task = {
-        let sm = sto.get_sm_v003();
+        let sm = sto.get_state_machine();
         tokio::spawn(async move { sm.apply_entries(entry_rx).await })
     };
 
@@ -454,7 +458,7 @@ async fn test_meta_store_install_snapshot_waits_for_in_flight_write() -> anyhow:
     loop {
         let acquired = tokio::time::timeout(
             Duration::from_millis(10),
-            sto.get_sm_v003().acquire_writer_permit(),
+            sto.get_state_machine().acquire_writer_permit(),
         )
         .await;
 
@@ -486,7 +490,7 @@ async fn test_meta_store_install_snapshot_waits_for_in_flight_write() -> anyhow:
 
     info!("--- the write advanced past the snapshot: install must be skipped");
     {
-        let sm = sto.get_sm_v003();
+        let sm = sto.get_state_machine();
 
         let last_applied = *sm.sys_data().last_applied_ref();
         assert_eq!(Some(log_id::<TypeConfig>(1, 0, 10)), last_applied);
@@ -526,14 +530,14 @@ async fn test_meta_store_install_snapshot_skips_stale_snapshot() -> anyhow::Resu
             )))),
         });
         let entry_stream = stream::iter(logs.into_iter().map(|e| Ok((e, None))));
-        sto.get_sm_v003().apply_entries(entry_stream).await?;
+        sto.get_state_machine().apply_entries(entry_stream).await?;
 
         sto.state_machine()
             .clone()
             .do_install_snapshot(data.clone())
             .await?;
 
-        let sm = sto.get_sm_v003();
+        let sm = sto.get_state_machine();
 
         let last_applied = *sm.sys_data().last_applied_ref();
         assert_eq!(Some(log_id::<TypeConfig>(1, 0, 10)), last_applied);
@@ -554,14 +558,14 @@ async fn test_meta_store_install_snapshot_skips_stale_snapshot() -> anyhow::Resu
 
         let (logs, _want) = snapshot_logs();
         let entry_stream = stream::iter(logs.into_iter().map(|e| Ok((e, None))));
-        sto.get_sm_v003().apply_entries(entry_stream).await?;
+        sto.get_state_machine().apply_entries(entry_stream).await?;
 
         sto.state_machine()
             .clone()
             .do_install_snapshot(data.clone())
             .await?;
 
-        let sm = sto.get_sm_v003();
+        let sm = sto.get_state_machine();
 
         let last_applied = *sm.sys_data().last_applied_ref();
         assert_eq!(Some(log_id::<TypeConfig>(1, 0, 9)), last_applied);
@@ -605,7 +609,7 @@ async fn test_meta_store_install_snapshot_proceeds_after_in_flight_write() -> an
     }
 
     let apply_task = {
-        let sm = sto.get_sm_v003();
+        let sm = sto.get_state_machine();
         tokio::spawn(async move { sm.apply_entries(entry_rx).await })
     };
 
@@ -613,7 +617,7 @@ async fn test_meta_store_install_snapshot_proceeds_after_in_flight_write() -> an
     loop {
         let acquired = tokio::time::timeout(
             Duration::from_millis(10),
-            sto.get_sm_v003().acquire_writer_permit(),
+            sto.get_state_machine().acquire_writer_permit(),
         )
         .await;
 
@@ -644,7 +648,7 @@ async fn test_meta_store_install_snapshot_proceeds_after_in_flight_write() -> an
 
     info!("--- the snapshot is still fresher: it must be installed");
     {
-        let sm = sto.get_sm_v003();
+        let sm = sto.get_state_machine();
 
         let last_applied = *sm.sys_data().last_applied_ref();
         assert_eq!(Some(log_id::<TypeConfig>(1, 0, 9)), last_applied);
@@ -681,7 +685,7 @@ async fn test_meta_store_install_snapshot_not_blocked_by_compaction() -> anyhow:
     let tc = MetaSrvTestContext::<TokioRuntime>::new(id);
     let sto = RaftStore::<TokioRuntime>::open(&tc.config.raft_config).await?;
 
-    let compactor = sto.get_sm_v003().acquire_compactor("test").await;
+    let compactor = sto.get_state_machine().acquire_compactor("test").await;
 
     let res = tokio::time::timeout(
         Duration::from_secs(5),
@@ -694,7 +698,7 @@ async fn test_meta_store_install_snapshot_not_blocked_by_compaction() -> anyhow:
 
     drop(compactor);
 
-    let sm = sto.get_sm_v003();
+    let sm = sto.get_state_machine();
 
     let last_applied = *sm.sys_data().last_applied_ref();
     assert_eq!(Some(log_id::<TypeConfig>(1, 0, 9)), last_applied);
@@ -739,7 +743,7 @@ async fn test_meta_store_install_snapshot_without_last_applied() -> anyhow::Resu
 
     sto.state_machine().clone().do_install_snapshot(db).await?;
 
-    let sm = sto.get_sm_v003();
+    let sm = sto.get_state_machine();
 
     assert_eq!(None, *sm.sys_data().last_applied_ref());
     assert_eq!(
@@ -772,12 +776,12 @@ async fn test_meta_store_install_snapshot_during_snapshot_build() -> anyhow::Res
     {
         let (logs, _want) = snapshot_logs();
         let entry_stream = stream::iter(logs.into_iter().take(6).map(|e| Ok((e, None))));
-        sto.get_sm_v003().apply_entries(entry_stream).await?;
+        sto.get_state_machine().apply_entries(entry_stream).await?;
     }
 
     info!("--- start building a snapshot; it blocks on the held writer permit");
 
-    let writer_permit = sto.get_sm_v003().acquire_writer_permit().await;
+    let writer_permit = sto.get_state_machine().acquire_writer_permit().await;
 
     let build_task = {
         let mut sm_store = sto.state_machine().clone();
@@ -789,7 +793,7 @@ async fn test_meta_store_install_snapshot_during_snapshot_build() -> anyhow::Res
     loop {
         let acquired = tokio::time::timeout(
             Duration::from_millis(10),
-            sto.get_sm_v003().acquire_compactor("probe"),
+            sto.get_state_machine().acquire_compactor("probe"),
         )
         .await;
 
@@ -820,7 +824,7 @@ async fn test_meta_store_install_snapshot_during_snapshot_build() -> anyhow::Res
     {
         let (_logs, want) = snapshot_logs();
 
-        let sm = sto.get_sm_v003();
+        let sm = sto.get_state_machine();
 
         let last_applied = *sm.sys_data().last_applied_ref();
         assert_eq!(Some(log_id::<TypeConfig>(1, 0, 9)), last_applied);
@@ -869,12 +873,12 @@ async fn test_meta_store_in_memory_compactor_survives_install_snapshot() -> anyh
         )))),
     };
     let entry_stream = stream::iter([Ok((ent, None))]);
-    sto.get_sm_v003().apply_entries(entry_stream).await?;
+    sto.get_state_machine().apply_entries(entry_stream).await?;
 
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
         let n_levels = sto
-            .get_sm_v003()
+            .get_state_machine()
             .leveled_map()
             .immutable_levels()
             .stat()
@@ -905,7 +909,7 @@ async fn build_snapshot_db(id: u64) -> anyhow::Result<DB> {
 
     sto.log().clone().blocking_append(logs.clone()).await?;
     let entry_stream = stream::iter(logs.into_iter().map(|e| Ok((e, None))));
-    sto.get_sm_v003().apply_entries(entry_stream).await?;
+    sto.get_state_machine().apply_entries(entry_stream).await?;
 
     let snap = sto.state_machine().clone().build_snapshot().await?;
     Ok(snap.snapshot)

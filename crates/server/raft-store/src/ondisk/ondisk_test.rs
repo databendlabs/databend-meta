@@ -38,7 +38,7 @@ use crate::data_version::DataVersion;
 use crate::header::Header;
 use crate::log_store::Cw;
 use crate::log_store::LogStoreMeta;
-use crate::log_store::RaftLogV004;
+use crate::log_store::RaftLog;
 use crate::ondisk::OnDisk;
 use crate::ondisk::TREE_HEADER;
 use crate::sled_compat::LogMetaKey;
@@ -400,7 +400,7 @@ fn assert_upgraded_to_v004(
     assert_eq!(on_disk.header, expected);
     assert_eq!(OnDisk::load_header_from_fs(config)?, Some(expected));
 
-    let raft_log = RaftLogV004::open(Arc::new(config.to_raft_log_config()))?;
+    let raft_log = RaftLog::open(Arc::new(config.to_raft_log_config()))?;
     let state = raft_log.log_state();
 
     assert_eq!(state.vote(), Some(&Cw(vote())));

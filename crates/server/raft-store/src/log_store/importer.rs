@@ -17,30 +17,30 @@ use std::io;
 use databend_meta_types::raft_types::LogId;
 use raft_log::api::raft_log_writer::RaftLogWriter;
 
-use crate::log_store::RaftLogV004;
+use crate::log_store::RaftLog;
 use crate::log_store::codec_wrapper::Cw;
 use crate::log_store::log_store_meta::LogStoreMeta;
 use crate::log_store::util;
 use crate::sled_compat::RaftStateKey;
 use crate::sled_compat::key_spaces::RaftStoreEntry;
 
-/// Import series of [`RaftStoreEntry`] record into [`RaftLogV004`].
+/// Import series of [`RaftStoreEntry`] record into [`RaftLog`].
 ///
 /// [`RaftStoreEntry`] is line-wise format for export or data backup.
 pub struct Importer {
-    pub raft_log: RaftLogV004,
+    pub raft_log: RaftLog,
     pub max_log_id: Option<LogId>,
 }
 
 impl Importer {
-    pub fn new(raft_log: RaftLogV004) -> Self {
+    pub fn new(raft_log: RaftLog) -> Self {
         Importer {
             raft_log,
             max_log_id: None,
         }
     }
 
-    pub async fn flush(mut self) -> Result<RaftLogV004, io::Error> {
+    pub async fn flush(mut self) -> Result<RaftLog, io::Error> {
         util::blocking_flush(&mut self.raft_log).await?;
         Ok(self.raft_log)
     }
@@ -140,7 +140,7 @@ mod tests {
     use crate::log_store::RaftLogConfig;
     use crate::sled_compat::RaftStateValue;
 
-    fn new_raft_log(dir: &tempfile::TempDir) -> anyhow::Result<RaftLogV004> {
+    fn new_raft_log(dir: &tempfile::TempDir) -> anyhow::Result<RaftLog> {
         let config = RaftLogConfig {
             wal: WalConfig {
                 dir: dir.path().to_str().unwrap().to_string(),
@@ -154,7 +154,7 @@ mod tests {
             log_cache_max_items: Some(1000),
             log_cache_capacity: Some(1024 * 1024),
         };
-        Ok(RaftLogV004::open(Arc::new(config))?)
+        Ok(RaftLog::open(Arc::new(config))?)
     }
 
     fn log_entry(index: u64) -> RaftStoreEntry {

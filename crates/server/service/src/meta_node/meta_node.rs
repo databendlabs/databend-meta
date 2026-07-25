@@ -856,7 +856,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
     ///   Only when the membership is committed, this node can be sure it is in a cluster.
     async fn is_in_cluster(&self) -> Result<Result<String, String>, io::Error> {
         let membership = {
-            let sm = &self.raft_store.get_sm_v003();
+            let sm = &self.raft_store.get_state_machine();
             sm.sys_data().last_membership_ref().membership().clone()
         };
         info!("is_in_cluster: membership: {:?}", membership);
@@ -960,7 +960,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
     pub async fn get_node(&self, node_id: &NodeId) -> Option<Node> {
         // inconsistent get: from local state machine
 
-        let sm = self.raft_store.get_sm_v003();
+        let sm = self.raft_store.get_state_machine();
         let sys_data = sm.sys_data();
         info!("get_node: node_id: {}, sys_data: {:?}", node_id, sys_data);
 
@@ -972,7 +972,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
     pub async fn get_nodes(&self) -> Vec<Node> {
         // inconsistent get: from local state machine
 
-        let sm = self.raft_store.get_sm_v003();
+        let sm = self.raft_store.get_state_machine();
         let nodes = sm
             .sys_data()
             .nodes_ref()
@@ -1071,7 +1071,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
     }
 
     pub(crate) async fn get_last_seq(&self) -> u64 {
-        let sm = self.raft_store.get_sm_v003();
+        let sm = self.raft_store.get_state_machine();
         sm.sys_data().curr_seq()
     }
 
@@ -1080,7 +1080,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
         // Maybe stale get: from local state machine
 
         let nodes = {
-            let sm = self.raft_store.get_sm_v003();
+            let sm = self.raft_store.get_state_machine();
             sm.sys_data()
                 .nodes_ref()
                 .values()
@@ -1378,9 +1378,13 @@ impl<SP: SpawnApi> MetaNode<SP> {
             // With the reverse order, an installation finishing in between would leave
             // this block registering the watcher on the discarded state machine and
             // reading its stale data.
-            let _permit = mn.raft_store.get_sm_v003().acquire_writer_permit().await;
+            let _permit = mn
+                .raft_store
+                .get_state_machine()
+                .acquire_writer_permit()
+                .await;
 
-            let sm = mn.raft_store.get_sm_v003();
+            let sm = mn.raft_store.get_state_machine();
 
             let sender = mn.new_watch_sender(watch, tx.clone())?;
             let sender_str = sender.to_string();

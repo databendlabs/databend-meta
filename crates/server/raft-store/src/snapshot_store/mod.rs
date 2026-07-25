@@ -16,13 +16,13 @@
 
 mod snapshot_id;
 mod snapshot_store_error;
-mod snapshot_store_v003;
-mod writer_v003;
+mod store;
+mod writer;
 
 mod db_open_snapshot_impl;
 pub mod open_snapshot;
 pub mod received;
-pub mod receiver_v003;
+pub mod receiver;
 pub mod snapshot_loader;
 pub mod write_entry;
 pub mod writer_stat;
@@ -32,7 +32,7 @@ mod snapshot_store_test;
 
 pub use snapshot_id::MetaSnapshotId;
 pub use snapshot_store_error::SnapshotStoreError;
-pub use snapshot_store_v003::SnapshotStoreV003;
-pub use snapshot_store_v003::SnapshotStoreV004;
+pub use store::SnapshotStore;
+pub use store::SnapshotStoreV003;
 pub use write_entry::WriteEntry;
-pub use writer_v003::WriterV003;
+pub use writer::SnapshotWriter;

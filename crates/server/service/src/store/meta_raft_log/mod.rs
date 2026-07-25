@@ -16,23 +16,23 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use databend_meta_raft_store::config::RaftConfig;
-use databend_meta_raft_store::log_store::RaftLogV004;
+use databend_meta_raft_store::log_store::RaftLog;
 use databend_meta_types::raft_types::NodeId;
 use tokio::sync::RwLock;
 
 mod impl_raft_log_storage;
 
-/// A shared wrapper for use of RaftLogV004 in this crate.
+/// A shared wrapper for use of RaftLog in this crate.
 #[derive(Debug, Clone)]
 pub struct MetaRaftLog {
     pub(crate) id: NodeId,
     #[allow(dead_code)]
     pub(crate) config: Arc<RaftConfig>,
-    inner: Arc<RwLock<RaftLogV004>>,
+    inner: Arc<RwLock<RaftLog>>,
 }
 
 impl Deref for MetaRaftLog {
-    type Target = Arc<RwLock<RaftLogV004>>;
+    type Target = Arc<RwLock<RaftLog>>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
@@ -40,7 +40,7 @@ impl Deref for MetaRaftLog {
 }
 
 impl MetaRaftLog {
-    pub fn new(id: NodeId, config: Arc<RaftConfig>, inner: RaftLogV004) -> Self {
+    pub fn new(id: NodeId, config: Arc<RaftConfig>, inner: RaftLog) -> Self {
         Self {
             id,
             config,

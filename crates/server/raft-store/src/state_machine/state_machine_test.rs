@@ -30,12 +30,12 @@ use state_machine_api::StateMachineApi;
 
 use crate::leveled_store::db_builder::DBBuilder;
 use crate::leveled_store::leveled_map::LeveledMap;
-use crate::state_machine::SMV003;
+use crate::state_machine::StateMachine;
 use crate::state_machine_api_ext::StateMachineApiExt;
 
 #[tokio::test]
 async fn test_one_level_upsert_get_range() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
 
     let mut a = sm.new_applier().await;
     let (prev, result) = a.upsert_kv(&UpsertKV::update("a", b"a0")).await?;
@@ -97,7 +97,7 @@ async fn test_two_level_upsert_get_range() -> anyhow::Result<()> {
     // |   a/b(D) c d
     // | a a/b    c
 
-    let mut sm = SMV003::default();
+    let mut sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     // internal_seq = 0
@@ -177,7 +177,7 @@ async fn test_two_level_upsert_get_range() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_list_kv_with_limit() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
 
     // Insert 5 keys
     let mut a = sm.new_applier().await;
@@ -221,8 +221,8 @@ async fn test_list_kv_with_limit() -> anyhow::Result<()> {
 /// l1 | a₄       c₃    |               10,1₄ -> ø    15,4₄ -> a  20,3₃ -> c
 /// ------------------------------------------------------------
 /// l0 | a₁  b₂         |  5,2₂ -> b    10,1₁ -> a
-async fn build_sm_with_expire() -> anyhow::Result<SMV003> {
-    let mut sm = SMV003::default();
+async fn build_sm_with_expire() -> anyhow::Result<StateMachine> {
+    let mut sm = StateMachine::default();
     let mut a = sm.new_applier().await;
 
     a.upsert_kv(&UpsertKV::update("a", b"a0").with_expire_sec(10))
@@ -308,7 +308,7 @@ async fn test_list_expire_index() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_cleanup_timestamp_is_published_on_commit() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
 
     {
         let mut applier = sm.new_applier().await;
@@ -406,8 +406,8 @@ async fn test_inserting_expired_becomes_deleting() -> anyhow::Result<()> {
 /// pre-install instance across the swap, which must gate writers of the
 /// post-install instance as well.
 #[tokio::test]
-async fn test_install_snapshot_v003_shares_semaphores() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+async fn test_install_snapshot_shares_semaphores() -> anyhow::Result<()> {
+    let sm = StateMachine::default();
 
     let temp_dir = tempfile::tempdir()?;
     let db_builder = DBBuilder::new(
@@ -421,7 +421,7 @@ async fn test_install_snapshot_v003_shares_semaphores() -> anyhow::Result<()> {
         })
         .await?;
 
-    let sm2 = sm.install_snapshot_v003(db);
+    let sm2 = sm.install_snapshot(db);
 
     // Writer semaphore is shared.
     {

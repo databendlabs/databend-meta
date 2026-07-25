@@ -96,21 +96,21 @@ impl<SP: SpawnApi> Handler<ForwardRequestBody> for MetaLeader<'_, SP> {
             }
 
             ForwardRequestBody::GetKV(req) => {
-                let sm = self.sto.get_sm_v003();
+                let sm = self.sto.get_state_machine();
                 let v = sm.kv_api().get_kv(&req.key).await.map_err(|e| {
                     MetaOperationError::from(MetaDataReadError::new("get_kv", &req.key, &e))
                 })?;
                 Ok(ForwardResponse::GetKV(v))
             }
             ForwardRequestBody::MGetKV(req) => {
-                let sm = self.sto.get_sm_v003();
+                let sm = self.sto.get_state_machine();
                 let v = sm.kv_api().mget_kv(&req.keys).await.map_err(|e| {
                     MetaOperationError::from(MetaDataReadError::new("mget_kv", "", &e))
                 })?;
                 Ok(ForwardResponse::MGetKV(v))
             }
             ForwardRequestBody::ListKV(req) => {
-                let sm = self.sto.get_sm_v003();
+                let sm = self.sto.get_state_machine();
                 let v = sm
                     .kv_api()
                     .list_kv_collect(ListOptions::unlimited(&req.prefix))
@@ -138,7 +138,7 @@ impl<SP: SpawnApi> Handler<MetaGrpcReadReq> for MetaLeader<'_, SP> {
         let id = self.sto.id;
         debug!("id={} handle(MetaGrpcReadReq): {:?}", id, req);
 
-        let sm = self.sto.get_sm_v003();
+        let sm = self.sto.get_state_machine();
         let kv_api = sm.kv_api();
 
         match req.body {
@@ -254,7 +254,7 @@ impl<'a, SP: SpawnApi> MetaLeader<'a, SP> {
 
         let membership = self
             .sto
-            .get_sm_v003()
+            .get_state_machine()
             .data()
             .last_membership()
             .membership()
@@ -313,7 +313,7 @@ impl<'a, SP: SpawnApi> MetaLeader<'a, SP> {
     /// A cluster must have at least one node in it.
     async fn can_leave(&self, id: NodeId) -> Result<Result<(), String>, io::Error> {
         let membership = {
-            let sm = self.sto.get_sm_v003();
+            let sm = self.sto.get_state_machine();
             sm.sys_data().last_membership_ref().membership().clone()
         };
         info!("check can_leave: id: {}, membership: {:?}", id, membership);
@@ -341,7 +341,7 @@ impl<'a, SP: SpawnApi> MetaLeader<'a, SP> {
     ) -> Result<BoxStream<StreamItem>, io::Error> {
         let strm = self
             .sto
-            .get_sm_v003()
+            .get_state_machine()
             .kv_api()
             .list_kv(ListOptions::new(prefix, limit))
             .await?;
@@ -367,7 +367,7 @@ impl<'a, SP: SpawnApi> MetaLeader<'a, SP> {
         // Delegate to KVApi which handles error propagation
         let strm = self
             .sto
-            .get_sm_v003()
+            .get_state_machine()
             .kv_api()
             .get_many_kv(keys.boxed())
             .await?;

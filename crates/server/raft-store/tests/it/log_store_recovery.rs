@@ -25,8 +25,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use databend_meta_raft_store::log_store::Cw;
+use databend_meta_raft_store::log_store::RaftLog;
 use databend_meta_raft_store::log_store::RaftLogConfig;
-use databend_meta_raft_store::log_store::RaftLogV004;
 use databend_meta_raft_store::log_store::util::blocking_flush;
 use databend_meta_types::raft_types::EntryPayload;
 use databend_meta_types::raft_types::new_log_id;
@@ -89,7 +89,7 @@ async fn test_truncation_recovery(bytes_to_truncate: u64) -> anyhow::Result<()> 
 
     // Phase 1: Write entries and close the log
     {
-        let mut log = RaftLogV004::open(config.clone())?;
+        let mut log = RaftLog::open(config.clone())?;
 
         for i in 0..num_entries {
             let log_id = new_log_id(1, 0, i);
@@ -107,7 +107,7 @@ async fn test_truncation_recovery(bytes_to_truncate: u64) -> anyhow::Result<()> 
     truncate_file(&wal_file, bytes_to_truncate)?;
 
     // Phase 3: Reopen the log - should succeed with automatic truncation
-    let log = RaftLogV004::open(config.clone())?;
+    let log = RaftLog::open(config.clone())?;
 
     let dumped = log.dump().write_to_string()?;
     println!(

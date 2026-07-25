@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Round trip of a snapshot: build it with [`WriterV003`], ship it in chunks to
-//! [`ReceiverV003`], and reopen the received file.
+//! Round trip of a snapshot: build it with [`SnapshotWriter`], ship it in chunks to
+//! [`SnapshotReceiver`], and reopen the received file.
 
 use std::error::Error;
 use std::fs;
@@ -40,10 +40,10 @@ use tempfile::TempDir;
 use crate::config::RaftConfig;
 use crate::data_version::DataVersion;
 use crate::snapshot_store::MetaSnapshotId;
+use crate::snapshot_store::SnapshotStore;
 use crate::snapshot_store::SnapshotStoreV003;
-use crate::snapshot_store::SnapshotStoreV004;
 use crate::snapshot_store::open_snapshot::OpenSnapshot;
-use crate::snapshot_store::receiver_v003::ReceiverV003;
+use crate::snapshot_store::receiver::SnapshotReceiver;
 
 /// Bytes per chunk of the simulated snapshot stream.
 const CHUNK_SIZE: usize = 4096;
@@ -64,9 +64,9 @@ fn test_snapshot_store_directories_are_version_scoped() -> anyhow::Result<()> {
         format!("{}/df_meta/V003/snapshot", raft_dir)
     );
     // SnapshotStoreV003 is a V003-flavored view of the same store.
-    let _: &mut SnapshotStoreV004<TokioRuntime> = &mut v003;
+    let _: &mut SnapshotStore<TokioRuntime> = &mut v003;
 
-    let v004 = SnapshotStoreV004::<TokioRuntime>::new(config);
+    let v004 = SnapshotStore::<TokioRuntime>::new(config);
     assert_eq!(v004.data_version(), DataVersion::V004);
     assert_eq!(
         v004.snapshot_config().snapshot_dir(),
@@ -79,7 +79,7 @@ fn test_snapshot_store_directories_are_version_scoped() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_write_receive_and_reopen_a_multi_chunk_snapshot() -> anyhow::Result<()> {
     let sender_dir = tempfile::tempdir()?;
-    let sender = SnapshotStoreV004::<TokioRuntime>::new(raft_config(&sender_dir));
+    let sender = SnapshotStore::<TokioRuntime>::new(raft_config(&sender_dir));
 
     let entries = test_entries(64);
     let snapshot_id = MetaSnapshotId::new(Some(log_id::<TypeConfig>(1, 2, 3)), 7);
@@ -112,7 +112,7 @@ async fn test_write_receive_and_reopen_a_multi_chunk_snapshot() -> anyhow::Resul
     // Ship the file to another node, chunk by chunk.
 
     let receiver_dir = tempfile::tempdir()?;
-    let receiving = SnapshotStoreV004::<TokioRuntime>::new(raft_config(&receiver_dir));
+    let receiving = SnapshotStore::<TokioRuntime>::new(raft_config(&receiver_dir));
     let mut receiver = receiving.new_receiver(REMOTE_ADDR)?;
 
     let recv_bytes = Arc::new(AtomicU64::new(0));
@@ -192,7 +192,7 @@ async fn test_receive_fails_when_the_input_closes_before_the_last_chunk() -> any
     assert_eq!(
         err.to_string(),
         format!(
-            "ReceiverV003 input channel is closed: ReceiverV003 received 1 chunks, 7 bytes from {} while ctx",
+            "SnapshotReceiver input channel is closed: SnapshotReceiver received 1 chunks, 7 bytes from {} while ctx",
             REMOTE_ADDR
         )
     );
@@ -273,7 +273,7 @@ fn test_receive_rejects_a_chunk_after_completion() -> anyhow::Result<()> {
 #[test]
 fn test_move_to_final_path_fails_for_a_missing_source() -> anyhow::Result<()> {
     let temp_dir = tempfile::tempdir()?;
-    let store = SnapshotStoreV004::<TokioRuntime>::new(raft_config(&temp_dir));
+    let store = SnapshotStore::<TokioRuntime>::new(raft_config(&temp_dir));
     let snapshot_config = store.snapshot_config();
     snapshot_config.ensure_snapshot_dir()?;
 
@@ -290,7 +290,7 @@ fn test_move_to_final_path_fails_for_a_missing_source() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_load_snapshot_reports_a_missing_file() -> anyhow::Result<()> {
     let temp_dir = tempfile::tempdir()?;
-    let store = SnapshotStoreV004::<TokioRuntime>::new(raft_config(&temp_dir));
+    let store = SnapshotStore::<TokioRuntime>::new(raft_config(&temp_dir));
 
     let err = store
         .new_loader()
@@ -319,9 +319,9 @@ fn raft_config(dir: &TempDir) -> RaftConfig {
 }
 
 /// A receiver writing to a fixed temp file, so error messages are predictable.
-fn new_receiver(dir: &TempDir) -> anyhow::Result<ReceiverV003<TokioRuntime>> {
+fn new_receiver(dir: &TempDir) -> anyhow::Result<SnapshotReceiver<TokioRuntime>> {
     let f = fs::File::create(dir.path().join("temp.snap"))?;
-    Ok(ReceiverV003::new(
+    Ok(SnapshotReceiver::new(
         REMOTE_ADDR,
         dir.path().to_str().unwrap(),
         "temp.snap",
@@ -329,10 +329,10 @@ fn new_receiver(dir: &TempDir) -> anyhow::Result<ReceiverV003<TokioRuntime>> {
     ))
 }
 
-/// Rebuild the context [`ReceiverV003::receive`] appends to its errors.
+/// Rebuild the context [`SnapshotReceiver::receive`] appends to its errors.
 fn receive_context(dir: &TempDir, error: &str, context: &str) -> String {
     format!(
-        "{} while:(ReceiverV003::receive(): {}; remote_addr: {}; temp_path: {}/temp.snap)",
+        "{} while:(SnapshotReceiver::receive(): {}; remote_addr: {}; temp_path: {}/temp.snap)",
         error,
         context,
         REMOTE_ADDR,

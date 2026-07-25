@@ -30,7 +30,7 @@ use crate::leveled_store::db_builder::DBBuilder;
 use crate::leveled_store::leveled_map::LeveledMap;
 use crate::leveled_store::leveled_map::compactor::Compactor;
 use crate::leveled_store::map_api::MapApiHelper;
-use crate::state_machine::SMV003;
+use crate::state_machine::StateMachine;
 
 #[tokio::test]
 async fn test_freeze() -> anyhow::Result<()> {
@@ -613,7 +613,7 @@ async fn test_two_level_update_meta() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_replace_with_compacted() -> anyhow::Result<()> {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let l = sm.leveled_map().clone();
 
     let mut view = l.to_view();
@@ -668,7 +668,7 @@ async fn test_replace_with_compacted() -> anyhow::Result<()> {
     expected = "replace_with_compacted requires all active reads to reach ISeq(2); oldest active read: ISeq(1)"
 )]
 async fn test_replace_with_compacted_rejects_an_unreleased_older_read() {
-    let sm = SMV003::default();
+    let sm = StateMachine::default();
     let l = sm.leveled_map().clone();
 
     let mut view = l.to_view();

@@ -32,18 +32,18 @@ use state_machine_api::UserKey;
 
 use crate::leveled_store::state_machine::read_view::StateMachineReadView;
 use crate::leveled_store::util::add_cooperative_yielding;
-use crate::state_machine::SMV003;
+use crate::state_machine::StateMachine;
 use crate::testing::since_epoch_millis;
 use crate::utils::prefix_right_bound;
 use crate::utils::seq_marked_to_seqv;
 
 /// A wrapper that implements KVApi **readonly** methods for the state machine.
-pub struct SMV003KVApi<'a> {
-    pub(crate) sm: &'a SMV003,
+pub struct StateMachineKVApi<'a> {
+    pub(crate) sm: &'a StateMachine,
 }
 
 #[async_trait::async_trait]
-impl kvapi::KVApi for SMV003KVApi<'_> {
+impl kvapi::KVApi for StateMachineKVApi<'_> {
     type Error = io::Error;
 
     async fn list_kv(
@@ -67,7 +67,7 @@ impl kvapi::KVApi for SMV003KVApi<'_> {
             read_view.range(UserKey::new(&p)..).await?
         };
 
-        let strm = add_cooperative_yielding(strm, format!("SMV003KVApi::list_kv: {prefix}"))
+        let strm = add_cooperative_yielding(strm, format!("StateMachineKVApi::list_kv: {prefix}"))
             // Skip tombstone
             .try_filter_map(|(k, marked)| future::ready(Ok(seq_marked_to_seqv(k, marked))))
             // Skip expired
@@ -94,7 +94,7 @@ impl kvapi::KVApi for SMV003KVApi<'_> {
     }
 }
 
-impl SMV003KVApi<'_> {
+impl StateMachineKVApi<'_> {
     fn non_expired<V>(seq_value: Option<SeqV<V>>, now_ms: u64) -> Option<SeqV<V>> {
         if seq_value.is_expired(now_ms) {
             None
@@ -125,7 +125,7 @@ fn state_machine_read_view_get_many_kv(
             async move {
                 let got = read_view.get(UserKey::new(key.clone())).await?;
                 let seqv: Option<SeqV> = got.into();
-                let non_expired = SMV003KVApi::non_expired(seqv, local_now_ms);
+                let non_expired = StateMachineKVApi::non_expired(seqv, local_now_ms);
                 Ok(StreamItem::from((key, non_expired)))
             }
         })
@@ -146,7 +146,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_many_kv_preserves_input_order_and_missing_values() -> anyhow::Result<()> {
-        let sm = SMV003::default();
+        let sm = StateMachine::default();
         let mut applier = sm.new_applier().await;
         applier
             .upsert_kv(&UpsertKV::update("first", b"one"))
@@ -181,7 +181,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_many_kv_forwards_input_errors() -> anyhow::Result<()> {
-        let sm = SMV003::default();
+        let sm = StateMachine::default();
         let keys =
             futures_util::stream::iter(vec![Err(std::io::Error::other("input failure"))]).boxed();
         let stream = sm.kv_api().get_many_kv(keys).await?;
@@ -197,11 +197,11 @@ mod tests {
         let expired = SeqV::new_with_meta(1, Some(KVMeta::new_expires_at(1)), b"expired".to_vec());
         let live = SeqV::new_with_meta(2, Some(KVMeta::new_expires_at(3)), b"live".to_vec());
 
-        assert_eq!(SMV003KVApi::non_expired(Some(expired), 2_000), None);
+        assert_eq!(StateMachineKVApi::non_expired(Some(expired), 2_000), None);
         assert_eq!(
-            SMV003KVApi::non_expired(Some(live.clone()), 2_000),
+            StateMachineKVApi::non_expired(Some(live.clone()), 2_000),
             Some(live)
         );
-        assert_eq!(SMV003KVApi::non_expired::<Vec<u8>>(None, 2_000), None);
+        assert_eq!(StateMachineKVApi::non_expired::<Vec<u8>>(None, 2_000), None);
     }
 }

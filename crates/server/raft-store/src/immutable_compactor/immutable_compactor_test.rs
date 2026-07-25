@@ -30,7 +30,7 @@ use tokio::time::timeout;
 
 use crate::immutable_compactor::InMemoryCompactor;
 use crate::leveled_store::leveled_map::LeveledMap;
-use crate::state_machine::SMV003;
+use crate::state_machine::StateMachine;
 
 /// Failure bound for an operation that is expected to finish.
 const MUST_FINISH: Duration = Duration::from_secs(5);
@@ -40,7 +40,7 @@ const MUST_BLOCK: Duration = Duration::from_millis(500);
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_compact_skips_when_too_few_levels() -> anyhow::Result<()> {
-    let sm = Arc::new(SMV003::default());
+    let sm = Arc::new(StateMachine::default());
     write(&sm, &[("a", "a0"), ("b", "b0")]).await?;
 
     let compactor = InMemoryCompactor::new(sm.clone(), "few").await;
@@ -91,7 +91,7 @@ async fn test_compact_skips_when_too_few_levels() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_compact_merges_the_smallest_adjacent_levels() -> anyhow::Result<()> {
-    let sm = Arc::new(SMV003::default());
+    let sm = Arc::new(StateMachine::default());
     build_compactable(&sm).await?;
 
     let lm = sm.leveled_map().clone();
@@ -136,7 +136,7 @@ async fn test_compact_merges_the_smallest_adjacent_levels() -> anyhow::Result<()
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_compact_waits_for_a_read_older_than_the_boundary() -> anyhow::Result<()> {
-    let sm = Arc::new(SMV003::default());
+    let sm = Arc::new(StateMachine::default());
     build_compactable(&sm).await?;
 
     // Registered before the write that the compactor freezes below it.
@@ -188,7 +188,7 @@ async fn test_compact_waits_for_a_read_older_than_the_boundary() -> anyhow::Resu
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_compact_does_not_wait_for_a_read_at_the_boundary() -> anyhow::Result<()> {
-    let sm = Arc::new(SMV003::default());
+    let sm = Arc::new(StateMachine::default());
     build_compactable(&sm).await?;
 
     let lm = sm.leveled_map().clone();
@@ -241,7 +241,7 @@ async fn test_compact_does_not_wait_for_a_read_at_the_boundary() -> anyhow::Resu
 }
 
 /// Apply `kvs` to the state machine as one committed batch.
-async fn write(sm: &SMV003, kvs: &[(&str, &str)]) -> anyhow::Result<()> {
+async fn write(sm: &StateMachine, kvs: &[(&str, &str)]) -> anyhow::Result<()> {
     let mut applier = sm.new_applier().await;
     for (k, v) in kvs {
         applier
@@ -257,7 +257,7 @@ async fn write(sm: &SMV003, kvs: &[(&str, &str)]) -> anyhow::Result<()> {
 /// level for the caller's compactor to freeze.
 ///
 /// [`ImmutableLevels::need_compact`]: crate::leveled_store::immutable_levels::ImmutableLevels::need_compact
-async fn build_compactable(sm: &Arc<SMV003>) -> anyhow::Result<()> {
+async fn build_compactable(sm: &Arc<StateMachine>) -> anyhow::Result<()> {
     let mut applier = sm.new_applier().await;
     applier
         .upsert_kv(&UpsertKV::update("a", b"a0").with_expire_sec(10))

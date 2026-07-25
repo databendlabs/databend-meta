@@ -18,12 +18,12 @@ use raft_log::api::raft_log_writer::RaftLogWriter;
 use tokio::sync::oneshot;
 
 use crate::log_store::IODesc;
-use crate::log_store::RaftLogV004;
+use crate::log_store::RaftLog;
 use crate::log_store::callback::Callback;
 
-pub async fn blocking_flush(rl: &mut RaftLogV004) -> Result<(), io::Error> {
+pub async fn blocking_flush(rl: &mut RaftLog) -> Result<(), io::Error> {
     let (tx, rx) = oneshot::channel();
-    let callback = Callback::new_oneshot(tx, IODesc::unknown("blocking_flush(RaftLogV004)"));
+    let callback = Callback::new_oneshot(tx, IODesc::unknown("blocking_flush(RaftLog)"));
 
     rl.flush(true, Some(callback))?;
     rx.await

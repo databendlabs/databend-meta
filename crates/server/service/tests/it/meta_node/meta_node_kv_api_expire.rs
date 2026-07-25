@@ -68,7 +68,12 @@ async fn test_meta_node_replicate_kv_with_expire() -> anyhow::Result<()> {
 
     info!("--- get kv with expire now+3");
     let seq = {
-        let resp = leader.raft_store.get_sm_v003().kv_api().get_kv(key).await?;
+        let resp = leader
+            .raft_store
+            .get_state_machine()
+            .kv_api()
+            .get_kv(key)
+            .await?;
         let seq_v = resp.unwrap();
         assert_eq!(Some(now_sec + 3), seq_v.meta.unwrap().expires_at_sec_opt());
         seq_v.seq
@@ -85,7 +90,12 @@ async fn test_meta_node_replicate_kv_with_expire() -> anyhow::Result<()> {
 
     info!("--- get updated kv with new expire now+1000, assert the updated value");
     {
-        let resp = leader.raft_store.get_sm_v003().kv_api().get_kv(key).await?;
+        let resp = leader
+            .raft_store
+            .get_state_machine()
+            .kv_api()
+            .get_kv(key)
+            .await?;
         let seq_v = resp.unwrap();
         let want = (now_sec + 1000) * 1000;
         let expire_ms = seq_v.meta.unwrap().get_expire_at_ms().unwrap();
@@ -115,7 +125,7 @@ async fn test_meta_node_replicate_kv_with_expire() -> anyhow::Result<()> {
     // This way on every node applying a log always get the same result.
     info!("--- get updated kv with new expire, assert the updated value");
     {
-        let sm = learner.raft_store.get_sm_v003();
+        let sm = learner.raft_store.get_state_machine();
         let resp = sm.kv_api().get_kv(key).await.unwrap();
         let seq_v = resp.unwrap();
         let want = now_sec + 1000;

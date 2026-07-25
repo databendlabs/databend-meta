@@ -14,7 +14,7 @@
 
 use std::io;
 
-use databend_meta_raft_store::snapshot_store::SnapshotStoreV004;
+use databend_meta_raft_store::snapshot_store::SnapshotStore;
 use databend_meta_raft_store::snapshot_store::open_snapshot::OpenSnapshot;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DB;
@@ -95,7 +95,7 @@ impl<SP: SpawnApi> RaftStateMachine<TypeConfig> for MetaRaftStateMachine<SP> {
             "decoding snapshot for installation"
         );
 
-        let ss_store: SnapshotStoreV004<SP> = SnapshotStoreV004::new(self.config.as_ref().clone());
+        let ss_store: SnapshotStore<SP> = SnapshotStore::new(self.config.as_ref().clone());
         let (storage_path, rel_path) = ss_store
             .snapshot_config()
             .move_to_final_path(&snapshot.path(), meta.snapshot_id.clone())?;

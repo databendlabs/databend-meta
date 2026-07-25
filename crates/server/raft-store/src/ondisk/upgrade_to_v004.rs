@@ -29,14 +29,14 @@ use raft_log::codeq::error_context_ext::ErrorContextExt;
 use tokio::io;
 
 use crate::data_version::DataVersion;
-use crate::log_store::RaftLogV004;
+use crate::log_store::RaftLog;
 use crate::log_store::importer;
 use crate::ondisk::OnDisk;
 use crate::sled_compat::LogMetaKey;
 use crate::sled_compat::key_spaces::LogMeta;
 use crate::sled_compat::key_spaces::RaftStoreEntry;
+use crate::snapshot_store::SnapshotStore;
 use crate::snapshot_store::SnapshotStoreV003;
-use crate::snapshot_store::SnapshotStoreV004;
 
 impl OnDisk {
     /// Upgrade the on-disk data form [`DataVersion::V003`] to [`DataVersion::V004`].
@@ -56,7 +56,7 @@ impl OnDisk {
 
         let raft_log_config = self.config.clone().to_raft_log_config();
         let raft_log_config = Arc::new(raft_log_config);
-        let raft_log = RaftLogV004::open(raft_log_config)?;
+        let raft_log = RaftLog::open(raft_log_config)?;
         let mut importer = importer::Importer::new(raft_log);
 
         let db = init_get_sled_db(self.config.raft_dir.clone(), 1024 * 1024 * 1024);
@@ -126,7 +126,7 @@ impl OnDisk {
         // 1.2. copy snapshot
 
         let ss_store_v003: SnapshotStoreV003<SP> = SnapshotStoreV003::new(self.config.clone());
-        let ss_store_v004: SnapshotStoreV004<SP> = SnapshotStoreV004::new(self.config.clone());
+        let ss_store_v004: SnapshotStore<SP> = SnapshotStore::new(self.config.clone());
 
         let v003_path = ss_store_v003.snapshot_config().snapshot_dir();
         let v004_path = ss_store_v004.snapshot_config().version_dir();

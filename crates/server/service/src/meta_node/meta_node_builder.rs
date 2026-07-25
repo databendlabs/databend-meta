@@ -90,7 +90,7 @@ impl<SP: SpawnApi> MetaNodeBuilder<SP> {
             }
         };
 
-        sto.get_sm_v003()
+        sto.get_state_machine()
             .set_on_change_applied(Box::new(on_change_applied));
 
         let meta_node = Arc::new(MetaNode {

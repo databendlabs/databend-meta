@@ -25,9 +25,9 @@ use databend_base::counter::Counter;
 use databend_meta_raft_store::config::RaftConfig;
 use databend_meta_raft_store::immutable_compactor::InMemoryCompactor;
 use databend_meta_raft_store::snapshot_store::MetaSnapshotId;
-use databend_meta_raft_store::snapshot_store::SnapshotStoreV004;
+use databend_meta_raft_store::snapshot_store::SnapshotStore;
 use databend_meta_raft_store::snapshot_store::WriteEntry;
-use databend_meta_raft_store::state_machine::SMV003;
+use databend_meta_raft_store::state_machine::StateMachine;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DB;
 use databend_meta_snapshot_db::Snapshot;
@@ -44,7 +44,7 @@ use crate::metrics::raft_metrics;
 
 mod raft_state_machine_impl;
 
-/// A shared wrapper for use of SMV003 in this crate.
+/// A shared wrapper for use of StateMachine in this crate.
 #[derive(Debug)]
 pub struct MetaRaftStateMachine<SP> {
     pub(crate) id: NodeId,
@@ -53,7 +53,7 @@ pub struct MetaRaftStateMachine<SP> {
 
     pub(crate) in_memory_compactor_cancel: Option<Arc<oneshot::Sender<()>>>,
 
-    inner: Arc<Mutex<Arc<SMV003>>>,
+    inner: Arc<Mutex<Arc<StateMachine>>>,
 
     _phantom: PhantomData<SP>,
 }
@@ -71,7 +71,7 @@ impl<SP> Clone for MetaRaftStateMachine<SP> {
 }
 
 impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
-    pub fn new(id: NodeId, config: Arc<RaftConfig>, inner: Arc<SMV003>) -> Self {
+    pub fn new(id: NodeId, config: Arc<RaftConfig>, inner: Arc<StateMachine>) -> Self {
         Self {
             id,
             config,
@@ -94,7 +94,7 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
     }
 
     async fn compact_loop(
-        weak_inner: Weak<Mutex<Arc<SMV003>>>,
+        weak_inner: Weak<Mutex<Arc<StateMachine>>>,
         interval: Duration,
         cancel: oneshot::Receiver<()>,
     ) {
@@ -115,7 +115,7 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
             }
 
             // Track the slot holding the current state machine, not one instance:
-            // snapshot installation replaces the inner `Arc<SMV003>`, and a weak
+            // snapshot installation replaces the inner `Arc<StateMachine>`, and a weak
             // reference to the replaced instance would end this loop and leave the
             // new state machine without in-memory compaction.
             let Some(inner) = weak_inner.upgrade() else {
@@ -129,7 +129,7 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
         }
     }
 
-    async fn in_memory_compact_once(sm: Arc<SMV003>) {
+    async fn in_memory_compact_once(sm: Arc<StateMachine>) {
         let compactor = InMemoryCompactor::new(sm.clone(), "in_memory_compactor").await;
 
         // 1. freeze the writable
@@ -141,11 +141,11 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
         info!("in_memory_compact completed");
     }
 
-    pub fn get_inner(&self) -> Arc<SMV003> {
+    pub fn get_inner(&self) -> Arc<StateMachine> {
         self.inner.lock().unwrap().deref().clone()
     }
 
-    pub fn set_inner(&self, sm: Arc<SMV003>) {
+    pub fn set_inner(&self, sm: Arc<StateMachine>) {
         let mut guard = self.inner.lock().unwrap();
         *guard = sm;
     }
@@ -267,7 +267,7 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
         let sys_data = db.sys_data().clone();
 
         info!(
-            "SMV003::install_snapshot: data_size: {}; sys_data: {:?}",
+            "StateMachine::install_snapshot: data_size: {}; sys_data: {:?}",
             data_size, sys_data
         );
 
@@ -295,7 +295,7 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
         if my_last_applied.is_some() {
             if &my_last_applied >= sys_data.last_applied_ref() {
                 info!(
-                    "SMV003 try to install a smaller snapshot({:?}), ignored, my last applied: {:?}",
+                    "StateMachine try to install a smaller snapshot({:?}), ignored, my last applied: {:?}",
                     sys_data.last_applied_ref(),
                     sm.sys_data().last_applied_ref()
                 );
@@ -303,7 +303,7 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
             }
         }
 
-        let new_sm = sm.install_snapshot_v003(db);
+        let new_sm = sm.install_snapshot(db);
 
         self.set_inner(Arc::new(new_sm));
 
@@ -311,7 +311,7 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
     }
 
     /// Return a snapshot store of this instance.
-    pub fn snapshot_store(&self) -> SnapshotStoreV004<SP> {
-        SnapshotStoreV004::new(self.config.as_ref().clone())
+    pub fn snapshot_store(&self) -> SnapshotStore<SP> {
+        SnapshotStore::new(self.config.as_ref().clone())
     }
 }

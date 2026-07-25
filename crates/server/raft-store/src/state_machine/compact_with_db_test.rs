@@ -39,7 +39,7 @@ use crate::leveled_store::immutable_data::ImmutableData;
 use crate::leveled_store::immutable_levels::ImmutableLevels;
 use crate::leveled_store::leveled_map::LeveledMap;
 use crate::leveled_store::sys_data_api::SysDataApiRO;
-use crate::state_machine::SMV003;
+use crate::state_machine::StateMachine;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_leveled_query_with_db() -> anyhow::Result<()> {
@@ -359,8 +359,8 @@ async fn build_3_levels() -> anyhow::Result<(LeveledMap, impl Drop)> {
 /// l1 | a₄       c₃    |               10,1₄ -> ø    15,4₄ -> a  20,3₃ -> c
 /// ------------------------------------------------------------
 /// l0 | a₁  b₂         |  5,2₂ -> b    10,1₁ -> a
-async fn build_sm_with_expire() -> anyhow::Result<(SMV003, impl Drop)> {
-    let mut sm = SMV003::default();
+async fn build_sm_with_expire() -> anyhow::Result<(StateMachine, impl Drop)> {
+    let mut sm = StateMachine::default();
 
     let mut a = sm.new_applier().await;
     a.upsert_kv(&UpsertKV::update("a", b"a0").with_expire_sec(10))

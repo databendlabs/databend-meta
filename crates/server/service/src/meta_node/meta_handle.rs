@@ -331,7 +331,7 @@ impl<SP: SpawnApi> MetaHandle<SP> {
     {
         self.request(move |meta_node| {
             let fu = async move {
-                let db = meta_node.raft_store.get_sm_v003().get_snapshot();
+                let db = meta_node.raft_store.get_state_machine().get_snapshot();
 
                 if let Some(db) = db {
                     let db_exporter = DBExporter::new(&db);
@@ -383,7 +383,7 @@ impl<SP: SpawnApi> MetaHandle<SP> {
 
     pub async fn handle_get_sys_data(&self) -> Result<SysData, MetaNodeStopped> {
         self.request(move |meta_node| {
-            let fu = async move { meta_node.raft_store.get_sm_v003().sys_data() };
+            let fu = async move { meta_node.raft_store.get_state_machine().sys_data() };
             Box::pin(fu)
         })
         .await

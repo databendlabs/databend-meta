@@ -24,7 +24,7 @@ use openraft::testing::log_id;
 use state_machine_api::UserKey;
 
 use crate::leveled_store::leveled_map::LeveledMap;
-use crate::state_machine::SMV003;
+use crate::state_machine::StateMachine;
 
 /// Create multi levels store:
 ///
@@ -99,7 +99,7 @@ pub(crate) async fn build_3_levels_leveled_map() -> anyhow::Result<LeveledMap> {
 /// ------------------------------------------------------------
 /// l0 | a₁  b₂         |  5,2₂ -> b    10,1₁ -> a
 pub(crate) async fn build_2_levels_leveled_map_with_expire() -> anyhow::Result<LeveledMap> {
-    let mut sm = SMV003::default();
+    let mut sm = StateMachine::default();
 
     let mut a = sm.new_applier().await;
     a.upsert_kv(&UpsertKV::update("a", b"a0").with_expire_sec(10))

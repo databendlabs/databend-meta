@@ -34,7 +34,7 @@ use crate::snapshot_store::write_entry::WriteEntry;
 use crate::snapshot_store::writer_stat::WriterStat;
 
 /// Write kv pair snapshot data to `SnapshotStoreV002`.
-pub struct WriterV003<SP: SpawnApi> {
+pub struct SnapshotWriter<SP: SpawnApi> {
     db_builder: DBBuilder,
 
     snapshot_config: SnapshotConfig,
@@ -44,7 +44,7 @@ pub struct WriterV003<SP: SpawnApi> {
     _phantom: PhantomData<SP>,
 }
 
-impl<SP: SpawnApi> WriterV003<SP> {
+impl<SP: SpawnApi> SnapshotWriter<SP> {
     /// Create a singleton writer for the snapshot.
     pub fn new(snapshot_config: &SnapshotConfig) -> Result<Self, io::Error> {
         let (storage_path, temp_rel_path) = snapshot_config.snapshot_temp_dir_fn();
@@ -55,7 +55,7 @@ impl<SP: SpawnApi> WriterV003<SP> {
             snapshot_config.raft_config().to_rotbl_config(),
         )?;
 
-        let writer = WriterV003 {
+        let writer = SnapshotWriter {
             db_builder,
             snapshot_config: snapshot_config.clone(),
             stat: WriterStat::new(),

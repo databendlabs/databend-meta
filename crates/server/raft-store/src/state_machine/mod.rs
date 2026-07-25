@@ -25,4 +25,4 @@ mod compact_with_db_test;
 #[cfg(test)]
 pub(crate) mod state_machine_test;
 
-pub use state_machine::SMV003;
+pub use state_machine::StateMachine;

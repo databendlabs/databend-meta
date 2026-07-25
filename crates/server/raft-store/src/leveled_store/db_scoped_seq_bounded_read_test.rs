@@ -23,13 +23,13 @@ use state_machine_api::KVMeta;
 use state_machine_api::UserKey;
 
 use crate::leveled_store::db_builder::DBBuilder;
-use crate::state_machine::SMV003;
+use crate::state_machine::StateMachine;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_db_scoped_seq_bounded_read() -> anyhow::Result<()> {
     // Build a state machine
     let mut sm = {
-        let mut sm = SMV003::default();
+        let mut sm = StateMachine::default();
 
         let mut a = sm.new_applier().await;
         a.upsert_kv(&UpsertKV::update("a", b"a0").with_expire_sec(10))

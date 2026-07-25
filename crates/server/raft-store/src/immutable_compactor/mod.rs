@@ -21,7 +21,7 @@ use log::info;
 use crate::leveled_store::leveled_map::CompactorPermit;
 use crate::leveled_store::leveled_map::LeveledMap;
 use crate::leveled_store::leveled_map::WriterPermit;
-use crate::state_machine::SMV003;
+use crate::state_machine::StateMachine;
 
 #[cfg(test)]
 mod immutable_compactor_test;
@@ -39,7 +39,7 @@ impl fmt::Display for InMemoryCompactor {
 }
 
 impl InMemoryCompactor {
-    pub async fn new(sm: Arc<SMV003>, name: impl ToString) -> Self {
+    pub async fn new(sm: Arc<StateMachine>, name: impl ToString) -> Self {
         let name = name.to_string();
 
         let (compactor_permit, writer_permit) =

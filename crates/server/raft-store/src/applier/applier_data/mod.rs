@@ -46,7 +46,7 @@ pub(crate) struct ApplierData {
 
     /// The live cleanup cursor owned by the state machine.
     ///
-    /// `SMV003::commit` replaces it with `cleanup_start_time` after committing
+    /// `StateMachine::commit` replaces it with `cleanup_start_time` after committing
     /// the staged state-machine changes.
     pub(crate) cleanup_start_time_target: Arc<Mutex<Duration>>,
 

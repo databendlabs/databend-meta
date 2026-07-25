@@ -32,7 +32,7 @@ use tokio::sync::mpsc;
 
 use crate::snapshot_store::received::Received;
 
-pub struct ReceiverV003<SP: SpawnApi> {
+pub struct SnapshotReceiver<SP: SpawnApi> {
     remote_addr: String,
 
     storage_path: String,
@@ -53,7 +53,7 @@ pub struct ReceiverV003<SP: SpawnApi> {
     _phantom: PhantomData<SP>,
 }
 
-impl<SP: SpawnApi> ReceiverV003<SP> {
+impl<SP: SpawnApi> SnapshotReceiver<SP> {
     /// Create a new snapshot receiver with an empty snapshot.
     pub(crate) fn new(
         remote_addr: impl ToString,
@@ -64,7 +64,7 @@ impl<SP: SpawnApi> ReceiverV003<SP> {
         let remote_addr = remote_addr.to_string();
         info!("Begin receiving snapshot v003 stream from: {}", remote_addr);
 
-        ReceiverV003 {
+        SnapshotReceiver {
             remote_addr,
             storage_path: storage_path.to_string(),
             temp_rel_path: temp_rel_path.to_string(),
@@ -82,7 +82,7 @@ impl<SP: SpawnApi> ReceiverV003<SP> {
 
     pub fn stat_str(&self) -> impl fmt::Display {
         format!(
-            "ReceiverV003 received {} chunks, {} bytes from {}",
+            "SnapshotReceiver received {} chunks, {} bytes from {}",
             self.n_received, self.size_received, self.remote_addr
         )
     }
@@ -103,20 +103,23 @@ impl<SP: SpawnApi> ReceiverV003<SP> {
             let with_context =
                 |e: io::Error| io::Error::new(e.kind(), format!("{} while {}", e, context));
 
-            info!("start ReceiverV003 receiving thread: {}", context);
+            info!("start SnapshotReceiver receiving thread: {}", context);
 
             while let Some(t) = rx.blocking_recv() {
                 let received = self.receive(t).map_err(with_context)?;
 
                 if let Some(received) = received {
-                    info!("ReceiverV003 receiving finished: {:?}", received);
+                    info!("SnapshotReceiver receiving finished: {:?}", received);
                     return Ok(Ok(received));
                 }
             }
 
             let err = with_context(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
-                format!("ReceiverV003 input channel is closed: {}", self.stat_str()),
+                format!(
+                    "SnapshotReceiver input channel is closed: {}",
+                    self.stat_str()
+                ),
             ));
             error!("{}", err);
 
@@ -145,7 +148,7 @@ impl<SP: SpawnApi> ReceiverV003<SP> {
             io::Error::new(
                 e.kind(),
                 format!(
-                    "{} while:(ReceiverV003::receive(): {}; remote_addr: {}; temp_path: {}/{})",
+                    "{} while:(SnapshotReceiver::receive(): {}; remote_addr: {}; temp_path: {}/{})",
                     e, context, remote_addr, self.storage_path, self.temp_rel_path
                 ),
             )
