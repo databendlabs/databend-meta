@@ -24,9 +24,9 @@
     clippy::useless_vec
 )]
 
-pub extern crate databend_meta_raft_store as raft_store;
 pub extern crate databend_meta_runtime_api as runtime_api;
 pub extern crate databend_meta_sled_store as sled_store;
+pub extern crate databend_meta_store_compat as raft_store;
 pub extern crate databend_meta_types as types;
 pub extern crate databend_meta_version as version;
 pub extern crate openraft;

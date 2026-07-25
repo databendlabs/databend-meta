@@ -1,6 +1,6 @@
 [package]
-name = "databend-meta-raft-store"
-description = "Raft state machine"
+name = "databend-meta-store-compat"
+description = "Pre-V004 sled layout: upgrade to V004 and export"
 version = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }
