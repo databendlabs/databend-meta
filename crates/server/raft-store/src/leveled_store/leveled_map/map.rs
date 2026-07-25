@@ -15,6 +15,8 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
+use std::time::Instant;
 
 use databend_meta_snapshot_db::DB;
 use databend_meta_types::Node;
@@ -25,6 +27,7 @@ use databend_meta_types::sys_data::SysData;
 use display_more::DisplayOptionExt;
 use display_more::DisplaySliceExt;
 use log::info;
+use log::warn;
 use seq_marked::InternalSeq;
 
 use super::ActiveReadGuard;
@@ -112,11 +115,33 @@ impl LeveledMap {
     ///
     /// Call this while holding the compactor permit, so the immutable root that
     /// defines the boundary cannot change while waiting.
+    ///
+    /// The wait is unbounded: a read view held open by a slow consumer, e.g. a
+    /// client streaming `get_many_kv`, delays compaction until it is dropped.
+    /// A warning is logged periodically while blocked.
     pub async fn wait_for_active_reads_before_compaction(&self) {
+        /// Interval at which a blocked compaction reports the read holding it up.
+        const WARN_INTERVAL: Duration = Duration::from_secs(10);
+
         let compaction_boundary = self.immutable_data().last_seq();
-        self.active_reads
-            .wait_for_oldest_seq_at_least(compaction_boundary)
-            .await;
+
+        let mut wait = std::pin::pin!(
+            self.active_reads
+                .wait_for_oldest_seq_at_least(compaction_boundary)
+        );
+
+        let start = Instant::now();
+        loop {
+            match tokio::time::timeout(WARN_INTERVAL, &mut wait).await {
+                Ok(()) => return,
+                Err(_elapsed) => warn!(
+                    "compaction blocked for {:?}, waiting for active reads to reach seq {}; oldest active read seq: {}",
+                    start.elapsed(),
+                    compaction_boundary,
+                    self.oldest_active_read_seq(),
+                ),
+            }
+        }
     }
 
     pub(crate) fn with_sys_data<T>(&self, f: impl FnOnce(&mut SysData) -> T) -> T {
