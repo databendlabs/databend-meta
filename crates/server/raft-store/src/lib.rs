@@ -45,6 +45,7 @@
 pub mod applier;
 pub mod config;
 pub mod data_version;
+pub mod db_exporter;
 pub mod immutable_compactor;
 pub mod key_spaces;
 pub mod leveled_store;

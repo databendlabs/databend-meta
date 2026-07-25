@@ -13,7 +13,6 @@
 // limitations under the License.
 
 pub mod db_builder;
-pub mod db_exporter;
 pub mod immutable;
 pub mod immutable_levels;
 pub mod level;
