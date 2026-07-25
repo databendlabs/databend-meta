@@ -225,8 +225,11 @@ impl LeveledMap {
         f(&mut inner)
     }
 
-    /// For testing only.
     /// Replace all immutable levels with the given one.
+    ///
+    /// This installs the result of in-memory compaction. The caller must hold
+    /// the compactor permit, and must first wait until no active read predates
+    /// the new levels; see [`Self::wait_for_active_reads_before_compaction`].
     pub(crate) fn replace_immutable_levels(&self, b: ImmutableLevels) {
         self.with_inner(|data| {
             let persisted = data.immutable.persisted().cloned();
