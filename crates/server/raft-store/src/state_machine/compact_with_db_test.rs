@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::io;
-use std::sync::Arc;
-
+use databend_meta_leveled_store::leveled_map::LeveledMap;
+use databend_meta_leveled_store::sys_data_api::SysDataApiRO;
+use databend_meta_leveled_store::testing_data::build_3_levels_leveled_map;
+use databend_meta_leveled_store::testing_data::build_db_from;
+use databend_meta_leveled_store::testing_data::move_bottom_to_db;
 use databend_meta_snapshot_db::ReadAtSeqDB;
 use databend_meta_types::Endpoint;
 use databend_meta_types::UpsertKV;
@@ -25,7 +27,6 @@ use databend_meta_types::raft_types::TypeConfig;
 use futures_util::TryStreamExt;
 use map_api::mvcc::GetAtSeq;
 use map_api::mvcc::RangeAtSeq;
-use map_api::mvcc::ViewSet;
 use maplit::btreemap;
 use openraft::testing::log_id;
 use pretty_assertions::assert_eq;
@@ -34,11 +35,6 @@ use state_machine_api::ExpireKey;
 use state_machine_api::KVMeta;
 use state_machine_api::UserKey;
 
-use crate::leveled_store::db_builder::DBBuilder;
-use crate::leveled_store::immutable_data::ImmutableData;
-use crate::leveled_store::immutable_levels::ImmutableLevels;
-use crate::leveled_store::leveled_map::LeveledMap;
-use crate::leveled_store::sys_data_api::SysDataApiRO;
 use crate::state_machine::StateMachine;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
@@ -138,7 +134,7 @@ async fn test_compact() -> anyhow::Result<()> {
 
     let temp_dir = tempfile::tempdir()?;
     let path = temp_dir.path();
-    compact(
+    build_db_from(
         &mut lm,
         path.as_os_str().to_str().unwrap(),
         "temp-compacted",
@@ -193,7 +189,7 @@ async fn test_compact_expire_index() -> anyhow::Result<()> {
 
     let temp_dir = tempfile::tempdir()?;
     let path = temp_dir.path();
-    compact(
+    build_db_from(
         &mut lm,
         path.as_os_str().to_str().unwrap(),
         "temp-compacted",
@@ -284,65 +280,8 @@ async fn test_compact_output_3_level() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Create multi levels store:
-///
-/// l2 |         c(D) d
-/// l1 |    b(D) c        e
-/// l0 | a  b    c    d              // db
 async fn build_3_levels() -> anyhow::Result<(LeveledMap, impl Drop)> {
-    let mut lm = LeveledMap::default();
-
-    lm.with_sys_data(|sd| {
-        *sd.last_membership_mut() = StoredMembership::new(
-            Some(log_id::<TypeConfig>(1, 1, 1)),
-            Membership::new_with_defaults(vec![], []),
-        );
-        *sd.last_applied_mut() = Some(log_id::<TypeConfig>(1, 1, 1));
-        *sd.nodes_mut() = btreemap! {1=>Node::new("1", Endpoint::new("1", 1))};
-    });
-    let mut view = lm.to_view();
-
-    // internal_seq: 0
-    view.set(user_key("a"), Some((None, b("a0"))));
-    view.set(user_key("b"), Some((None, b("b0"))));
-    view.set(user_key("c"), Some((None, b("c0"))));
-    view.set(user_key("d"), Some((None, b("d0"))));
-    view.commit().await?;
-
-    lm.freeze_writable_without_permit();
-    lm.with_sys_data(|sd| {
-        *sd.last_membership_mut() = StoredMembership::new(
-            Some(log_id::<TypeConfig>(2, 2, 2)),
-            Membership::new_with_defaults(vec![], []),
-        );
-        *sd.last_applied_mut() = Some(log_id::<TypeConfig>(2, 2, 2));
-        *sd.nodes_mut() = btreemap! {2=>Node::new("2", Endpoint::new("2", 2))};
-    });
-    let mut view = lm.to_view();
-
-    // internal_seq: 4
-    view.set(user_key("b"), None);
-    view.set(user_key("c"), Some((None, b("c1"))));
-    view.set(user_key("e"), Some((None, b("e1"))));
-    view.commit().await?;
-
-    lm.freeze_writable_without_permit();
-
-    lm.with_sys_data(|sd| {
-        *sd.last_membership_mut() = StoredMembership::new(
-            Some(log_id::<TypeConfig>(3, 3, 3)),
-            Membership::new_with_defaults(vec![], []),
-        );
-        *sd.last_applied_mut() = Some(log_id::<TypeConfig>(3, 3, 3));
-        *sd.nodes_mut() = btreemap! {3=>Node::new("3", Endpoint::new("3", 3))};
-    });
-
-    let mut view = lm.to_view();
-
-    // internal_seq: 6
-    view.set(user_key("c"), None);
-    view.set(user_key("d"), Some((None, b("d2"))));
-    view.commit().await?;
+    let mut lm = build_3_levels_leveled_map().await?;
 
     // Move the bottom level to db
     let temp_dir = tempfile::tempdir()?;
@@ -356,9 +295,8 @@ async fn build_3_levels() -> anyhow::Result<(LeveledMap, impl Drop)> {
 ///
 ///    | kv             | expire
 ///    | ---            | ---
-/// l1 | a₄       c₃    |               10,1₄ -> ø    15,4₄ -> a  20,3₃ -> c
-/// ------------------------------------------------------------
-/// l0 | a₁  b₂         |  5,2₂ -> b    10,1₁ -> a
+/// l1 | aâ       câ    |               10,1â -> Ã¸    15,4â -> a  20,3â -> c
+/// l0 | aâ  bâ         |  5,2â -> b    10,1â -> a
 async fn build_sm_with_expire() -> anyhow::Result<(StateMachine, impl Drop)> {
     let mut sm = StateMachine::default();
 
@@ -385,50 +323,6 @@ async fn build_sm_with_expire() -> anyhow::Result<(StateMachine, impl Drop)> {
     let path = temp_dir.path();
     move_bottom_to_db(lm, path.to_str().unwrap(), "temp-db").await?;
     Ok((sm, temp_dir))
-}
-
-/// Build a DB from the bottom level of the immutable levels.
-async fn move_bottom_to_db(
-    lm: &mut LeveledMap,
-    base_path: &str,
-    rel_path: &str,
-) -> Result<(), io::Error> {
-    let mut immutables = lm.immutable_levels();
-    let bottom = immutables.levels_mut().pop_first().unwrap().1;
-    lm.replace_immutable_levels(immutables);
-
-    let bottom = ImmutableLevels::new_form_iter([bottom]);
-    let mut lm2 = LeveledMap::default();
-    let writable = bottom.newest().unwrap().new_level();
-    lm2.replace_immutable_levels(bottom);
-    lm2.with_inner(|inner| inner.writable = writable);
-
-    compact(&mut lm2, base_path, rel_path).await?;
-
-    let persisted = lm2.persisted();
-    lm.with_inner(|inner| {
-        inner.immutable = Arc::new(ImmutableData::new(
-            inner.immutable.levels().clone(),
-            persisted,
-        ));
-    });
-    Ok(())
-}
-
-async fn compact(lm: &mut LeveledMap, base_path: &str, rel_path: &str) -> Result<(), io::Error> {
-    let db_builder = DBBuilder::new(base_path, rel_path, rotbl::v001::Config::default())?;
-
-    let db = db_builder
-        .build_from_leveled_map(lm, |_sys_data| "1-1-1-1.snap".to_string())
-        .await?;
-
-    let immutable = ImmutableData::new(ImmutableLevels::new_form_iter([]), Some(db.clone()));
-
-    lm.with_inner(|inner| {
-        inner.immutable = Arc::new(immutable);
-    });
-
-    Ok(())
 }
 
 fn s(x: impl ToString) -> String {

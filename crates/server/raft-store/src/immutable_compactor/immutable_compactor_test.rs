@@ -15,6 +15,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use databend_meta_leveled_store::leveled_map::LeveledMap;
 use databend_meta_types::UpsertKV;
 use futures_util::TryStreamExt;
 use map_api::mvcc::RangeAtSeq;
@@ -29,7 +30,6 @@ use tokio::sync::mpsc;
 use tokio::time::timeout;
 
 use crate::immutable_compactor::InMemoryCompactor;
-use crate::leveled_store::leveled_map::LeveledMap;
 use crate::state_machine::StateMachine;
 
 /// Failure bound for an operation that is expected to finish.
@@ -256,7 +256,7 @@ async fn write(sm: &StateMachine, kvs: &[(&str, &str)]) -> anyhow::Result<()> {
 /// 6-entry bottom level below four single-entry levels, and an empty writable
 /// level for the caller's compactor to freeze.
 ///
-/// [`ImmutableLevels::need_compact`]: crate::leveled_store::immutable_levels::ImmutableLevels::need_compact
+/// [`ImmutableLevels::need_compact`]: databend_meta_leveled_store::immutable_levels::ImmutableLevels::need_compact
 async fn build_compactable(sm: &Arc<StateMachine>) -> anyhow::Result<()> {
     let mut applier = sm.new_applier().await;
     applier

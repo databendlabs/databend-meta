@@ -16,6 +16,7 @@ use std::fmt;
 use std::io;
 use std::marker::PhantomData;
 
+use databend_meta_leveled_store::db_builder::DBBuilder;
 use databend_meta_raft_config::snapshot_config::SnapshotConfig;
 use databend_meta_runtime_api::JoinHandle;
 use databend_meta_runtime_api::SpawnApi;
@@ -27,7 +28,6 @@ use log::info;
 use rotbl::v001::SeqMarked;
 use tokio::sync::mpsc;
 
-use crate::leveled_store::db_builder::DBBuilder;
 use crate::snapshot_store::MetaSnapshotId;
 use crate::snapshot_store::open_snapshot::OpenSnapshot;
 use crate::snapshot_store::write_entry::WriteEntry;

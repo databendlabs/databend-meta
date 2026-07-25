@@ -16,13 +16,13 @@ use std::io;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use databend_meta_leveled_store::rotbl_codec::RotblCodec;
 use databend_meta_types::raft_types::LogId;
 use databend_meta_types::raft_types::StoredMembership;
 use databend_meta_types::sys_data::SysData;
 use rotbl::v001::SeqMarked;
 use state_machine_api::UserKey;
 
-use crate::leveled_store::rotbl_codec::RotblCodec;
 use crate::sled_compat::StateMachineMetaKey;
 use crate::sled_compat::key_spaces::SMEntry;
 

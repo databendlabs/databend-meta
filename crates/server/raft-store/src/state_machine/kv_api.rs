@@ -20,6 +20,8 @@ use databend_meta_kvapi as kvapi;
 use databend_meta_kvapi::KVStream;
 use databend_meta_kvapi::ListOptions;
 use databend_meta_kvapi::limit_stream;
+use databend_meta_leveled_store::state_machine::read_view::StateMachineReadView;
+use databend_meta_leveled_store::util::add_cooperative_yielding;
 use databend_meta_types::SeqV;
 use databend_meta_types::TxnReply;
 use databend_meta_types::TxnRequest;
@@ -30,8 +32,6 @@ use map_api::mvcc::ViewRange;
 use seq_marked::SeqValue;
 use state_machine_api::UserKey;
 
-use crate::leveled_store::state_machine::read_view::StateMachineReadView;
-use crate::leveled_store::util::add_cooperative_yielding;
 use crate::state_machine::StateMachine;
 use crate::testing::since_epoch_millis;
 use crate::utils::prefix_right_bound;

@@ -23,7 +23,7 @@ use backon::BackoffBuilder;
 use backon::ExponentialBuilder;
 use databend_base::counter::Counter;
 use databend_base::futures::ElapsedFutureExt;
-use databend_meta_raft_store::leveled_store::persisted_codec::PersistedCodec;
+use databend_meta_leveled_store::persisted_codec::PersistedCodec;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DB;
 use databend_meta_snapshot_db::Snapshot;

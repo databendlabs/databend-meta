@@ -1,6 +1,6 @@
 [package]
-name = "databend-meta-raft-store"
-description = "Raft state machine"
+name = "databend-meta-leveled-store"
+description = "Multi-level MVCC key-value engine"
 version = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }
@@ -8,43 +8,33 @@ publish = { workspace = true }
 edition = { workspace = true }
 
 [dependencies]
-anyerror = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
-bincode = { workspace = true }
-databend-meta-kvapi = { workspace = true }
-databend-meta-leveled-store = { workspace = true }
-databend-meta-raft-config = { workspace = true }
-databend-meta-runtime-api = { workspace = true }
-databend-meta-sled-store = { workspace = true }
+databend-base = { workspace = true }
 databend-meta-snapshot-db = { workspace = true }
 databend-meta-types = { workspace = true }
-deepsize = { workspace = true }
-derive_more = { workspace = true }
 display-more = { workspace = true }
-fastrace = { workspace = true }
-fs_extra = { workspace = true }
 futures = { workspace = true }
+futures-async-stream = { workspace = true }
 futures-util = { workspace = true }
 log = { workspace = true }
 map-api = { workspace = true }
 maplit = { workspace = true }
 openraft = { workspace = true }
-raft-log = { workspace = true }
-rmp-serde = { workspace = true }
 rotbl = { workspace = true }
 seq-marked = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
 state-machine-api = { workspace = true }
-thiserror = { workspace = true }
+stream-more = { workspace = true }
 tokio = { workspace = true }
 
+[features]
+# Expose fixtures and permit-free level surgery to tests in other crates.
+testing = []
+
 [dev-dependencies]
-databend-meta-leveled-store = { workspace = true, features = ["testing"] }
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
-tokio = { workspace = true }
 
 [lints]
 workspace = true

@@ -17,13 +17,12 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use databend_meta_leveled_store::leveled_map::WriterPermit;
+use databend_meta_leveled_store::state_machine::view::StateMachineView;
 use databend_meta_types::sys_data::SysData;
 use log::debug;
 use state_machine_api::SeqV;
 use state_machine_api::StateMachineApi;
-
-use crate::leveled_store::leveled_map::WriterPermit;
-use crate::leveled_store::state_machine::view::StateMachineView;
 
 /// A user-key change reported after a state-machine transaction commits.
 pub type Change = (String, Option<SeqV>, Option<SeqV>);

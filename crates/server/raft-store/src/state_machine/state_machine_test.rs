@@ -16,6 +16,8 @@ use std::time::Duration;
 
 use databend_meta_kvapi::KVApi;
 use databend_meta_kvapi::ListOptions;
+use databend_meta_leveled_store::db_builder::DBBuilder;
+use databend_meta_leveled_store::leveled_map::LeveledMap;
 use databend_meta_types::CmdContext;
 use databend_meta_types::SeqV;
 use databend_meta_types::UpsertKV;
@@ -28,8 +30,6 @@ use seq_marked::SeqValue;
 use state_machine_api::ExpireKey;
 use state_machine_api::StateMachineApi;
 
-use crate::leveled_store::db_builder::DBBuilder;
-use crate::leveled_store::leveled_map::LeveledMap;
 use crate::state_machine::StateMachine;
 use crate::state_machine_api_ext::StateMachineApiExt;
 

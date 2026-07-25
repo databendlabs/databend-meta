@@ -139,6 +139,8 @@ impl<'a> DBExporter<'a> {
 
 #[cfg(test)]
 mod tests {
+    use databend_meta_leveled_store::db_builder::DBBuilder;
+    use databend_meta_leveled_store::leveled_map::LeveledMap;
     use databend_meta_snapshot_db::DB;
     use databend_meta_types::SeqV;
     use futures_util::TryStreamExt;
@@ -149,8 +151,6 @@ mod tests {
     use state_machine_api::UserKey;
 
     use super::*;
-    use crate::leveled_store::db_builder::DBBuilder;
-    use crate::leveled_store::leveled_map::LeveledMap;
     use crate::sled_compat::StateMachineMetaKey;
     use crate::sled_compat::StateMachineMetaValue;
 

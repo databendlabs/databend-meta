@@ -15,12 +15,12 @@
 use std::fmt;
 use std::sync::Arc;
 
+use databend_meta_leveled_store::leveled_map::CompactorPermit;
+use databend_meta_leveled_store::leveled_map::LeveledMap;
+use databend_meta_leveled_store::leveled_map::WriterPermit;
 use display_more::DisplaySliceExt;
 use log::info;
 
-use crate::leveled_store::leveled_map::CompactorPermit;
-use crate::leveled_store::leveled_map::LeveledMap;
-use crate::leveled_store::leveled_map::WriterPermit;
 use crate::state_machine::StateMachine;
 
 #[cfg(test)]
