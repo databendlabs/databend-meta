@@ -17,5 +17,5 @@
 #![allow(clippy::collapsible_if)]
 
 mod config;
-mod raft_log_v004_recovery;
+mod log_store_recovery;
 mod types;

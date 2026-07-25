@@ -17,9 +17,9 @@ use std::io;
 use std::ops::Bound;
 use std::ops::RangeBounds;
 
-use databend_meta_raft_store::raft_log_v004;
-use databend_meta_raft_store::raft_log_v004::codec_wrapper::Cw;
-use databend_meta_raft_store::raft_log_v004::io_desc::IODesc;
+use databend_meta_raft_store::log_store;
+use databend_meta_raft_store::log_store::codec_wrapper::Cw;
+use databend_meta_raft_store::log_store::io_desc::IODesc;
 use databend_meta_types::raft_types::Entry;
 use databend_meta_types::raft_types::IOFlushed;
 use databend_meta_types::raft_types::LogId;
@@ -162,10 +162,7 @@ impl RaftLogStorage<TypeConfig> for MetaRaftLog {
             let mut log = self.write().await;
 
             log.save_vote(Cw(*vote))?;
-            log.flush(
-                true,
-                Some(raft_log_v004::Callback::new_oneshot(tx, io.clone())),
-            )?;
+            log.flush(true, Some(log_store::Callback::new_oneshot(tx, io.clone())))?;
         }
 
         rx.await.map_err(io::Error::other)??;
@@ -237,10 +234,7 @@ impl RaftLogStorage<TypeConfig> for MetaRaftLog {
 
         log.flush(
             true,
-            Some(raft_log_v004::Callback::new_io_flushed(
-                callback,
-                io.clone(),
-            )),
+            Some(log_store::Callback::new_io_flushed(callback, io.clone())),
         )?;
 
         info!("{}", io.ok_submit_flush());

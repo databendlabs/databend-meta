@@ -28,7 +28,7 @@ use databend_meta_raft_store::MetaStartupError;
 use databend_meta_raft_store::StateMachineFeature;
 use databend_meta_raft_store::config::RaftConfig;
 use databend_meta_raft_store::data_version::DATA_VERSION;
-use databend_meta_raft_store::raft_log_v004::RaftLogStat;
+use databend_meta_raft_store::log_store::RaftLogStat;
 use databend_meta_raft_store::utils::seq_marked_to_seqv;
 use databend_meta_runtime_api::JoinHandle;
 use databend_meta_runtime_api::SpawnApi;

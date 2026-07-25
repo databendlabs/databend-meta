@@ -17,10 +17,10 @@ use std::io;
 use databend_meta_types::raft_types::LogId;
 use raft_log::api::raft_log_writer::RaftLogWriter;
 
-use crate::raft_log_v004::RaftLogV004;
-use crate::raft_log_v004::codec_wrapper::Cw;
-use crate::raft_log_v004::log_store_meta::LogStoreMeta;
-use crate::raft_log_v004::util;
+use crate::log_store::RaftLogV004;
+use crate::log_store::codec_wrapper::Cw;
+use crate::log_store::log_store_meta::LogStoreMeta;
+use crate::log_store::util;
 use crate::sled_compat::RaftStateKey;
 use crate::sled_compat::key_spaces::RaftStoreEntry;
 
@@ -136,8 +136,8 @@ mod tests {
 
     use super::*;
     use crate::header::Header;
-    use crate::raft_log_v004::LogStoreMeta;
-    use crate::raft_log_v004::RaftLogConfig;
+    use crate::log_store::LogStoreMeta;
+    use crate::log_store::RaftLogConfig;
     use crate::sled_compat::RaftStateValue;
 
     fn new_raft_log(dir: &tempfile::TempDir) -> anyhow::Result<RaftLogV004> {

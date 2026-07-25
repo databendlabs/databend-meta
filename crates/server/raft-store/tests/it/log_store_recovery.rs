@@ -24,15 +24,15 @@ use std::fs::OpenOptions;
 use std::path::Path;
 use std::sync::Arc;
 
-use databend_meta_raft_store::raft_log::chunked_wal::Config as WalConfig;
-use databend_meta_raft_store::raft_log_v004::Cw;
-use databend_meta_raft_store::raft_log_v004::RaftLogConfig;
-use databend_meta_raft_store::raft_log_v004::RaftLogV004;
-use databend_meta_raft_store::raft_log_v004::util::blocking_flush;
+use databend_meta_raft_store::log_store::Cw;
+use databend_meta_raft_store::log_store::RaftLogConfig;
+use databend_meta_raft_store::log_store::RaftLogV004;
+use databend_meta_raft_store::log_store::util::blocking_flush;
 use databend_meta_types::raft_types::EntryPayload;
 use databend_meta_types::raft_types::new_log_id;
 use raft_log::DumpApi;
 use raft_log::api::raft_log_writer::RaftLogWriter;
+use raft_log::chunked_wal::Config as WalConfig;
 
 /// Test that a raft log with truncated trailing bytes (simulating partial/incomplete write)
 /// can be successfully reopened with truncation enabled.

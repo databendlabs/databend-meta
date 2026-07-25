@@ -17,9 +17,9 @@ use std::ops::Deref;
 use databend_meta_types::raft_types;
 use deepsize::DeepSizeOf;
 
-use crate::raft_log_v004::callback::Callback;
-use crate::raft_log_v004::codec_wrapper::Cw;
-use crate::raft_log_v004::log_store_meta::LogStoreMeta;
+use crate::log_store::callback::Callback;
+use crate::log_store::codec_wrapper::Cw;
+use crate::log_store::log_store_meta::LogStoreMeta;
 
 /// Defines the types used by RaftLog implementation
 #[derive(PartialEq, Eq, Default, Clone, Debug)]

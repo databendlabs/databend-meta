@@ -24,11 +24,11 @@ use databend_meta_raft_store::MetaStartupError;
 use databend_meta_raft_store::config::RaftConfig;
 use databend_meta_raft_store::db_exporter::DBExporter;
 use databend_meta_raft_store::header::Header;
+use databend_meta_raft_store::log_store;
+use databend_meta_raft_store::log_store::Cw;
+use databend_meta_raft_store::log_store::RaftLogV004;
+use databend_meta_raft_store::log_store::util;
 use databend_meta_raft_store::ondisk::TREE_HEADER;
-use databend_meta_raft_store::raft_log_v004;
-use databend_meta_raft_store::raft_log_v004::Cw;
-use databend_meta_raft_store::raft_log_v004::RaftLogV004;
-use databend_meta_raft_store::raft_log_v004::util;
 use databend_meta_raft_store::sled_compat::key_spaces::RaftStoreEntry;
 use databend_meta_raft_store::snapshot_store::MetaSnapshotId;
 use databend_meta_raft_store::snapshot_store::SnapshotStoreV004;
@@ -111,7 +111,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
         let id = stored_node_id.unwrap_or(config.id);
 
         if !is_opened {
-            log.save_user_data(Some(raft_log_v004::log_store_meta::LogStoreMeta {
+            log.save_user_data(Some(log_store::log_store_meta::LogStoreMeta {
                 node_id: Some(config.id),
             }))
             .map_err(to_startup_err)?;

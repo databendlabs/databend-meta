@@ -25,7 +25,7 @@
 //! - **`state_machine`**: The replicated state machine over the leveled store
 //! - **`applier`**: Log entry application and state transitions
 //! - **`snapshot_store`**: Snapshot files: building, shipping and loading them
-//! - **`raft_log_v004`**: Current WAL-based raft log storage
+//! - **`log_store`**: Current WAL-based raft log storage
 //! - **`sled_compat`**: The pre-V004 sled layout, read only by the upgrader and exporter
 //!
 //! ## Version Compatibility
@@ -49,8 +49,8 @@ pub mod db_exporter;
 pub mod header;
 pub mod immutable_compactor;
 pub mod leveled_store;
+pub mod log_store;
 pub mod ondisk;
-pub mod raft_log_v004;
 pub mod sled_compat;
 pub mod snapshot_config;
 pub mod snapshot_store;
@@ -63,5 +63,4 @@ pub mod meta_startup_error;
 mod state_machine_features;
 
 pub use meta_startup_error::MetaStartupError;
-pub use raft_log;
 pub use state_machine_features::StateMachineFeature;
