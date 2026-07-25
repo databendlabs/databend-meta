@@ -25,6 +25,16 @@ impl LeveledMap {
         );
 
         let mut inner = self.data.lock().unwrap();
+
+        // `Table::apply` below asserts seq monotonicity, but only for non-empty
+        // tables; a stale view would otherwise silently rewind sys_data.
+        assert!(
+            inner.writable.sys_data.curr_seq() <= changes.sys_data.curr_seq(),
+            "commit must not rewind sys_data: committed seq {} > staged seq {}; the view predates another commit",
+            inner.writable.sys_data.curr_seq(),
+            changes.sys_data.curr_seq(),
+        );
+
         if !changes.kv.inner.is_empty() {
             inner.writable.kv.apply(changes.kv);
         }
@@ -101,5 +111,18 @@ mod tests {
         assert_eq!(data.writable.sys_data, sys_data);
         assert!(data.writable.kv.inner.is_empty());
         assert!(data.writable.expire.inner.is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "commit must not rewind sys_data")]
+    fn test_commit_rejects_sys_data_from_a_stale_view() {
+        let map = LeveledMap::default();
+        let mut sys_data = SysData::default();
+        sys_data.update_seq(7);
+        map.commit(changes(sys_data));
+
+        let mut stale = SysData::default();
+        stale.update_seq(3);
+        map.commit(changes(stale));
     }
 }

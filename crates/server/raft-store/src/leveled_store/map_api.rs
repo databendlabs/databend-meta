@@ -32,7 +32,9 @@ use crate::leveled_store::leveled_map::LeveledMap;
 pub(crate) struct MapApiHelper;
 
 impl MapApiHelper {
-    #[allow(dead_code)]
+    /// Test-only: creates and commits a view without the writer permit that
+    /// production writes must hold.
+    #[cfg(test)]
     pub(crate) async fn update_meta_on_leveled_map(
         s: &mut LeveledMap,
         key: UserKey,
