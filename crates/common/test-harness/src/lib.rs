@@ -19,9 +19,11 @@
 //! - Test harness for async tests with logging/tracing setup
 //! - MetaSrvTestContext for managing test instances
 //! - Utilities for starting metasrv clusters and creating gRPC clients
+//! - Fixture raft logs and their expected snapshot
 
 mod harness;
 mod service;
+mod snapshot_logs;
 
 pub use databend_meta_runtime_api::TokioRuntime;
 pub use harness::meta_service_test_harness;
@@ -30,3 +32,4 @@ pub use service::MetaSrvTestContext;
 pub use service::start_metasrv;
 pub use service::start_metasrv_cluster;
 pub use service::start_metasrv_with_context;
+pub use snapshot_logs::snapshot_logs;

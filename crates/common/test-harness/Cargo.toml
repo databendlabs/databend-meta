@@ -19,6 +19,8 @@ databend-meta-runtime-api = { workspace = true }
 databend-meta-types = { workspace = true }
 fastrace = { workspace = true }
 log = { workspace = true }
+maplit = { workspace = true }
+openraft = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }

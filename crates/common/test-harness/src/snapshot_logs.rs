@@ -19,7 +19,6 @@ use databend_meta_types::raft_types::Entry;
 use databend_meta_types::raft_types::EntryPayload;
 use databend_meta_types::raft_types::new_log_id;
 use maplit::btreeset;
-use openraft;
 use openraft::Membership;
 use openraft::entry::RaftEntry;
 

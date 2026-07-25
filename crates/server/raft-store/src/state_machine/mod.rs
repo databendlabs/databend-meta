@@ -23,6 +23,3 @@ pub use state_machine_meta::StateMachineMetaValue;
 pub mod log_meta;
 mod snapshot_id;
 pub mod state_machine_meta;
-
-// will be accessed by other crate, can not cfg(test)
-pub mod testing;
