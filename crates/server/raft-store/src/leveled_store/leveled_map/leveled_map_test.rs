@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::sync::Arc;
+
+use databend_meta_snapshot_db::DB;
+use databend_meta_snapshot_db::ReadAtSeqDB;
 use futures_util::TryStreamExt;
 use map_api::SeqMarked;
 use map_api::mvcc::GetAtSeq;
@@ -22,8 +26,11 @@ use map_api::mvcc::ViewSet;
 use state_machine_api::KVMeta;
 use state_machine_api::UserKey;
 
+use crate::leveled_store::db_builder::DBBuilder;
 use crate::leveled_store::leveled_map::LeveledMap;
+use crate::leveled_store::leveled_map::compactor::Compactor;
 use crate::leveled_store::map_api::MapApiHelper;
+use crate::sm_v003::SMV003;
 
 #[tokio::test]
 async fn test_freeze() -> anyhow::Result<()> {
@@ -602,6 +609,96 @@ async fn test_two_level_update_meta() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[tokio::test]
+async fn test_replace_with_compacted() -> anyhow::Result<()> {
+    let sm = SMV003::default();
+    let l = sm.leveled_map().clone();
+
+    let mut view = l.to_view();
+    view.set(user_key("a"), Some((None, b("a0"))));
+    view.set(user_key("b"), Some((None, b("b0"))));
+    view.commit().await?;
+
+    let mut compactor = sm.freeze_writable_for_compaction("t").await;
+    assert!(compactor.db().is_none(), "nothing persisted yet");
+    assert_eq!(compactor.immutable_levels().indexes().len(), 1);
+
+    // A level created after the compactor took its snapshot must survive.
+    let mut view = l.to_view();
+    view.set(user_key("c"), Some((None, b("c0"))));
+    view.commit().await?;
+    l.freeze_writable_without_permit();
+    let newer_index = *l.immutable_levels().indexes().last().unwrap();
+
+    let (db, _temp_dir) = build_db(&mut compactor).await?;
+    l.replace_with_compacted(&compactor, db);
+
+    assert_eq!(
+        l.immutable_levels().indexes(),
+        vec![newer_index],
+        "levels covered by the compactor are dropped, newer ones are kept"
+    );
+
+    let db = l.persisted().unwrap();
+    assert_eq!(db.last_seq(), 2);
+    let strm = ReadAtSeqDB(&db)
+        .range_at_seq(user_key("").., u64::MAX)
+        .await?;
+    let got = strm.try_collect::<Vec<_>>().await?;
+    assert_eq!(got, vec![
+        (user_key("a"), SeqMarked::new_normal(1, (None, b("a0")))),
+        (user_key("b"), SeqMarked::new_normal(2, (None, b("b0")))),
+    ]);
+
+    let strm = l.range_at_seq(user_key("").., u64::MAX).await?;
+    let got = strm.try_collect::<Vec<_>>().await?;
+    assert_eq!(got, vec![
+        (user_key("a"), SeqMarked::new_normal(1, (None, b("a0")))),
+        (user_key("b"), SeqMarked::new_normal(2, (None, b("b0")))),
+        (user_key("c"), SeqMarked::new_normal(3, (None, b("c0")))),
+    ]);
+
+    Ok(())
+}
+
+#[tokio::test]
+#[should_panic(
+    expected = "replace_with_compacted requires all active reads to reach ISeq(2); oldest active read: ISeq(1)"
+)]
+async fn test_replace_with_compacted_rejects_an_unreleased_older_read() {
+    let sm = SMV003::default();
+    let l = sm.leveled_map().clone();
+
+    let mut view = l.to_view();
+    view.set(user_key("a"), Some((None, b("a0"))));
+    view.commit().await.unwrap();
+
+    let _old_read = l.to_read_view();
+
+    let mut view = l.to_view();
+    view.set(user_key("b"), Some((None, b("b0"))));
+    view.commit().await.unwrap();
+
+    let mut compactor = sm.freeze_writable_for_compaction("t").await;
+    let (db, _temp_dir) = build_db(&mut compactor).await.unwrap();
+
+    l.replace_with_compacted(&compactor, db);
+}
+
+/// Persist everything the compactor holds into a new [`DB`].
+async fn build_db(compactor: &mut Compactor) -> anyhow::Result<(DB, tempfile::TempDir)> {
+    let temp_dir = tempfile::tempdir()?;
+    let base_path = temp_dir.path().to_str().unwrap().to_string();
+
+    let mut builder = DBBuilder::new(&base_path, "temp-db", rotbl::v001::Config::default())?;
+    let (sys_data, strm) = compactor.compact_into_stream().await?;
+    builder.append_kv_stream(strm).await?;
+    let (rel_path, r) = builder.commit(sys_data)?;
+
+    let db = DB::new(base_path, rel_path, "1-1-1-1.snap".to_string(), Arc::new(r))?;
+    Ok((db, temp_dir))
 }
 
 fn user_key(s: impl ToString) -> UserKey {

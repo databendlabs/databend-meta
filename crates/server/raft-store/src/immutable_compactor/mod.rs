@@ -23,6 +23,9 @@ use crate::sm_v003::SMV003;
 use crate::sm_v003::compactor_acquirer::CompactorPermit;
 use crate::sm_v003::writer_acquirer::WriterPermit;
 
+#[cfg(test)]
+mod immutable_compactor_test;
+
 /// Compact `ImmutableLevels` to reduce the number of levels.
 pub struct InMemoryCompactor {
     writer_permit: WriterPermit,
