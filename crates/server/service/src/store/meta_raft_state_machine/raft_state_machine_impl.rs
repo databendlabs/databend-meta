@@ -14,11 +14,11 @@
 
 use std::io;
 
-use databend_meta_raft_store::snapshot_store::SnapshotStore;
-use databend_meta_raft_store::snapshot_store::open_snapshot::OpenSnapshot;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DB;
 use databend_meta_snapshot_db::Snapshot;
+use databend_meta_snapshot_store::SnapshotStore;
+use databend_meta_snapshot_store::open_snapshot::OpenSnapshot;
 use databend_meta_types::raft_types::LogId;
 use databend_meta_types::raft_types::SnapshotMeta;
 use databend_meta_types::raft_types::StoredMembership;

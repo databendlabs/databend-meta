@@ -18,9 +18,9 @@ use std::fs;
 use std::io::Read;
 
 use databend_meta::meta_service::MetaNode;
-use databend_meta_raft_store::snapshot_store::MetaSnapshotId;
-use databend_meta_raft_store::snapshot_store::SnapshotStore;
 use databend_meta_runtime_api::TokioRuntime;
+use databend_meta_snapshot_store::MetaSnapshotId;
+use databend_meta_snapshot_store::SnapshotStore;
 use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
 use databend_meta_types::SeqV;

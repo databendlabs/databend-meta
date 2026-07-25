@@ -39,11 +39,11 @@ use pretty_assertions::assert_eq;
 use rotbl::v001::SeqMarked;
 use tempfile::TempDir;
 
-use crate::snapshot_store::MetaSnapshotId;
-use crate::snapshot_store::SnapshotStore;
-use crate::snapshot_store::SnapshotStoreV003;
-use crate::snapshot_store::open_snapshot::OpenSnapshot;
-use crate::snapshot_store::receiver::SnapshotReceiver;
+use crate::MetaSnapshotId;
+use crate::SnapshotStore;
+use crate::SnapshotStoreV003;
+use crate::open_snapshot::OpenSnapshot;
+use crate::receiver::SnapshotReceiver;
 
 /// Bytes per chunk of the simulated snapshot stream.
 const CHUNK_SIZE: usize = 4096;

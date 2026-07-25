@@ -1,6 +1,6 @@
 [package]
-name = "databend-meta-raft-store"
-description = "Raft state machine"
+name = "databend-meta-snapshot-store"
+description = "On-disk snapshot files: building, shipping and loading"
 version = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }
@@ -8,37 +8,24 @@ publish = { workspace = true }
 edition = { workspace = true }
 
 [dependencies]
-anyerror = { workspace = true }
-anyhow = { workspace = true }
-bincode = { workspace = true }
 databend-meta-leveled-store = { workspace = true }
 databend-meta-raft-config = { workspace = true }
-databend-meta-raft-log = { workspace = true }
 databend-meta-runtime-api = { workspace = true }
-databend-meta-sled-store = { workspace = true }
 databend-meta-snapshot-db = { workspace = true }
-databend-meta-snapshot-store = { workspace = true }
 databend-meta-types = { workspace = true }
-derive_more = { workspace = true }
-fastrace = { workspace = true }
-fs_extra = { workspace = true }
 futures = { workspace = true }
 futures-util = { workspace = true }
 log = { workspace = true }
-map-api = { workspace = true }
 openraft = { workspace = true }
-raft-log = { workspace = true }
 rotbl = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
-state-machine-api = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
-databend-meta-leveled-store = { workspace = true, features = ["testing"] }
+anyhow = { workspace = true }
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
-tokio = { workspace = true }
 
 [lints]
 workspace = true

@@ -30,7 +30,7 @@ use log::error;
 use log::info;
 use tokio::sync::mpsc;
 
-use crate::snapshot_store::received::Received;
+use crate::received::Received;
 
 pub struct SnapshotReceiver<SP: SpawnApi> {
     remote_addr: String,

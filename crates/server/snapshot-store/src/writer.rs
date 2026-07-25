@@ -28,10 +28,10 @@ use log::info;
 use rotbl::v001::SeqMarked;
 use tokio::sync::mpsc;
 
-use crate::snapshot_store::MetaSnapshotId;
-use crate::snapshot_store::open_snapshot::OpenSnapshot;
-use crate::snapshot_store::write_entry::WriteEntry;
-use crate::snapshot_store::writer_stat::WriterStat;
+use crate::MetaSnapshotId;
+use crate::open_snapshot::OpenSnapshot;
+use crate::write_entry::WriteEntry;
+use crate::writer_stat::WriterStat;
 
 /// Write kv pair snapshot data to `SnapshotStoreV002`.
 pub struct SnapshotWriter<SP: SpawnApi> {

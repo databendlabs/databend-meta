@@ -23,9 +23,9 @@ use log::info;
 use log::warn;
 use openraft::SnapshotId;
 
-use crate::snapshot_store::MetaSnapshotId;
-use crate::snapshot_store::SnapshotStoreError;
-use crate::snapshot_store::open_snapshot::OpenSnapshot;
+use crate::MetaSnapshotId;
+use crate::SnapshotStoreError;
+use crate::open_snapshot::OpenSnapshot;
 
 /// Load snapshot from persisted storage.
 ///

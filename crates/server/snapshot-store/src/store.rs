@@ -24,9 +24,9 @@ use databend_meta_raft_config::snapshot_config::SnapshotConfig;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DB;
 
-use crate::snapshot_store::SnapshotWriter;
-use crate::snapshot_store::receiver::SnapshotReceiver;
-use crate::snapshot_store::snapshot_loader::SnapshotLoader;
+use crate::SnapshotWriter;
+use crate::receiver::SnapshotReceiver;
+use crate::snapshot_loader::SnapshotLoader;
 
 #[derive(Debug)]
 pub struct SnapshotStoreV003<SP> {

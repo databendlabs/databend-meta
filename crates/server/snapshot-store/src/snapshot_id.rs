@@ -155,7 +155,7 @@ mod tests {
 
     use databend_meta_types::raft_types::new_log_id;
 
-    use crate::snapshot_store::MetaSnapshotId;
+    use crate::MetaSnapshotId;
 
     #[test]
     fn test_meta_snapshot_id() -> anyhow::Result<()> {

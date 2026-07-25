@@ -24,6 +24,8 @@ use databend_meta_runtime_api::SpawnApi;
 use databend_meta_sled_store::SledTree;
 use databend_meta_sled_store::drop_sled_db;
 use databend_meta_sled_store::init_get_sled_db;
+use databend_meta_snapshot_store::SnapshotStore;
+use databend_meta_snapshot_store::SnapshotStoreV003;
 use fs_extra::dir::CopyOptions;
 use log::debug;
 use openraft::LogIdOptionExt;
@@ -35,8 +37,6 @@ use crate::ondisk::OnDisk;
 use crate::sled_compat::LogMetaKey;
 use crate::sled_compat::key_spaces::LogMeta;
 use crate::sled_compat::key_spaces::RaftStoreEntry;
-use crate::snapshot_store::SnapshotStore;
-use crate::snapshot_store::SnapshotStoreV003;
 
 impl OnDisk {
     /// Upgrade the on-disk data form [`DataVersion::V003`] to [`DataVersion::V004`].

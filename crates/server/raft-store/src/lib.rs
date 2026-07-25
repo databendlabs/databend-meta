@@ -46,4 +46,3 @@ pub mod header;
 pub mod log_importer;
 pub mod ondisk;
 pub mod sled_compat;
-pub mod snapshot_store;

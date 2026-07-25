@@ -13,6 +13,14 @@
 // limitations under the License.
 
 //! On-disk snapshot files: building them, shipping them, and loading them back.
+//!
+//! A sibling of the state machine, not a layer under it: the two exchange
+//! [`DB`](databend_meta_snapshot_db::DB) handles and neither imports the other.
+
+#![allow(clippy::uninlined_format_args)]
+#![feature(try_blocks)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::manual_is_multiple_of)]
 
 mod snapshot_id;
 mod snapshot_store_error;
