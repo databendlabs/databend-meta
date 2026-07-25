@@ -29,14 +29,14 @@ use raft_log::codeq::error_context_ext::ErrorContextExt;
 use tokio::io;
 
 use crate::data_version::DataVersion;
-use crate::key_spaces::LogMeta;
-use crate::key_spaces::RaftStoreEntry;
 use crate::ondisk::OnDisk;
 use crate::raft_log_v004::RaftLogV004;
 use crate::raft_log_v004::importer;
+use crate::sled_compat::LogMetaKey;
+use crate::sled_compat::key_spaces::LogMeta;
+use crate::sled_compat::key_spaces::RaftStoreEntry;
 use crate::sm_v003::SnapshotStoreV003;
 use crate::sm_v003::SnapshotStoreV004;
-use crate::state_machine::LogMetaKey;
 
 impl OnDisk {
     /// Upgrade the on-disk data form [`DataVersion::V003`] to [`DataVersion::V004`].

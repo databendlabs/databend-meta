@@ -29,9 +29,9 @@ use state_machine_api::ExpireKey;
 use state_machine_api::ExpireValue;
 use state_machine_api::UserKey;
 
-use crate::key_spaces::SMEntry;
-use crate::state_machine::StateMachineMetaKey;
-use crate::state_machine::StateMachineMetaValue;
+use crate::sled_compat::StateMachineMetaKey;
+use crate::sled_compat::StateMachineMetaValue;
+use crate::sled_compat::key_spaces::SMEntry;
 
 /// Export DB data to a stream of [`SMEntry`].
 pub struct DBExporter<'a> {
@@ -151,8 +151,8 @@ mod tests {
     use super::*;
     use crate::leveled_store::db_builder::DBBuilder;
     use crate::leveled_store::leveled_map::LeveledMap;
-    use crate::state_machine::StateMachineMetaKey;
-    use crate::state_machine::StateMachineMetaValue;
+    use crate::sled_compat::StateMachineMetaKey;
+    use crate::sled_compat::StateMachineMetaValue;
 
     async fn build_db() -> anyhow::Result<(tempfile::TempDir, DB)> {
         let temp_dir = tempfile::tempdir()?;

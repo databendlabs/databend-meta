@@ -15,6 +15,7 @@
 #[allow(clippy::module_inception)]
 mod sm_v003;
 mod sm_v003_kv_api;
+mod snapshot_id;
 mod snapshot_store_error;
 mod snapshot_store_v003;
 mod writer_v003;
@@ -38,6 +39,7 @@ pub(crate) mod sm_v003_test;
 mod snapshot_store_test;
 
 pub use sm_v003::SMV003;
+pub use snapshot_id::MetaSnapshotId;
 pub use snapshot_store_error::SnapshotStoreError;
 pub use snapshot_store_v003::SnapshotStoreV003;
 pub use snapshot_store_v003::SnapshotStoreV004;

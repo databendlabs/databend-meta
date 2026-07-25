@@ -17,12 +17,12 @@ use std::io;
 use databend_meta_types::raft_types::LogId;
 use raft_log::api::raft_log_writer::RaftLogWriter;
 
-use crate::key_spaces::RaftStoreEntry;
 use crate::raft_log_v004::RaftLogV004;
 use crate::raft_log_v004::codec_wrapper::Cw;
 use crate::raft_log_v004::log_store_meta::LogStoreMeta;
 use crate::raft_log_v004::util;
-use crate::state::RaftStateKey;
+use crate::sled_compat::RaftStateKey;
+use crate::sled_compat::key_spaces::RaftStoreEntry;
 
 /// Import series of [`RaftStoreEntry`] record into [`RaftLogV004`].
 ///
@@ -138,7 +138,7 @@ mod tests {
     use crate::header::Header;
     use crate::raft_log_v004::LogStoreMeta;
     use crate::raft_log_v004::RaftLogConfig;
-    use crate::state::RaftStateValue;
+    use crate::sled_compat::RaftStateValue;
 
     fn new_raft_log(dir: &tempfile::TempDir) -> anyhow::Result<RaftLogV004> {
         let config = RaftLogConfig {

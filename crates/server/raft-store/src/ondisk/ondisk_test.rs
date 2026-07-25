@@ -36,17 +36,17 @@ use tempfile::TempDir;
 use crate::config::RaftConfig;
 use crate::data_version::DataVersion;
 use crate::header::Header;
-use crate::key_spaces::DataHeader;
-use crate::key_spaces::RaftStoreEntry;
 use crate::ondisk::OnDisk;
 use crate::ondisk::TREE_HEADER;
 use crate::raft_log_v004::Cw;
 use crate::raft_log_v004::LogStoreMeta;
 use crate::raft_log_v004::RaftLogV004;
-use crate::state::RaftStateKey;
-use crate::state::RaftStateValue;
-use crate::state_machine::LogMetaKey;
-use crate::state_machine::LogMetaValue;
+use crate::sled_compat::LogMetaKey;
+use crate::sled_compat::LogMetaValue;
+use crate::sled_compat::RaftStateKey;
+use crate::sled_compat::RaftStateValue;
+use crate::sled_compat::key_spaces::DataHeader;
+use crate::sled_compat::key_spaces::RaftStoreEntry;
 
 /// The sled db is a process-wide singleton, so tests that open it must not overlap.
 static SLED: Mutex<()> = Mutex::new(());

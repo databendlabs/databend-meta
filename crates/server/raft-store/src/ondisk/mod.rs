@@ -35,7 +35,7 @@ use crate::config::RaftConfig;
 use crate::data_version::DATA_VERSION;
 use crate::data_version::DataVersion;
 use crate::header::Header;
-use crate::key_spaces::DataHeader;
+use crate::sled_compat::key_spaces::DataHeader;
 
 /// The sled tree name to store the data versions.
 pub const TREE_HEADER: &str = "header";

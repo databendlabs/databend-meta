@@ -12,14 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! State machine metadata types and snapshot management.
+//! The pre-V004 sled on-disk layout.
+//!
+//! V004 stores raft logs in a WAL and the state machine in a leveled store, so
+//! nothing here is written any more. It is retained to read data left by an
+//! older version: the upgrader migrates it, and the exporter still emits its
+//! entry format. This module is the unit to delete once V003 compatibility is
+//! dropped.
+
+pub mod key_spaces;
+pub mod log_meta;
+pub mod raft_state_kv;
+pub mod state_machine_meta;
 
 pub use log_meta::LogMetaKey;
 pub use log_meta::LogMetaValue;
-pub use snapshot_id::MetaSnapshotId;
+pub use raft_state_kv::RaftStateKey;
+pub use raft_state_kv::RaftStateValue;
 pub use state_machine_meta::StateMachineMetaKey;
 pub use state_machine_meta::StateMachineMetaValue;
 
-pub mod log_meta;
-mod snapshot_id;
-pub mod state_machine_meta;
+/// The sled tree name storing the raft state (node id, vote, committed).
+pub const TREE_RAFT_STATE: &str = "raft_state";

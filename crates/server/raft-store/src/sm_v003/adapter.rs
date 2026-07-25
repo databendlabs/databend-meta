@@ -22,9 +22,9 @@ use databend_meta_types::sys_data::SysData;
 use rotbl::v001::SeqMarked;
 use state_machine_api::UserKey;
 
-use crate::key_spaces::SMEntry;
 use crate::leveled_store::rotbl_codec::RotblCodec;
-use crate::state_machine::StateMachineMetaKey;
+use crate::sled_compat::StateMachineMetaKey;
+use crate::sled_compat::key_spaces::SMEntry;
 
 /// Convert V002 snapshot lines in json of [`SMEntry`]
 /// to V004 rotbl key-value pairs. `(String, SeqMarked)`,

@@ -46,12 +46,12 @@ use state_machine_api::ExpireKey;
 use state_machine_api::ExpireValue;
 
 use crate::header::Header;
-use crate::state::RaftStateKey;
-use crate::state::RaftStateValue;
-use crate::state_machine::LogMetaKey;
-use crate::state_machine::LogMetaValue;
-use crate::state_machine::StateMachineMetaKey;
-use crate::state_machine::StateMachineMetaValue;
+use crate::sled_compat::LogMetaKey;
+use crate::sled_compat::LogMetaValue;
+use crate::sled_compat::RaftStateKey;
+use crate::sled_compat::RaftStateValue;
+use crate::sled_compat::StateMachineMetaKey;
+use crate::sled_compat::StateMachineMetaValue;
 
 /// Raft log entries storage key space (V003 only).
 ///
@@ -452,7 +452,7 @@ mod tests {
 
     use super::*;
     use crate::data_version::DataVersion;
-    use crate::state_machine::StateMachineMetaValue;
+    use crate::sled_compat::StateMachineMetaValue;
 
     fn log_id() -> LogId {
         new_log_id(1, 2, 3)
