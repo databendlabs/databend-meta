@@ -135,7 +135,7 @@ mod tests {
     use raft_log::chunked_wal::Config as WalConfig;
 
     use super::*;
-    use crate::ondisk::Header;
+    use crate::header::Header;
     use crate::raft_log_v004::LogStoreMeta;
     use crate::raft_log_v004::RaftLogConfig;
     use crate::state::RaftStateValue;

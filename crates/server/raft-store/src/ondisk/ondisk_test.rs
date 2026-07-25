@@ -35,9 +35,9 @@ use tempfile::TempDir;
 
 use crate::config::RaftConfig;
 use crate::data_version::DataVersion;
+use crate::header::Header;
 use crate::key_spaces::DataHeader;
 use crate::key_spaces::RaftStoreEntry;
-use crate::ondisk::Header;
 use crate::ondisk::OnDisk;
 use crate::ondisk::TREE_HEADER;
 use crate::raft_log_v004::Cw;
@@ -172,7 +172,7 @@ async fn test_open_migrates_a_header_stored_in_sled() -> anyhow::Result<()> {
     let tree = SledTree::open(&db, TREE_HEADER)?;
     assert_eq!(
         tree.key_space::<DataHeader>()
-            .get(&OnDisk::KEY_HEADER.to_string())?,
+            .get(&Header::KEY.to_string())?,
         None,
         "the sled copy is removed after migration"
     );

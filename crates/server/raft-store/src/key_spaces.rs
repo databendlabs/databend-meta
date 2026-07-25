@@ -45,8 +45,7 @@ use serde::Serialize;
 use state_machine_api::ExpireKey;
 use state_machine_api::ExpireValue;
 
-use crate::ondisk::Header;
-use crate::ondisk::OnDisk;
+use crate::header::Header;
 use crate::state::RaftStateKey;
 use crate::state::RaftStateValue;
 use crate::state_machine::LogMetaKey;
@@ -410,7 +409,7 @@ impl RaftStoreEntry {
 
     pub fn new_header(header: Header) -> Self {
         RaftStoreEntry::DataHeader {
-            key: OnDisk::KEY_HEADER.to_string(),
+            key: Header::KEY.to_string(),
             value: header,
         }
     }

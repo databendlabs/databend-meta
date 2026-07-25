@@ -72,6 +72,9 @@ impl SledSerde for Header {
 }
 
 impl Header {
+    /// The key this header is stored under, in the `DataHeader` key space.
+    pub const KEY: &'static str = "header";
+
     pub fn this_version() -> Self {
         Self {
             version: DATA_VERSION,

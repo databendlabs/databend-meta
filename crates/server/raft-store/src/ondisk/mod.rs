@@ -14,7 +14,6 @@
 
 //! This mod defines on-disk data version, the storage of the data version, and provide upgrade functions.
 
-mod header;
 #[cfg(test)]
 mod ondisk_test;
 pub(crate) mod upgrade_to_v004;
@@ -29,13 +28,13 @@ use std::path::PathBuf;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_sled_store::SledTree;
 use databend_meta_sled_store::init_get_sled_db;
-pub use header::Header;
 use log::info;
 use raft_log::codeq::error_context_ext::ErrorContextExt;
 
 use crate::config::RaftConfig;
 use crate::data_version::DATA_VERSION;
 use crate::data_version::DataVersion;
+use crate::header::Header;
 use crate::key_spaces::DataHeader;
 
 /// The sled tree name to store the data versions.
@@ -66,8 +65,6 @@ impl fmt::Display for OnDisk {
 }
 
 impl OnDisk {
-    pub const KEY_HEADER: &'static str = "header";
-
     pub fn ensure_dirs(raft_dir: &str) -> Result<(), io::Error> {
         let raft_dir = Path::new(raft_dir);
         let version_dir = raft_dir.join("df_meta").join(format!("{}", DATA_VERSION));
@@ -161,7 +158,7 @@ impl OnDisk {
         let tree = SledTree::open(&db, TREE_HEADER)?;
         let ks = tree.key_space::<DataHeader>();
 
-        let header = ks.get(&Self::KEY_HEADER.to_string()).map_err(|e| {
+        let header = ks.get(&Header::KEY.to_string()).map_err(|e| {
             io::Error::new(io::ErrorKind::InvalidData, e).context(|| "open on-disk data")
         })?;
         info!("Found and loaded header from sled: {:?}", header);
@@ -169,7 +166,7 @@ impl OnDisk {
         if let Some(header) = header {
             Self::write_header_to_fs(config, &header)?;
 
-            ks.remove_no_return(&Self::KEY_HEADER.to_string(), true)
+            ks.remove_no_return(&Header::KEY.to_string(), true)
                 .await
                 .map_err(|e| {
                     io::Error::new(io::ErrorKind::InvalidData, e)
