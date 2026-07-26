@@ -149,7 +149,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
         let mut store = Self {
             id,
             config: config.clone(),
-            log: MetaRaftLog::new(id, config.clone(), log),
+            log: MetaRaftLog::new(id, log),
             state_machine: MetaRaftStateMachine::new(id, config, Arc::new(sm)),
         };
 
