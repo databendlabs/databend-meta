@@ -19,6 +19,7 @@ databend-base = { workspace = true }
 databend-meta-client = { workspace = true }
 databend-meta-kvapi = { workspace = true }
 databend-meta-leveled-store = { workspace = true }
+databend-meta-metrics = { workspace = true }
 databend-meta-raft-config = { workspace = true }
 databend-meta-raft-log = { workspace = true }
 databend-meta-runtime-api = { workspace = true }

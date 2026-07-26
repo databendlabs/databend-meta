@@ -41,7 +41,7 @@ pub mod server_metrics {
     use prometheus_client::metrics::family::Family;
     use prometheus_client::metrics::gauge::Gauge;
 
-    use crate::metrics::registry::load_global_registry;
+    use crate::registry::load_global_registry;
 
     macro_rules! key {
         ($key: literal) => {
@@ -485,7 +485,7 @@ pub mod raft_metrics {
                     snapshot_recv_failures: Family::default(),
                 };
 
-                let mut registry = crate::metrics::registry::load_global_registry();
+                let mut registry = crate::registry::load_global_registry();
                 registry.register(
                     key!("active_peers"),
                     "active peers",
@@ -675,7 +675,7 @@ pub mod raft_metrics {
         use prometheus_client::metrics::family::Family;
         use prometheus_client::metrics::gauge::Gauge;
 
-        use crate::metrics::registry::load_global_registry;
+        use crate::registry::load_global_registry;
 
         macro_rules! key {
             ($key: literal) => {
@@ -799,7 +799,7 @@ pub mod network_metrics {
     use prometheus_client::metrics::gauge::Gauge;
     use prometheus_client::metrics::histogram::Histogram;
 
-    use crate::metrics::registry::load_global_registry;
+    use crate::registry::load_global_registry;
 
     macro_rules! key {
         ($key: literal) => {
@@ -996,7 +996,7 @@ pub mod network_metrics {
 
 /// RAII metrics counter for in-flight requests with const generic to distinguish read/write operations
 #[derive(Default)]
-pub(crate) struct InFlightMetrics<const IS_READ: bool> {
+pub struct InFlightMetrics<const IS_READ: bool> {
     start: Option<Instant>,
 }
 
@@ -1021,14 +1021,14 @@ impl<const IS_READ: bool> counter::Counter for InFlightMetrics<IS_READ> {
 }
 
 /// Type alias for read request metrics
-pub(crate) type InFlightRead = InFlightMetrics<true>;
+pub type InFlightRead = InFlightMetrics<true>;
 
 /// Type alias for write request metrics
-pub(crate) type InFlightWrite = InFlightMetrics<false>;
+pub type InFlightWrite = InFlightMetrics<false>;
 
 /// RAII metrics counter of pending raft proposals
 #[derive(Default)]
-pub(crate) struct ProposalPending;
+pub struct ProposalPending;
 
 impl counter::Counter for ProposalPending {
     fn incr(&mut self, n: i64) {
@@ -1038,7 +1038,7 @@ impl counter::Counter for ProposalPending {
 
 /// Encode metrics as prometheus format string
 pub fn meta_metrics_to_prometheus_string() -> String {
-    let registry = crate::metrics::registry::load_global_registry();
+    let registry = crate::registry::load_global_registry();
 
     let mut text = String::new();
     prometheus_encode(&mut text, &registry).unwrap();
@@ -1050,13 +1050,13 @@ pub fn meta_metrics_to_prometheus_string() -> String {
 /// This is the structured counterpart of [`meta_metrics_to_prometheus_string`]:
 /// the whole registry as typed values instead of a text exposition. It is the
 /// read path for building the typed `MetaMetrics`.
-pub(crate) fn meta_metrics_to_metric_set() -> MetricSet {
-    let registry = crate::metrics::registry::load_global_registry();
+pub fn meta_metrics_to_metric_set() -> MetricSet {
+    let registry = crate::registry::load_global_registry();
     protobuf_encode(&registry).unwrap()
 }
 
 #[derive(Default)]
-pub(crate) struct SnapshotBuilding;
+pub struct SnapshotBuilding;
 
 impl counter::Counter for SnapshotBuilding {
     fn incr(&mut self, n: i64) {

@@ -1,0 +1,18 @@
+[package]
+name = "databend-meta-metrics"
+description = "Prometheus metrics for databend-meta"
+version = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+publish = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+databend-base = { workspace = true }
+databend-meta-raft-log = { workspace = true }
+databend-meta-types = { workspace = true }
+log = { workspace = true }
+prometheus-client = { workspace = true }
+
+[lints]
+workspace = true

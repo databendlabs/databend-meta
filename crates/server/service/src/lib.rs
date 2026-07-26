@@ -27,6 +27,7 @@
 // Re-exported for downstream crates, which reach the store through `databend_meta::`.
 // `raft_log` is not available as an alias: it names the external WAL crate.
 pub extern crate databend_meta_leveled_store as leveled_store;
+pub extern crate databend_meta_metrics as metrics;
 pub extern crate databend_meta_raft_config as raft_config;
 pub extern crate databend_meta_raft_log as log_store;
 pub extern crate databend_meta_runtime_api as runtime_api;
@@ -45,7 +46,6 @@ pub mod configs;
 pub mod message;
 pub mod meta_node;
 pub mod meta_service;
-pub mod metrics;
 pub(crate) mod network;
 pub(crate) mod raft_client;
 pub mod raft_version;

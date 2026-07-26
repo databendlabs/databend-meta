@@ -12,14 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Prometheus metrics for a databend-meta node.
+
+#![allow(clippy::collapsible_if)]
+
 mod meta_metrics;
 mod registry;
 
-pub(crate) use meta_metrics::InFlightRead;
-pub(crate) use meta_metrics::InFlightWrite;
-pub(crate) use meta_metrics::ProposalPending;
-pub(crate) use meta_metrics::SnapshotBuilding;
-pub(crate) use meta_metrics::meta_metrics_to_metric_set;
+pub use meta_metrics::InFlightRead;
+pub use meta_metrics::InFlightWrite;
+pub use meta_metrics::ProposalPending;
+pub use meta_metrics::SnapshotBuilding;
+pub use meta_metrics::meta_metrics_to_metric_set;
 pub use meta_metrics::meta_metrics_to_prometheus_string;
 pub use meta_metrics::network_metrics;
 pub use meta_metrics::raft_metrics;
