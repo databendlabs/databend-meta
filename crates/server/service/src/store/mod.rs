@@ -14,7 +14,6 @@
 
 pub(crate) mod meta_raft_log;
 pub(crate) mod meta_raft_state_machine;
-#[allow(clippy::module_inception)]
-mod store;
+mod raft_store;
 
-pub use store::RaftStore;
+pub use raft_store::RaftStore;
