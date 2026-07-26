@@ -20,14 +20,17 @@ use tokio::sync::RwLock;
 
 use crate::RaftLog;
 
-/// A shared wrapper for use of RaftLog in this crate.
+/// A shared [`RaftLog`] handle implementing openraft's `RaftLogStorage`.
+///
+/// Cloning shares one WAL: `get_log_reader` hands openraft a clone, so readers
+/// and the writer contend on the same lock.
 #[derive(Debug, Clone)]
-pub struct MetaRaftLog {
+pub struct RaftLogStore {
     pub(crate) id: NodeId,
     inner: Arc<RwLock<RaftLog>>,
 }
 
-impl Deref for MetaRaftLog {
+impl Deref for RaftLogStore {
     type Target = Arc<RwLock<RaftLog>>;
 
     fn deref(&self) -> &Self::Target {
@@ -35,7 +38,7 @@ impl Deref for MetaRaftLog {
     }
 }
 
-impl MetaRaftLog {
+impl RaftLogStore {
     pub fn new(id: NodeId, inner: RaftLog) -> Self {
         Self {
             id,

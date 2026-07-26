@@ -24,8 +24,8 @@ use databend_meta_raft_config::MetaStartupError;
 use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_raft_config::header::Header;
 use databend_meta_raft_log::Cw;
-use databend_meta_raft_log::MetaRaftLog;
 use databend_meta_raft_log::RaftLog;
+use databend_meta_raft_log::RaftLogStore;
 use databend_meta_raft_log::log_store_meta::LogStoreMeta;
 use databend_meta_raft_log::util;
 use databend_meta_runtime_api::SpawnApi;
@@ -57,7 +57,7 @@ pub struct RaftStore<SP> {
 
     pub(crate) config: Arc<RaftConfig>,
 
-    log: MetaRaftLog,
+    log: RaftLogStore,
 
     state_machine: MetaRaftStateMachine<SP>,
 }
@@ -149,7 +149,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
         let mut store = Self {
             id,
             config: config.clone(),
-            log: MetaRaftLog::new(id, log),
+            log: RaftLogStore::new(id, log),
             state_machine: MetaRaftStateMachine::new(id, config, Arc::new(sm)),
         };
 
@@ -168,7 +168,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
         Ok(store)
     }
 
-    pub fn log(&self) -> &MetaRaftLog {
+    pub fn log(&self) -> &RaftLogStore {
         &self.log
     }
 

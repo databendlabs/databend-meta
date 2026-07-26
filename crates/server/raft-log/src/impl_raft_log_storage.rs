@@ -42,9 +42,9 @@ use tokio::sync::oneshot;
 use crate::Callback;
 use crate::codec_wrapper::Cw;
 use crate::io_desc::IODesc;
-use crate::meta_raft_log::MetaRaftLog;
+use crate::store::RaftLogStore;
 
-impl RaftLogReader<TypeConfig> for MetaRaftLog {
+impl RaftLogReader<TypeConfig> for RaftLogStore {
     #[fastrace::trace]
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send>(
         &mut self,
@@ -132,8 +132,8 @@ impl RaftLogReader<TypeConfig> for MetaRaftLog {
     }
 }
 
-impl RaftLogStorage<TypeConfig> for MetaRaftLog {
-    type LogReader = MetaRaftLog;
+impl RaftLogStorage<TypeConfig> for RaftLogStore {
+    type LogReader = RaftLogStore;
 
     async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, io::Error> {
         let log = self.read().await;
