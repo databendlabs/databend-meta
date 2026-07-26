@@ -33,11 +33,11 @@ use openraft::LogIdOptionExt;
 use raft_log::codeq::error_context_ext::ErrorContextExt;
 use tokio::io;
 
-use crate::log_importer;
 use crate::ondisk::OnDisk;
 use crate::sled_compat::LogMetaKey;
 use crate::sled_compat::key_spaces::LogMeta;
 use crate::sled_compat::key_spaces::RaftStoreEntry;
+use crate::sled_compat::log_importer;
 
 impl OnDisk {
     /// Upgrade the on-disk data form [`DataVersion::V003`] to [`DataVersion::V004`].

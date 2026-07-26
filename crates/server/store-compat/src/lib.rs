@@ -24,6 +24,5 @@
 #![allow(clippy::collapsible_if)]
 
 pub mod db_exporter;
-pub mod log_importer;
 pub mod ondisk;
 pub mod sled_compat;

@@ -22,6 +22,7 @@
 
 pub mod adapter;
 pub mod key_spaces;
+pub mod log_importer;
 pub mod log_meta;
 pub mod raft_state_kv;
 pub mod sled_header;
