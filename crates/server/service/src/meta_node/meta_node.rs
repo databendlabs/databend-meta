@@ -33,7 +33,7 @@ use databend_meta_raft_log::RaftLogStore;
 use databend_meta_runtime_api::JoinHandle;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DBStat;
-use databend_meta_state_machine::MetaRaftStateMachine;
+use databend_meta_state_machine::RaftStateMachineStore;
 use databend_meta_state_machine::utils::seq_marked_to_seqv;
 use databend_meta_types::AppliedState;
 use databend_meta_types::Cmd;
@@ -132,10 +132,10 @@ use crate::store::RaftStore;
 use crate::util::reply_to_api_result;
 
 pub type LogStore = RaftLogStore;
-pub type SMStore<SP> = MetaRaftStateMachine<SP>;
+pub type SMStore<SP> = RaftStateMachineStore<SP>;
 
 /// MetaRaft is an implementation of the generic Raft handling metadata R/W.
-pub type MetaRaft<SP> = Raft<TypeConfig, MetaRaftStateMachine<SP>>;
+pub type MetaRaft<SP> = Raft<TypeConfig, RaftStateMachineStore<SP>>;
 
 /// MetaNode is the container of metadata related components and threads, such as storage, the raft node and a raft-state monitor.
 pub struct MetaNode<SP: SpawnApi> {

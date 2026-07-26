@@ -33,7 +33,7 @@ use databend_meta_snapshot_db::DB;
 use databend_meta_snapshot_db::DBStat;
 use databend_meta_snapshot_store::MetaSnapshotId;
 use databend_meta_snapshot_store::SnapshotStore;
-use databend_meta_state_machine::MetaRaftStateMachine;
+use databend_meta_state_machine::RaftStateMachineStore;
 use databend_meta_state_machine::StateMachine;
 use databend_meta_store_compat::db_exporter::DBExporter;
 use databend_meta_store_compat::ondisk::TREE_HEADER;
@@ -58,7 +58,7 @@ pub struct RaftStore<SP> {
 
     log: RaftLogStore,
 
-    state_machine: MetaRaftStateMachine<SP>,
+    state_machine: RaftStateMachineStore<SP>,
 }
 
 impl<SP> Clone for RaftStore<SP> {
@@ -149,7 +149,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
             id,
             config: config.clone(),
             log: RaftLogStore::new(id, log),
-            state_machine: MetaRaftStateMachine::new(id, config, Arc::new(sm)),
+            state_machine: RaftStateMachineStore::new(id, config, Arc::new(sm)),
         };
 
         {
@@ -171,7 +171,7 @@ impl<SP: SpawnApi> RaftStore<SP> {
         &self.log
     }
 
-    pub fn state_machine(&self) -> &MetaRaftStateMachine<SP> {
+    pub fn state_machine(&self) -> &RaftStateMachineStore<SP> {
         &self.state_machine
     }
 

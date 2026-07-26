@@ -42,9 +42,13 @@ use tokio::sync::oneshot;
 use crate::StateMachine;
 use crate::immutable_compactor::InMemoryCompactor;
 
-/// A shared wrapper for use of StateMachine in this crate.
+/// A shared [`StateMachine`] handle implementing openraft's `RaftStateMachine`.
+///
+/// Cloning shares one machine: installing a snapshot replaces the inner `Arc`
+/// rather than mutating in place, so every clone observes the new state. `SP`
+/// selects the runtime the background in-memory compactor is spawned on.
 #[derive(Debug)]
-pub struct MetaRaftStateMachine<SP> {
+pub struct RaftStateMachineStore<SP> {
     pub(crate) id: NodeId,
 
     pub(crate) config: Arc<RaftConfig>,
@@ -56,7 +60,7 @@ pub struct MetaRaftStateMachine<SP> {
     _phantom: PhantomData<SP>,
 }
 
-impl<SP> Clone for MetaRaftStateMachine<SP> {
+impl<SP> Clone for RaftStateMachineStore<SP> {
     fn clone(&self) -> Self {
         Self {
             id: self.id,
@@ -68,7 +72,7 @@ impl<SP> Clone for MetaRaftStateMachine<SP> {
     }
 }
 
-impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
+impl<SP: SpawnApi> RaftStateMachineStore<SP> {
     pub fn new(id: NodeId, config: Arc<RaftConfig>, inner: Arc<StateMachine>) -> Self {
         Self {
             id,
