@@ -20,7 +20,7 @@ use databend_meta_kvapi as kvapi;
 use databend_meta_kvapi::KVStream;
 use databend_meta_kvapi::ListOptions;
 use databend_meta_kvapi::limit_stream;
-use databend_meta_leveled_store::state_machine::read_view::StateMachineReadView;
+use databend_meta_leveled_store::mvcc::read_view::StateMachineReadView;
 use databend_meta_leveled_store::util::add_cooperative_yielding;
 use databend_meta_types::SeqV;
 use databend_meta_types::TxnReply;
