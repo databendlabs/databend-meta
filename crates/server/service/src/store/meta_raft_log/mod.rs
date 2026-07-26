@@ -15,7 +15,6 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_raft_log::RaftLog;
 use databend_meta_types::raft_types::NodeId;
 use tokio::sync::RwLock;
@@ -26,8 +25,6 @@ mod impl_raft_log_storage;
 #[derive(Debug, Clone)]
 pub struct MetaRaftLog {
     pub(crate) id: NodeId,
-    #[allow(dead_code)]
-    pub(crate) config: Arc<RaftConfig>,
     inner: Arc<RwLock<RaftLog>>,
 }
 
@@ -40,10 +37,9 @@ impl Deref for MetaRaftLog {
 }
 
 impl MetaRaftLog {
-    pub fn new(id: NodeId, config: Arc<RaftConfig>, inner: RaftLog) -> Self {
+    pub fn new(id: NodeId, inner: RaftLog) -> Self {
         Self {
             id,
-            config,
             inner: Arc::new(RwLock::new(inner)),
         }
     }
