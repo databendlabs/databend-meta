@@ -35,7 +35,7 @@ use state_machine_api::UserKey;
 use crate::applier::Applier;
 use crate::applier::applier_data::ApplierData;
 use crate::applier::applier_data::OnChange;
-use crate::state_machine::kv_api::StateMachineKVApi;
+use crate::kv_api::StateMachineKVApi;
 
 pub struct StateMachine {
     leveled_map: LeveledMap,
