@@ -28,6 +28,7 @@
 
 use std::io;
 
+use databend_meta_raft_config::header::Header;
 use databend_meta_sled_store::IVec;
 use databend_meta_sled_store::SledKeySpace;
 use databend_meta_sled_store::SledOrderedSerde;
@@ -45,7 +46,6 @@ use serde::Serialize;
 use state_machine_api::ExpireKey;
 use state_machine_api::ExpireValue;
 
-use crate::header::Header;
 use crate::sled_compat::LogMetaKey;
 use crate::sled_compat::LogMetaValue;
 use crate::sled_compat::RaftStateKey;

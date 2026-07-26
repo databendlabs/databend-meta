@@ -14,8 +14,8 @@
 
 use std::fmt;
 
-use databend_meta_raft_config::data_version::DATA_VERSION;
-use databend_meta_raft_config::data_version::DataVersion;
+use crate::data_version::DATA_VERSION;
+use crate::data_version::DataVersion;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,

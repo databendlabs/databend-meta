@@ -28,13 +28,13 @@ use std::path::PathBuf;
 use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_raft_config::data_version::DATA_VERSION;
 use databend_meta_raft_config::data_version::DataVersion;
+use databend_meta_raft_config::header::Header;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_sled_store::SledTree;
 use databend_meta_sled_store::init_get_sled_db;
 use log::info;
 use raft_log::codeq::error_context_ext::ErrorContextExt;
 
-use crate::header::Header;
 use crate::sled_compat::SledHeader;
 use crate::sled_compat::key_spaces::DataHeader;
 

@@ -127,6 +127,7 @@ impl Importer {
 mod tests {
     use std::sync::Arc;
 
+    use databend_meta_raft_config::header::Header;
     use databend_meta_raft_log::LogStoreMeta;
     use databend_meta_raft_log::RaftLogConfig;
     use databend_meta_types::raft_types::Entry;
@@ -137,7 +138,6 @@ mod tests {
     use raft_log::chunked_wal::Config as WalConfig;
 
     use super::*;
-    use crate::header::Header;
     use crate::sled_compat::RaftStateValue;
 
     fn new_raft_log(dir: &tempfile::TempDir) -> anyhow::Result<RaftLog> {
