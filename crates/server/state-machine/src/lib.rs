@@ -30,7 +30,6 @@ pub mod immutable_compactor;
 mod kv_api;
 pub mod state_machine;
 pub mod state_machine_api_ext;
-pub(crate) mod testing;
 pub mod utils;
 
 #[cfg(test)]

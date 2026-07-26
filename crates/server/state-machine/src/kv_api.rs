@@ -33,9 +33,9 @@ use seq_marked::SeqValue;
 use state_machine_api::UserKey;
 
 use crate::state_machine::StateMachine;
-use crate::testing::since_epoch_millis;
 use crate::utils::prefix_right_bound;
 use crate::utils::seq_marked_to_seqv;
+use crate::utils::since_epoch_millis;
 
 /// A wrapper that implements KVApi **readonly** methods for the state machine.
 pub struct StateMachineKVApi<'a> {

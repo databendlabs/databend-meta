@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Key-range and value-conversion helpers for the state machine.
+//! Key-range, value-conversion and wall-clock helpers for the state machine.
+
+use std::time::Duration;
+use std::time::SystemTime;
 
 use seq_marked::SeqMarked;
 use state_machine_api::MetaValue;
@@ -51,6 +54,16 @@ pub fn prefix_right_bound(p: &str) -> Option<String> {
 pub fn seq_marked_to_seqv(k: UserKey, marked: SeqMarked<MetaValue>) -> Option<(String, SeqV)> {
     let seqv = Into::<Option<SeqV>>::into(marked);
     seqv.map(|x| (k.to_string(), x))
+}
+
+pub(crate) fn since_epoch_millis() -> u64 {
+    since_epoch().as_millis() as u64
+}
+
+pub(crate) fn since_epoch() -> Duration {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
 }
 
 #[cfg(test)]
