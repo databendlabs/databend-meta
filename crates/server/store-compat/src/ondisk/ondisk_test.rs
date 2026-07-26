@@ -23,6 +23,7 @@ use std::sync::MutexGuard;
 
 use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_raft_config::data_version::DataVersion;
+use databend_meta_raft_config::header::Header;
 use databend_meta_raft_log::Cw;
 use databend_meta_raft_log::LogStoreMeta;
 use databend_meta_raft_log::RaftLog;
@@ -38,7 +39,6 @@ use databend_meta_types::raft_types::new_log_id;
 use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 
-use crate::header::Header;
 use crate::ondisk::OnDisk;
 use crate::ondisk::TREE_HEADER;
 use crate::sled_compat::LogMetaKey;

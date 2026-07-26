@@ -20,6 +20,7 @@
 
 pub mod config;
 pub mod data_version;
+pub mod header;
 pub mod meta_startup_error;
 pub mod snapshot_config;
 mod state_machine_features;

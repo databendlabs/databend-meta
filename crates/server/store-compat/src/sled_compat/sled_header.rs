@@ -14,13 +14,12 @@
 
 use std::fmt;
 
+use databend_meta_raft_config::header::Header;
 use databend_meta_sled_store::IVec;
 use databend_meta_sled_store::SledBytesError;
 use databend_meta_sled_store::SledSerde;
 use serde::Deserialize;
 use serde::Serialize;
-
-use crate::header::Header;
 
 /// A [`Header`] as it is stored in the legacy `DataHeader` sled key space.
 ///
