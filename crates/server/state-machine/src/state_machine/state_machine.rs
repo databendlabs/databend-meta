@@ -23,7 +23,7 @@ use databend_meta_leveled_store::leveled_map::CompactorPermit;
 use databend_meta_leveled_store::leveled_map::LeveledMap;
 use databend_meta_leveled_store::leveled_map::WriterPermit;
 use databend_meta_leveled_store::leveled_map::compactor::Compactor;
-use databend_meta_leveled_store::state_machine::read_view::StateMachineReadView;
+use databend_meta_leveled_store::mvcc::read_view::StateMachineReadView;
 use databend_meta_snapshot_db::DB;
 use databend_meta_types::raft_types::EntryResponder;
 use databend_meta_types::sys_data::SysData;

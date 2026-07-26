@@ -13,6 +13,10 @@
 // limitations under the License.
 
 //! State-machine read and write views over the leveled store.
+//!
+//! Reads are bounded by a sequence number and writes are staged until commit,
+//! so these are `map_api::mvcc` views, not the state machine itself: that lives
+//! in the `databend-meta-state-machine` crate.
 
 mod changes;
 pub mod read_view;

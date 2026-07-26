@@ -43,8 +43,8 @@ use crate::immutable_data::ImmutableData;
 use crate::immutable_levels::ImmutableLevels;
 use crate::level::LevelStat;
 use crate::leveled_map::leveled_map_data::LeveledMapData;
-use crate::state_machine::read_view::StateMachineReadView;
-use crate::state_machine::view::StateMachineView;
+use crate::mvcc::read_view::StateMachineReadView;
+use crate::mvcc::view::StateMachineView;
 
 /// Multi-level storage similar to LevelDB with single-writer concurrency control.
 ///
