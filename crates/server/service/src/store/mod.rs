@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub(crate) mod meta_raft_state_machine;
 mod raft_store;
 
 pub use raft_store::RaftStore;

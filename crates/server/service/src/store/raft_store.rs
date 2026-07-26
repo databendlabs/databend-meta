@@ -33,6 +33,7 @@ use databend_meta_snapshot_db::DB;
 use databend_meta_snapshot_db::DBStat;
 use databend_meta_snapshot_store::MetaSnapshotId;
 use databend_meta_snapshot_store::SnapshotStore;
+use databend_meta_state_machine::MetaRaftStateMachine;
 use databend_meta_state_machine::StateMachine;
 use databend_meta_store_compat::db_exporter::DBExporter;
 use databend_meta_store_compat::ondisk::TREE_HEADER;
@@ -46,8 +47,6 @@ use futures::TryStreamExt;
 use log::debug;
 use log::info;
 use raft_log::api::raft_log_writer::RaftLogWriter;
-
-use crate::store::meta_raft_state_machine::MetaRaftStateMachine;
 
 /// A store that contains raft-log store and state-machine.
 ///

@@ -28,9 +28,12 @@
 pub mod applier;
 pub mod immutable_compactor;
 mod kv_api;
+pub mod meta_raft_state_machine;
 pub mod state_machine;
 pub mod state_machine_api_ext;
 pub mod utils;
+
+mod raft_state_machine_impl;
 
 #[cfg(test)]
 mod acquire_compactor_test;
@@ -39,4 +42,5 @@ mod compact_with_db_test;
 #[cfg(test)]
 pub(crate) mod state_machine_test;
 
+pub use meta_raft_state_machine::MetaRaftStateMachine;
 pub use state_machine::StateMachine;
