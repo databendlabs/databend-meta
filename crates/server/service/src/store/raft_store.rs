@@ -24,6 +24,7 @@ use databend_meta_raft_config::MetaStartupError;
 use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_raft_config::header::Header;
 use databend_meta_raft_log::Cw;
+use databend_meta_raft_log::MetaRaftLog;
 use databend_meta_raft_log::RaftLog;
 use databend_meta_raft_log::log_store_meta::LogStoreMeta;
 use databend_meta_raft_log::util;
@@ -46,7 +47,6 @@ use log::debug;
 use log::info;
 use raft_log::api::raft_log_writer::RaftLogWriter;
 
-use crate::store::meta_raft_log::MetaRaftLog;
 use crate::store::meta_raft_state_machine::MetaRaftStateMachine;
 
 /// A store that contains raft-log store and state-machine.

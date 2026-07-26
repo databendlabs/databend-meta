@@ -12,7 +12,10 @@ anyerror = { workspace = true }
 databend-meta-types = { workspace = true }
 deepsize = { workspace = true }
 display-more = { workspace = true }
+fastrace = { workspace = true }
+itertools = { workspace = true }
 log = { workspace = true }
+openraft = { workspace = true }
 raft-log = { workspace = true }
 rmp-serde = { workspace = true }
 serde = { workspace = true }

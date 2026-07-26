@@ -27,9 +27,12 @@ pub mod codec_wrapper;
 pub mod io_desc;
 pub mod io_phase;
 pub mod log_store_meta;
+pub mod meta_raft_log;
 pub mod raft_log_io_error;
 pub mod raft_log_types;
 pub mod util;
+
+mod impl_raft_log_storage;
 
 pub const TREE_RAFT_LOG: &str = "raft_log";
 
@@ -43,5 +46,6 @@ pub use codec_wrapper::Cw;
 pub use io_desc::IODesc;
 pub use io_phase::IOPhase;
 pub use log_store_meta::LogStoreMeta;
+pub use meta_raft_log::MetaRaftLog;
 pub use raft_log_io_error::RaftLogIOError;
 pub use raft_log_types::RaftLogTypes;

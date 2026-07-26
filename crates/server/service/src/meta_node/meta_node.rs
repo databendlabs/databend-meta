@@ -28,6 +28,7 @@ use databend_meta_raft_config::MetaStartupError;
 use databend_meta_raft_config::StateMachineFeature;
 use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_raft_config::data_version::DATA_VERSION;
+use databend_meta_raft_log::MetaRaftLog;
 use databend_meta_raft_log::RaftLogStat;
 use databend_meta_runtime_api::JoinHandle;
 use databend_meta_runtime_api::SpawnApi;
@@ -127,7 +128,6 @@ use crate::metrics::server_metrics;
 use crate::request_handling::Forwarder;
 use crate::request_handling::Handler;
 use crate::store::RaftStore;
-use crate::store::meta_raft_log::MetaRaftLog;
 use crate::store::meta_raft_state_machine::MetaRaftStateMachine;
 use crate::util::reply_to_api_result;
 
