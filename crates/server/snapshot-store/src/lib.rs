@@ -22,12 +22,11 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::manual_is_multiple_of)]
 
+mod error;
 mod snapshot_id;
-mod snapshot_store_error;
 mod store;
 mod writer;
 
-mod db_open_snapshot_impl;
 pub mod open_snapshot;
 pub mod received;
 pub mod receiver;
@@ -36,10 +35,10 @@ pub mod write_entry;
 pub mod writer_stat;
 
 #[cfg(test)]
-mod snapshot_store_test;
+mod store_test;
 
+pub use error::SnapshotStoreError;
 pub use snapshot_id::MetaSnapshotId;
-pub use snapshot_store_error::SnapshotStoreError;
 pub use store::SnapshotStore;
 pub use store::SnapshotStoreV003;
 pub use write_entry::WriteEntry;
