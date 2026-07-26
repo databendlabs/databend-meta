@@ -22,6 +22,8 @@ use std::sync::Weak;
 use std::time::Duration;
 
 use databend_base::counter::Counter;
+use databend_meta_metrics::SnapshotBuilding;
+use databend_meta_metrics::raft_metrics;
 use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DB;
@@ -29,8 +31,6 @@ use databend_meta_snapshot_db::Snapshot;
 use databend_meta_snapshot_store::MetaSnapshotId;
 use databend_meta_snapshot_store::SnapshotStore;
 use databend_meta_snapshot_store::WriteEntry;
-use databend_meta_state_machine::StateMachine;
-use databend_meta_state_machine::immutable_compactor::InMemoryCompactor;
 use databend_meta_types::raft_types::NodeId;
 use databend_meta_types::raft_types::SnapshotMeta;
 use futures::FutureExt;
@@ -39,10 +39,8 @@ use log::error;
 use log::info;
 use tokio::sync::oneshot;
 
-use crate::metrics::SnapshotBuilding;
-use crate::metrics::raft_metrics;
-
-mod raft_state_machine_impl;
+use crate::StateMachine;
+use crate::immutable_compactor::InMemoryCompactor;
 
 /// A shared wrapper for use of StateMachine in this crate.
 #[derive(Debug)]
@@ -81,7 +79,7 @@ impl<SP: SpawnApi> MetaRaftStateMachine<SP> {
         }
     }
 
-    pub(crate) fn spawn_in_memory_compactor(&mut self, interval: Duration) {
+    pub fn spawn_in_memory_compactor(&mut self, interval: Duration) {
         let (tx, rx) = oneshot::channel();
 
         self.in_memory_compactor_cancel = Some(Arc::new(tx));

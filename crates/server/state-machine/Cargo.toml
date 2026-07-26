@@ -9,9 +9,14 @@ edition = { workspace = true }
 
 [dependencies]
 async-trait = { workspace = true }
+databend-base = { workspace = true }
 databend-meta-kvapi = { workspace = true }
 databend-meta-leveled-store = { workspace = true }
+databend-meta-metrics = { workspace = true }
+databend-meta-raft-config = { workspace = true }
+databend-meta-runtime-api = { workspace = true }
 databend-meta-snapshot-db = { workspace = true }
+databend-meta-snapshot-store = { workspace = true }
 databend-meta-types = { workspace = true }
 display-more = { workspace = true }
 fastrace = { workspace = true }
@@ -19,6 +24,7 @@ futures = { workspace = true }
 futures-util = { workspace = true }
 log = { workspace = true }
 map-api = { workspace = true }
+openraft = { workspace = true }
 rotbl = { workspace = true }
 seq-marked = { workspace = true }
 serde_json = { workspace = true }
@@ -29,7 +35,6 @@ tokio = { workspace = true }
 anyhow = { workspace = true }
 databend-meta-leveled-store = { workspace = true, features = ["testing"] }
 maplit = { workspace = true }
-openraft = { workspace = true }
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
 

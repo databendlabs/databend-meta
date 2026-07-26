@@ -33,6 +33,7 @@ use databend_meta_raft_log::RaftLogStore;
 use databend_meta_runtime_api::JoinHandle;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DBStat;
+use databend_meta_state_machine::MetaRaftStateMachine;
 use databend_meta_state_machine::utils::seq_marked_to_seqv;
 use databend_meta_types::AppliedState;
 use databend_meta_types::Cmd;
@@ -128,7 +129,6 @@ use crate::metrics::server_metrics;
 use crate::request_handling::Forwarder;
 use crate::request_handling::Handler;
 use crate::store::RaftStore;
-use crate::store::meta_raft_state_machine::MetaRaftStateMachine;
 use crate::util::reply_to_api_result;
 
 pub type LogStore = RaftLogStore;

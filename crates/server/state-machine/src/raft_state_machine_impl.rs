@@ -14,6 +14,7 @@
 
 use std::io;
 
+use databend_meta_metrics::raft_metrics;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DB;
 use databend_meta_snapshot_db::Snapshot;
@@ -32,8 +33,7 @@ use openraft::RaftSnapshotBuilder;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
 
-use crate::metrics::raft_metrics;
-use crate::store::meta_raft_state_machine::MetaRaftStateMachine;
+use crate::meta_raft_state_machine::MetaRaftStateMachine;
 
 impl<SP: SpawnApi> RaftSnapshotBuilder<TypeConfig> for MetaRaftStateMachine<SP> {
     type SnapshotData = DB;
