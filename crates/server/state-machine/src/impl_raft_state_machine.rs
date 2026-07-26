@@ -33,9 +33,9 @@ use openraft::RaftSnapshotBuilder;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
 
-use crate::meta_raft_state_machine::MetaRaftStateMachine;
+use crate::store::RaftStateMachineStore;
 
-impl<SP: SpawnApi> RaftSnapshotBuilder<TypeConfig> for MetaRaftStateMachine<SP> {
+impl<SP: SpawnApi> RaftSnapshotBuilder<TypeConfig> for RaftStateMachineStore<SP> {
     type SnapshotData = DB;
 
     #[fastrace::trace]
@@ -44,9 +44,9 @@ impl<SP: SpawnApi> RaftSnapshotBuilder<TypeConfig> for MetaRaftStateMachine<SP> 
     }
 }
 
-impl<SP: SpawnApi> RaftStateMachine<TypeConfig> for MetaRaftStateMachine<SP> {
+impl<SP: SpawnApi> RaftStateMachine<TypeConfig> for RaftStateMachineStore<SP> {
     type SnapshotData = DB;
-    type SnapshotBuilder = MetaRaftStateMachine<SP>;
+    type SnapshotBuilder = RaftStateMachineStore<SP>;
 
     async fn applied_state(&mut self) -> Result<(Option<LogId>, StoredMembership), io::Error> {
         let sm = self.get_inner();
