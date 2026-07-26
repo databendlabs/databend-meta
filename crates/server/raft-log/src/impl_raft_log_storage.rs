@@ -17,9 +17,6 @@ use std::io;
 use std::ops::Bound;
 use std::ops::RangeBounds;
 
-use databend_meta_raft_log::Callback;
-use databend_meta_raft_log::codec_wrapper::Cw;
-use databend_meta_raft_log::io_desc::IODesc;
 use databend_meta_types::raft_types::Entry;
 use databend_meta_types::raft_types::IOFlushed;
 use databend_meta_types::raft_types::LogId;
@@ -42,7 +39,10 @@ use openraft::storage::RaftLogStorage;
 use raft_log::api::raft_log_writer::RaftLogWriter;
 use tokio::sync::oneshot;
 
-use crate::store::meta_raft_log::MetaRaftLog;
+use crate::Callback;
+use crate::codec_wrapper::Cw;
+use crate::io_desc::IODesc;
+use crate::meta_raft_log::MetaRaftLog;
 
 impl RaftLogReader<TypeConfig> for MetaRaftLog {
     #[fastrace::trace]

@@ -29,7 +29,6 @@ databend-meta-state-machine = { workspace = true }
 databend-meta-store-compat = { workspace = true }
 databend-meta-types = { workspace = true }
 databend-meta-version = { workspace = true }
-deepsize = { workspace = true }
 derive_more = { workspace = true }
 display-more = { workspace = true }
 fastrace = { workspace = true }

@@ -15,11 +15,10 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-use databend_meta_raft_log::RaftLog;
 use databend_meta_types::raft_types::NodeId;
 use tokio::sync::RwLock;
 
-mod impl_raft_log_storage;
+use crate::RaftLog;
 
 /// A shared wrapper for use of RaftLog in this crate.
 #[derive(Debug, Clone)]
