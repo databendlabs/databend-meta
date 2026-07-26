@@ -12,7 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::io;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use databend_meta_snapshot_db::DB;
+use log::info;
 use openraft::SnapshotId;
+use rotbl::storage::impls::fs::FsStorage;
+use rotbl::v001::Rotbl;
 
 /// A trait for opening a snapshot.
 pub trait OpenSnapshot {
@@ -25,4 +33,25 @@ pub trait OpenSnapshot {
     ) -> Result<Self, std::io::Error>
     where
         Self: Sized;
+}
+
+impl OpenSnapshot for DB {
+    fn open_snapshot(
+        storage_path: impl ToString,
+        rel_path: impl ToString,
+        snapshot_id: SnapshotId,
+        config: rotbl::v001::Config,
+    ) -> Result<Self, io::Error> {
+        let storage_path = storage_path.to_string();
+        let rel_path = rel_path.to_string();
+
+        let storage = FsStorage::new(PathBuf::from(&storage_path));
+
+        let r = Rotbl::open(storage, config, &rel_path.to_string())?;
+
+        info!("Opened snapshot at {storage_path}/{rel_path}");
+
+        let db = Self::new(storage_path, rel_path, snapshot_id, Arc::new(r))?;
+        Ok(db)
+    }
 }
