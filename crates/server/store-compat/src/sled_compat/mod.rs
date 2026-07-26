@@ -24,12 +24,14 @@ pub mod adapter;
 pub mod key_spaces;
 pub mod log_meta;
 pub mod raft_state_kv;
+pub mod sled_header;
 pub mod state_machine_meta;
 
 pub use log_meta::LogMetaKey;
 pub use log_meta::LogMetaValue;
 pub use raft_state_kv::RaftStateKey;
 pub use raft_state_kv::RaftStateValue;
+pub use sled_header::SledHeader;
 pub use state_machine_meta::StateMachineMetaKey;
 pub use state_machine_meta::StateMachineMetaValue;
 

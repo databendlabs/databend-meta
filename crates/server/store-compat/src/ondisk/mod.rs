@@ -35,6 +35,7 @@ use log::info;
 use raft_log::codeq::error_context_ext::ErrorContextExt;
 
 use crate::header::Header;
+use crate::sled_compat::SledHeader;
 use crate::sled_compat::key_spaces::DataHeader;
 
 /// The sled tree name to store the data versions.
@@ -163,7 +164,7 @@ impl OnDisk {
         })?;
         info!("Found and loaded header from sled: {:?}", header);
 
-        if let Some(header) = header {
+        if let Some(SledHeader(header)) = header {
             Self::write_header_to_fs(config, &header)?;
 
             ks.remove_no_return(&Header::KEY.to_string(), true)
