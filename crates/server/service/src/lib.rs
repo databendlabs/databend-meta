@@ -24,9 +24,17 @@
     clippy::useless_vec
 )]
 
+// Re-exported for downstream crates, which reach the store through `databend_meta::`.
+// `raft_log` is not available as an alias: it names the external WAL crate.
+pub extern crate databend_meta_leveled_store as leveled_store;
+pub extern crate databend_meta_raft_config as raft_config;
+pub extern crate databend_meta_raft_log as log_store;
 pub extern crate databend_meta_runtime_api as runtime_api;
 pub extern crate databend_meta_sled_store as sled_store;
-pub extern crate databend_meta_store_compat as raft_store;
+pub extern crate databend_meta_snapshot_db as snapshot_db;
+pub extern crate databend_meta_snapshot_store as snapshot_store;
+pub extern crate databend_meta_state_machine as state_machine;
+pub extern crate databend_meta_store_compat as store_compat;
 pub extern crate databend_meta_types as types;
 pub extern crate databend_meta_version as version;
 pub extern crate openraft;
