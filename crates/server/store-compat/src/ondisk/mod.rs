@@ -20,12 +20,10 @@ pub(crate) mod upgrade_to_v004;
 
 use std::fmt;
 use std::fmt::Debug;
-use std::fs;
 use std::io;
-use std::path::Path;
-use std::path::PathBuf;
 
 use databend_meta_raft_config::config::RaftConfig;
+use databend_meta_raft_config::data_dir;
 use databend_meta_raft_config::data_version::DATA_VERSION;
 use databend_meta_raft_config::data_version::DataVersion;
 use databend_meta_raft_config::header::Header;
@@ -66,37 +64,16 @@ impl fmt::Display for OnDisk {
 }
 
 impl OnDisk {
-    pub fn ensure_dirs(raft_dir: &str) -> Result<(), io::Error> {
-        let raft_dir = Path::new(raft_dir);
-        let version_dir = raft_dir.join("df_meta").join(format!("{}", DATA_VERSION));
-
-        let log_dir = version_dir.join("log");
-        if !log_dir.exists() {
-            fs::create_dir_all(&log_dir)
-                .context(|| format!("creating dir {}", log_dir.as_path().display()))?;
-            info!("Created log dir: {}", log_dir.as_path().display());
-        }
-
-        let snapshot_dir = version_dir.join("snapshot");
-        if !snapshot_dir.exists() {
-            fs::create_dir_all(&snapshot_dir)
-                .context(|| format!("creating dir {}", snapshot_dir.as_path().display()))?;
-            info!("Created snapshot dir: {}", snapshot_dir.as_path().display());
-        }
-
-        Ok(())
-    }
-
     /// Initialize data version for local store, returns the loaded version.
     #[fastrace::trace]
     pub async fn open(config: &RaftConfig) -> Result<OnDisk, io::Error> {
         info!(config :? =(config); "open and initialize data-version");
 
-        Self::ensure_dirs(&config.raft_dir)?;
+        data_dir::ensure_dirs(&config.raft_dir)?;
 
         Self::upgrade_header(config).await?;
 
-        let header = Self::load_header_from_fs(config)?;
+        let header = data_dir::load_header(config)?;
         info!("Loaded header from fs: {:?}", header);
 
         if let Some(v) = header {
@@ -111,34 +88,13 @@ impl OnDisk {
             cleaning: false,
         };
 
-        Self::write_header_to_fs(config, &header)?;
+        data_dir::write_header(config, &header)?;
 
         Ok(OnDisk::new(header, config))
     }
 
     pub fn new(header: Header, config: &RaftConfig) -> Self {
-        let min_compatible = DATA_VERSION.min_compatible_data_version();
-
-        if header.version < min_compatible {
-            let max_compatible_working_version = header.version.max_compatible_working_version();
-            let version_info = min_compatible.version_info();
-
-            eprintln!("Working data version is: {}", DATA_VERSION);
-            eprintln!("On-disk data version is too old: {}", header.version);
-            eprintln!(
-                "The latest compatible version is {}",
-                max_compatible_working_version
-            );
-            eprintln!(
-                "Download the latest compatible version: {}",
-                version_info.download_url()
-            );
-
-            panic!(
-                "On-disk data version {} is too old, the latest compatible version is {}.",
-                header.version, max_compatible_working_version
-            );
-        }
+        data_dir::assert_compatible(&header);
 
         Self {
             header,
@@ -148,7 +104,7 @@ impl OnDisk {
     }
 
     async fn upgrade_header(config: &RaftConfig) -> Result<(), io::Error> {
-        let header_path = Self::header_path(config);
+        let header_path = data_dir::header_path(config);
         if header_path.exists() {
             info!("Header file exists, no need to upgrade");
             return Ok(());
@@ -165,7 +121,7 @@ impl OnDisk {
         info!("Found and loaded header from sled: {:?}", header);
 
         if let Some(SledHeader(header)) = header {
-            Self::write_header_to_fs(config, &header)?;
+            data_dir::write_header(config, &header)?;
 
             ks.remove_no_return(&Header::KEY.to_string(), true)
                 .await
@@ -178,56 +134,6 @@ impl OnDisk {
         }
 
         Ok(())
-    }
-
-    fn header_path(config: &RaftConfig) -> PathBuf {
-        let raft_dir = Path::new(&config.raft_dir);
-        raft_dir.join("df_meta").join("VERSION")
-    }
-
-    pub(crate) fn write_header_to_fs(
-        config: &RaftConfig,
-        header: &Header,
-    ) -> Result<(), io::Error> {
-        let header_path = Self::header_path(config);
-        let buf = serde_json::to_vec(header).map_err(|e| {
-            io::Error::new(io::ErrorKind::InvalidData, e)
-                .context(|| format!("serializing header at {}", header_path.as_path().display(),))
-        })?;
-
-        fs::write(&header_path, &buf).context(|| {
-            format!(
-                "writing version file at {}: {}",
-                header_path.as_path().display(),
-                String::from_utf8_lossy(&buf)
-            )
-        })?;
-
-        info!(
-            "Wrote header {:?}; at {}",
-            header,
-            header_path.as_path().display()
-        );
-
-        Ok(())
-    }
-
-    pub(crate) fn load_header_from_fs(config: &RaftConfig) -> Result<Option<Header>, io::Error> {
-        let header_path = Self::header_path(config);
-
-        if !header_path.exists() {
-            return Ok(None);
-        }
-
-        let state = fs::read(&header_path)
-            .context(|| format!("reading version file {}", header_path.as_path().display(),))?;
-
-        let state = serde_json::from_slice::<Header>(&state).map_err(|e| {
-            io::Error::new(io::ErrorKind::InvalidData, e)
-                .context(|| format!("parsing version file {}", header_path.as_path().display(),))
-        })?;
-
-        Ok(Some(state))
     }
 
     /// Enable or disable logging crucial steps to stderr, when upgrading.
@@ -358,8 +264,7 @@ impl OnDisk {
     }
 
     pub fn write_header(&self, header: &Header) -> Result<(), io::Error> {
-        Self::write_header_to_fs(&self.config, header)?;
-        Ok(())
+        data_dir::write_header(&self.config, header)
     }
 
     fn progress(&self, s: impl fmt::Display) {
