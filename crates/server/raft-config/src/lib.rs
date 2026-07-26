@@ -19,6 +19,7 @@
 //! how that data is read or written.
 
 pub mod config;
+pub mod data_dir;
 pub mod data_version;
 pub mod header;
 pub mod meta_startup_error;

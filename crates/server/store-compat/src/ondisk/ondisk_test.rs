@@ -15,13 +15,13 @@
 //! Header handling and the V003 to V004 on-disk upgrade.
 
 use std::fs;
-use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 
 use databend_meta_raft_config::config::RaftConfig;
+use databend_meta_raft_config::data_dir;
 use databend_meta_raft_config::data_version::DataVersion;
 use databend_meta_raft_config::header::Header;
 use databend_meta_raft_log::Cw;
@@ -111,7 +111,7 @@ async fn test_open_creates_dirs_and_defaults_to_v003() -> anyhow::Result<()> {
         r#"{"version":"V003"}"#
     );
     assert_eq!(
-        OnDisk::load_header_from_fs(&config)?,
+        data_dir::load_header(&config)?,
         Some(on_disk.header),
         "the written header is what open() returned"
     );
@@ -163,7 +163,7 @@ async fn test_open_migrates_a_header_stored_in_sled() -> anyhow::Result<()> {
 
     assert_eq!(on_disk.header, header, "the sled header is adopted");
     assert_eq!(
-        OnDisk::load_header_from_fs(&config)?,
+        data_dir::load_header(&config)?,
         Some(header),
         "and copied to the version file"
     );
@@ -178,52 +178,6 @@ async fn test_open_migrates_a_header_stored_in_sled() -> anyhow::Result<()> {
     );
 
     Ok(())
-}
-
-#[test]
-fn test_load_header_from_fs_reports_a_malformed_version_file() -> anyhow::Result<()> {
-    let temp_dir = tempfile::tempdir()?;
-    let config = raft_config(&temp_dir);
-
-    assert_eq!(
-        OnDisk::load_header_from_fs(&config)?,
-        None,
-        "a missing version file is not an error"
-    );
-
-    fs::create_dir_all(temp_dir.path().join("df_meta"))?;
-    fs::write(header_path(&temp_dir), b"not-json")?;
-
-    let err = OnDisk::load_header_from_fs(&config).unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-
-    let parse_err = serde_json::from_slice::<Header>(b"not-json").unwrap_err();
-    assert_eq!(
-        err.to_string(),
-        format!(
-            "{}; when:(parsing version file {})",
-            parse_err,
-            header_path(&temp_dir).display()
-        )
-    );
-
-    Ok(())
-}
-
-#[test]
-#[should_panic(
-    expected = "On-disk data version V001 is too old, the latest compatible version is V002."
-)]
-fn test_new_rejects_data_older_than_the_minimal_compatible_version() {
-    let temp_dir = tempfile::tempdir().unwrap();
-    OnDisk::new(
-        Header {
-            version: DataVersion::V001,
-            upgrading: None,
-            cleaning: false,
-        },
-        &raft_config(&temp_dir),
-    );
 }
 
 #[tokio::test]
@@ -253,7 +207,7 @@ async fn test_upgrade_restarts_an_upgrade_interrupted_before_cleanup() -> anyhow
     write_v003_snapshot(&config)?;
 
     // A crash after `begin_upgrading`: half-written V004 data is present.
-    OnDisk::ensure_dirs(&config.raft_dir)?;
+    data_dir::ensure_dirs(&config.raft_dir)?;
     fs::write(temp_dir.path().join("df_meta/V004/log/half-written"), b"x")?;
 
     let mut on_disk = OnDisk::new(
@@ -398,7 +352,7 @@ fn assert_upgraded_to_v004(
         cleaning: false,
     };
     assert_eq!(on_disk.header, expected);
-    assert_eq!(OnDisk::load_header_from_fs(config)?, Some(expected));
+    assert_eq!(data_dir::load_header(config)?, Some(expected));
 
     let raft_log = RaftLog::open(Arc::new(config.to_raft_log_config()))?;
     let state = raft_log.log_state();

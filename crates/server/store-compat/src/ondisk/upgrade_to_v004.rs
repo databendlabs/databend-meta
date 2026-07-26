@@ -18,6 +18,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
+use databend_meta_raft_config::data_dir;
 use databend_meta_raft_config::data_version::DataVersion;
 use databend_meta_raft_log::RaftLog;
 use databend_meta_runtime_api::SpawnApi;
@@ -46,7 +47,7 @@ impl OnDisk {
     #[fastrace::trace]
     pub(crate) async fn upgrade_v003_to_v004<SP: SpawnApi>(&mut self) -> Result<(), io::Error> {
         // The previous cleaning step may remove the dir
-        Self::ensure_dirs(&self.config.raft_dir)?;
+        data_dir::ensure_dirs(&self.config.raft_dir)?;
 
         self.begin_upgrading(DataVersion::V003).await?;
 
