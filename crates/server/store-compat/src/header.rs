@@ -16,9 +16,6 @@ use std::fmt;
 
 use databend_meta_raft_config::data_version::DATA_VERSION;
 use databend_meta_raft_config::data_version::DataVersion;
-use databend_meta_sled_store::IVec;
-use databend_meta_sled_store::SledBytesError;
-use databend_meta_sled_store::SledSerde;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
@@ -57,21 +54,8 @@ impl fmt::Display for Header {
     }
 }
 
-impl SledSerde for Header {
-    fn ser(&self) -> Result<IVec, SledBytesError> {
-        let x = serde_json::to_vec(self)?;
-        Ok(x.into())
-    }
-
-    fn de<T: AsRef<[u8]>>(v: T) -> Result<Self, SledBytesError>
-    where Self: Sized {
-        let x = serde_json::from_slice(v.as_ref())?;
-        Ok(x)
-    }
-}
-
 impl Header {
-    /// The key this header is stored under, in the `DataHeader` key space.
+    /// The key this header is stored under, in the legacy `DataHeader` key space.
     pub const KEY: &'static str = "header";
 
     pub fn this_version() -> Self {

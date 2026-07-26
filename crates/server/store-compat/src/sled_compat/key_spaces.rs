@@ -52,6 +52,7 @@ use crate::sled_compat::RaftStateKey;
 use crate::sled_compat::RaftStateValue;
 use crate::sled_compat::StateMachineMetaKey;
 use crate::sled_compat::StateMachineMetaValue;
+use crate::sled_compat::sled_header::SledHeader;
 
 /// Raft log entries storage key space (V003 only).
 ///
@@ -172,13 +173,13 @@ impl SledKeySpace for Sequences {
 /// Stores version information and metadata about the storage format
 /// for compatibility checking and data migration purposes.
 /// - Key: [`String`] - Header type identifier
-/// - Value: [`Header`] - Storage format metadata
+/// - Value: [`SledHeader`] - Storage format metadata
 pub struct DataHeader {}
 impl SledKeySpace for DataHeader {
     const PREFIX: u8 = 11;
     const NAME: &'static str = "data-header";
     type K = String;
-    type V = Header;
+    type V = SledHeader;
 }
 
 /// Convert SledBytesError to io::Error.
@@ -410,7 +411,7 @@ impl RaftStoreEntry {
     pub fn new_header(header: Header) -> Self {
         RaftStoreEntry::DataHeader {
             key: Header::KEY.to_string(),
-            value: header,
+            value: SledHeader(header),
         }
     }
 }
