@@ -27,9 +27,17 @@
 
 pub mod applier;
 pub mod immutable_compactor;
+mod kv_api;
 pub mod state_machine;
 pub mod state_machine_api_ext;
 pub(crate) mod testing;
 pub mod utils;
+
+#[cfg(test)]
+mod acquire_compactor_test;
+#[cfg(test)]
+mod compact_with_db_test;
+#[cfg(test)]
+pub(crate) mod state_machine_test;
 
 pub use state_machine::StateMachine;
