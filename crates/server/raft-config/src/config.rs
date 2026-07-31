@@ -26,6 +26,7 @@ use raft_log::chunked_wal::Config as WalConfig;
 
 use crate::MetaStartupError;
 use crate::data_version::DATA_VERSION;
+use crate::secret::Secret;
 
 // Size unit constants
 const KB: u64 = 1024;
@@ -174,6 +175,29 @@ pub struct RaftConfig {
     /// Used for both encoding and decoding limits on raft gRPC channels.
     /// Default: 32MB (33,554,432 bytes).
     pub raft_grpc_max_message_size: Option<usize>,
+
+    /// The secret this node attaches to the raft RPCs it sends.
+    ///
+    /// `None` sends nothing, which is how a not yet configured node behaves.
+    /// Peers that are not strict still accept such a node, so a cluster can
+    /// adopt the secret without downtime.
+    pub raft_secret: Option<Secret>,
+
+    /// The secrets this node accepts on the raft RPCs it receives.
+    ///
+    /// Accepting more than one is what makes rotation possible without
+    /// downtime: add the new secret here on every node first, then move
+    /// `raft_secret` over node by node, then drop the old one from here.
+    pub raft_accepted_secrets: Vec<Secret>,
+
+    /// Whether to reject a received raft RPC carrying no or an unaccepted secret.
+    ///
+    /// `None` means unspecified, which is distinct from an explicit `false`:
+    /// the layer that merges config sources has to tell the two apart.
+    /// Must stay off until every node of the cluster sends a secret: turning
+    /// it on earlier makes the nodes declare each other unreachable.
+    /// Default: false.
+    pub raft_secret_strict: Option<bool>,
 }
 
 pub fn get_default_raft_advertise_host() -> String {
@@ -220,6 +244,9 @@ impl Default for RaftConfig {
             cluster_name: "foo_cluster".to_string(),
             wait_leader_timeout: 70000,
             raft_grpc_max_message_size: None,
+            raft_secret: None,
+            raft_accepted_secrets: vec![],
+            raft_secret_strict: None,
         }
     }
 }
@@ -238,6 +265,11 @@ impl RaftConfig {
     /// Used to check payload size before sending to avoid hitting the hard limit.
     pub fn raft_grpc_advisory_message_size(&self) -> usize {
         self.raft_grpc_max_message_size() * 9 / 10
+    }
+
+    /// Returns whether to reject a raft RPC carrying no or an unaccepted secret.
+    pub fn raft_secret_strict(&self) -> bool {
+        self.raft_secret_strict.unwrap_or(false)
     }
 
     pub fn to_rotbl_config(&self) -> rotbl::v001::Config {
@@ -321,13 +353,43 @@ impl RaftConfig {
     ///
     /// # Errors
     /// Returns `MetaStartupError::InvalidConfig` if:
+    /// - The sending raft secret is empty
+    /// - An accepted raft secret is empty
+    /// - `raft_secret_strict` is enabled with no accepted secret
     /// - Neither `single` nor `join` is specified
     /// - Both `single` and `join` are specified
     /// - Node tries to join itself (self-reference in join addresses)
     pub fn check(&self) -> Result<(), MetaStartupError> {
-        // If just leaving, does not need to check other config
+        if self
+            .raft_secret
+            .as_ref()
+            .is_some_and(|secret| secret.expose().is_empty())
+        {
+            return Err(MetaStartupError::InvalidConfig(String::from(
+                "`raft_secret` must not be empty",
+            )));
+        }
+
+        // If just leaving, does not need to check server or cluster config
         if !self.leave_via.is_empty() {
             return Ok(());
+        }
+
+        if self
+            .raft_accepted_secrets
+            .iter()
+            .any(|secret| secret.expose().is_empty())
+        {
+            return Err(MetaStartupError::InvalidConfig(String::from(
+                "`raft_accepted_secrets` must not contain an empty secret",
+            )));
+        }
+
+        if self.raft_secret_strict() && self.raft_accepted_secrets.is_empty() {
+            return Err(MetaStartupError::InvalidConfig(String::from(
+                "`raft_secret_strict` is enabled but `raft_accepted_secrets` is empty: \
+                 the node would reject every incoming raft RPC",
+            )));
         }
 
         // There two cases:
