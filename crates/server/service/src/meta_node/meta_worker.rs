@@ -60,6 +60,7 @@ impl<RT: RuntimeApi> MetaWorker<RT> {
                     Ok(x) => x,
                     Err(e) => {
                         error!("Failed to start MetaNode: {}", e);
+                        ret_tx.send(Err(e)).ok();
                         return;
                     }
                 };
@@ -74,7 +75,7 @@ impl<RT: RuntimeApi> MetaWorker<RT> {
                 let handle = MetaHandle::<RT>::new(id, handle_tx, rt_for_handle);
 
                 ret_tx
-                    .send(handle)
+                    .send(Ok(handle))
                     .inspect_err(|_meta_handle| {
                         error!("MetaWorker::work stopped before sending handle")
                     })
@@ -94,7 +95,7 @@ impl<RT: RuntimeApi> MetaWorker<RT> {
                 "MetaWorker::work stopped before sending handle: {}",
                 e
             ))
-        })?;
+        })??;
 
         Ok(meta_handle)
     }
