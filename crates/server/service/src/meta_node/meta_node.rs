@@ -92,6 +92,7 @@ use tokio::sync::watch;
 use tokio::time::Instant;
 use tokio::time::sleep;
 use tonic::Status;
+use tonic::transport::server::TcpIncoming;
 use watcher::EventFilter;
 use watcher::dispatch::Command;
 use watcher::dispatch::Dispatcher;
@@ -241,15 +242,27 @@ impl<SP: SpawnApi> MetaNode<SP> {
         let socket_addr = ip_port.parse::<std::net::SocketAddr>()?;
         let node_id = meta_node.raft_store.id;
 
+        // Bind before spawning: if the port is taken, startup must fail loudly.
+        // `serve_with_shutdown()` binds inside the spawned task, where the error is
+        // only observed when the task is joined at shutdown. Until then the node
+        // reports a successful start while having no raft service at all.
+        let incoming = TcpIncoming::bind(socket_addr)
+            .map_err(|e| {
+                MetaNetworkError::BadAddressFormat(
+                    AnyError::new(&e)
+                        .add_context(|| format!("bind raft service to {}", socket_addr)),
+                )
+            })?
+            .with_nodelay(Some(true));
+
         let srv = tonic::transport::Server::builder()
-            .tcp_nodelay(true)
             // .concurrency_limit_per_connection()
             // .timeout(Duration::from_secs(60))
             .add_service(raft_server);
 
         let h = SP::spawn(
             async move {
-                srv.serve_with_shutdown(socket_addr, async move {
+                srv.serve_with_incoming_shutdown(incoming, async move {
                     let _ = running_rx.changed().await;
                     info!(
                         "running_rx for Raft server received, shutting down: id={} {} ",
@@ -740,12 +753,12 @@ impl<SP: SpawnApi> MetaNode<SP> {
                     Err(api_err) => {
                         warn!("{} while joining cluster via {}", api_err, addr);
                         let can_retry = api_err.is_retryable();
+                        errors.push(api_err);
 
                         if can_retry {
                             sleep(Duration::from_millis(1_000)).await;
                             continue;
                         } else {
-                            errors.push(api_err);
                             break;
                         }
                     }

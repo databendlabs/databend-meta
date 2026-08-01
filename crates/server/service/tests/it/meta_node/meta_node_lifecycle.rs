@@ -67,6 +67,32 @@ async fn test_meta_node_boot() -> anyhow::Result<()> {
 
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
 #[fastrace::trace]
+async fn test_meta_node_boot_raft_port_in_use() -> anyhow::Result<()> {
+    // A raft port that can not be bound must fail startup. Otherwise the node
+    // reports a successful boot while serving no raft traffic at all, and peers
+    // trying to join it only see connection errors.
+
+    let tc = MetaSrvTestContext::<TokioRuntime>::new(0);
+    let listen = tc.config.raft_config.raft_api_listen_host_endpoint();
+
+    let _occupied = std::net::TcpListener::bind(listen.to_string())?;
+
+    let res = MetaNode::<TokioRuntime>::boot(&tc.config).await;
+    let Err(err) = res else {
+        unreachable!("boot must fail when the raft port is occupied");
+    };
+
+    assert!(
+        err.to_string()
+            .contains(&format!("bind raft service to {}", listen)),
+        "want a raft bind failure, got: {}",
+        err
+    );
+    Ok(())
+}
+
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
 async fn test_meta_node_graceful_shutdown() -> anyhow::Result<()> {
     // - Start a leader then shutdown.
 
