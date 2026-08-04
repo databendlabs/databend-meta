@@ -48,6 +48,7 @@ pub mod meta_node;
 pub mod meta_service;
 pub(crate) mod network;
 pub(crate) mod raft_client;
+pub(crate) mod raft_secret;
 pub mod raft_version;
 pub(crate) mod request_handling;
 pub mod store;

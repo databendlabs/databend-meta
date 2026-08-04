@@ -18,9 +18,11 @@ use databend_meta_types::Endpoint;
 use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
 use databend_meta_types::raft_types::NodeId;
 use log::debug;
+use tonic::service::interceptor::InterceptedService;
 use tonic::transport::channel::Channel;
 
 use crate::metrics::raft_metrics;
+use crate::raft_secret::RaftSecretInterceptor;
 
 /// A metrics reporter of active raft peers.
 #[derive(Debug)]
@@ -36,7 +38,10 @@ impl counter::Counter for PeerCounter {
 }
 
 /// RaftClient is a grpc client bound with a metrics reporter..
-pub type RaftClient = counter::Counted<PeerCounter, RaftServiceClient<Channel>>;
+pub type RaftClient = counter::Counted<
+    PeerCounter,
+    RaftServiceClient<InterceptedService<Channel, RaftSecretInterceptor>>,
+>;
 
 /// Defines the API of the client to a raft node.
 pub trait RaftClientApi {
@@ -53,7 +58,7 @@ impl RaftClientApi for RaftClient {
         );
 
         let max_msg_size = config.raft_grpc_max_message_size();
-        let cli = RaftServiceClient::new(channel)
+        let cli = RaftServiceClient::with_interceptor(channel, RaftSecretInterceptor::new(config))
             .max_decoding_message_size(max_msg_size)
             .max_encoding_message_size(max_msg_size);
         counter::Counted::new(cli, PeerCounter {
