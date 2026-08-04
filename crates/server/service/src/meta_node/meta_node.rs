@@ -92,6 +92,7 @@ use tokio::sync::watch;
 use tokio::time::Instant;
 use tokio::time::sleep;
 use tonic::Status;
+use tonic::service::interceptor::InterceptedService;
 use tonic::transport::server::TcpIncoming;
 use watcher::EventFilter;
 use watcher::dispatch::Command;
@@ -127,6 +128,7 @@ use crate::meta_service::watcher::DispatcherHandle;
 use crate::meta_service::watcher::WatchTypes;
 use crate::metrics::network_metrics;
 use crate::metrics::server_metrics;
+use crate::raft_secret::RaftSecretChecker;
 use crate::request_handling::Forwarder;
 use crate::request_handling::Handler;
 use crate::store::RaftStore;
@@ -219,9 +221,12 @@ impl<SP: SpawnApi> MetaNode<SP> {
             max_msg_size / (1024 * 1024)
         );
 
-        let raft_server = RaftServiceServer::new(raft_service_impl)
-            .max_decoding_message_size(max_msg_size)
-            .max_encoding_message_size(max_msg_size);
+        let raft_server = InterceptedService::new(
+            RaftServiceServer::new(raft_service_impl)
+                .max_decoding_message_size(max_msg_size)
+                .max_encoding_message_size(max_msg_size),
+            RaftSecretChecker::new(&meta_node.raft_store.config),
+        );
 
         let ipv4_addr = host.parse::<Ipv4Addr>();
         let ip_port = match ipv4_addr {
