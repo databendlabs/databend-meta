@@ -73,6 +73,7 @@ impl GrpcSpec {
             add(&mut srv, F::OperationAsIs, ver(1, 2, 163));
             add(&mut srv, F::KvApi, ver(1, 2, 163));
             add(&mut srv, F::RaftReplyError, ver(1, 2, 163));
+            add(&mut srv, F::ServerSideForward, ver(1, 2, 163));
             add(&mut srv, F::KvApiGetKv, ver(1, 2, 163));
             add(&mut srv, F::KvApiMGetKv, ver(1, 2, 163));
             add(&mut srv, F::KvApiListKv, ver(1, 2, 163));
@@ -82,6 +83,12 @@ impl GrpcSpec {
             add(&mut cli, F::OperationAsIs, ver(1, 2, 163));
             add(&mut cli, F::KvApi, ver(1, 2, 163));
             add(&mut cli, F::RaftReplyError, ver(1, 2, 163));
+            // 👥 client: sends requests to whichever endpoint it picked, and
+            // relies on a non-leader forwarding them. Still required: `kv_list`
+            // and `kv_get_many` reach the leader by following a redirect, but
+            // `mget_kv`/`list_kv` still call `kv_read_v1` and `transaction()`
+            // still calls the forwarding `transaction` RPC.
+            add(&mut cli, F::ServerSideForward, ver(1, 2, 163));
             add(&mut cli, F::KvApiGetKv, ver(1, 2, 163));
             add(&mut cli, F::KvApiMGetKv, ver(1, 2, 163));
             add(&mut cli, F::KvApiListKv, ver(1, 2, 163));
