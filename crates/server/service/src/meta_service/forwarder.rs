@@ -16,16 +16,13 @@
 
 use databend_meta_client::MetaGrpcReadReq;
 use databend_meta_runtime_api::SpawnApi;
-use databend_meta_types::ConnectionError;
 use databend_meta_types::Endpoint;
 use databend_meta_types::MetaAPIError;
 use databend_meta_types::MetaNetworkError;
 use databend_meta_types::protobuf::StreamItem;
-use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
 use databend_meta_types::raft_types::NodeId;
 use log::debug;
 use tonic::codegen::BoxStream;
-use tonic::transport::Channel;
 
 use crate::message::ForwardRequest;
 use crate::message::ForwardRequestBody;
@@ -33,6 +30,8 @@ use crate::message::ForwardResponse;
 use crate::meta_node::meta_node::MetaRaft;
 use crate::meta_service::MetaNode;
 use crate::meta_service::forward_rpc_error::ForwardRPCError;
+use crate::raft_secret::SecretRaftServiceClient;
+use crate::raft_secret::connect_raft_service;
 use crate::request_handling::Forwarder;
 use crate::store::RaftStore;
 use crate::util::reply_to_api_result;
@@ -55,7 +54,7 @@ impl<'a, SP: SpawnApi> MetaForwarder<'a, SP> {
     async fn new_raft_client(
         &self,
         target: &NodeId,
-    ) -> Result<(Endpoint, RaftServiceClient<Channel>), MetaNetworkError> {
+    ) -> Result<(Endpoint, SecretRaftServiceClient), MetaNetworkError> {
         debug!("new RaftServiceClient to: {}", target);
 
         let endpoint = self
@@ -69,12 +68,7 @@ impl<'a, SP: SpawnApi> MetaForwarder<'a, SP> {
                 ))
             })?;
 
-        let client = RaftServiceClient::connect(format!("http://{}", endpoint))
-            .await
-            .map_err(|e| {
-                let conn_err = ConnectionError::new(e, format!("address: {}", endpoint));
-                MetaNetworkError::ConnectionError(conn_err)
-            })?;
+        let client = connect_raft_service(&endpoint, &self.sto.config).await?;
 
         let max_msg_size = self.sto.config.raft_grpc_max_message_size();
         let client = client

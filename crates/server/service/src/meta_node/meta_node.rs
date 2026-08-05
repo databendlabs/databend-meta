@@ -129,6 +129,8 @@ use crate::meta_service::watcher::WatchTypes;
 use crate::metrics::network_metrics;
 use crate::metrics::server_metrics;
 use crate::raft_secret::RaftSecretChecker;
+use crate::raft_secret::RaftSecretInterceptor;
+use crate::raft_secret::connect_raft_service;
 use crate::request_handling::Forwarder;
 use crate::request_handling::Handler;
 use crate::store::RaftStore;
@@ -655,7 +657,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
         for addr in addrs {
             info!("leave cluster via {}...", addr);
 
-            let conn_res = RaftServiceClient::connect(format!("http://{}", addr)).await;
+            let conn_res = connect_raft_service(addr, conf).await;
             let mut raft_client = match conn_res {
                 Ok(c) => c,
                 Err(e) => {
@@ -803,7 +805,10 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 return Err(MetaAPIError::NetworkError(net_err));
             }
         };
-        let mut raft_client = RaftServiceClient::new(chan);
+        let mut raft_client = RaftServiceClient::with_interceptor(
+            chan,
+            RaftSecretInterceptor::new(&config.raft_config),
+        );
 
         let join_req = JoinRequest::new(
             config.raft_config.id,

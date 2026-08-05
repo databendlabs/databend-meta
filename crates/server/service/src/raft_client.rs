@@ -18,11 +18,11 @@ use databend_meta_types::Endpoint;
 use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
 use databend_meta_types::raft_types::NodeId;
 use log::debug;
-use tonic::service::interceptor::InterceptedService;
 use tonic::transport::channel::Channel;
 
 use crate::metrics::raft_metrics;
 use crate::raft_secret::RaftSecretInterceptor;
+use crate::raft_secret::SecretRaftServiceClient;
 
 /// A metrics reporter of active raft peers.
 #[derive(Debug)]
@@ -38,10 +38,7 @@ impl counter::Counter for PeerCounter {
 }
 
 /// RaftClient is a grpc client bound with a metrics reporter..
-pub type RaftClient = counter::Counted<
-    PeerCounter,
-    RaftServiceClient<InterceptedService<Channel, RaftSecretInterceptor>>,
->;
+pub type RaftClient = counter::Counted<PeerCounter, SecretRaftServiceClient>;
 
 /// Defines the API of the client to a raft node.
 pub trait RaftClientApi {

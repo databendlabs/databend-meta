@@ -16,6 +16,7 @@
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::fmt;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -23,6 +24,8 @@ use std::time::Duration;
 use std::time::Instant;
 
 use databend_meta_raft_config::config::RaftConfig;
+use databend_meta_types::ConnectionError;
+use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
 use log::warn;
 use subtle::Choice;
 use subtle::ConstantTimeEq;
@@ -30,6 +33,8 @@ use tonic::Request;
 use tonic::Status;
 use tonic::metadata::AsciiMetadataValue;
 use tonic::service::Interceptor;
+use tonic::service::interceptor::InterceptedService;
+use tonic::transport::Channel;
 
 use crate::metrics::raft_metrics;
 
@@ -76,6 +81,32 @@ impl Interceptor for RaftSecretInterceptor {
 
         Ok(request)
     }
+}
+
+/// A raft client that carries this node's secret on every RPC it sends.
+pub(crate) type SecretRaftServiceClient =
+    RaftServiceClient<InterceptedService<Channel, RaftSecretInterceptor>>;
+
+/// Connect to the raft service at `addr` with a client that sends the secret.
+///
+/// Every outgoing raft RPC has to come from a client built this way, or from
+/// [`RaftClient`](crate::raft_client::RaftClient) for the ones openraft sends.
+/// A client built straight from the generated stub compiles, connects and
+/// works, and sends no secret: the peers that check one refuse it.
+pub(crate) async fn connect_raft_service(
+    addr: impl fmt::Display,
+    config: &RaftConfig,
+) -> Result<SecretRaftServiceClient, ConnectionError> {
+    let channel = Channel::from_shared(format!("http://{}", addr))
+        .map_err(|e| ConnectionError::new(e, format!("address: {}", addr)))?
+        .connect()
+        .await
+        .map_err(|e| ConnectionError::new(e, format!("address: {}", addr)))?;
+
+    Ok(RaftServiceClient::with_interceptor(
+        channel,
+        RaftSecretInterceptor::new(config),
+    ))
 }
 
 /// What a [`RaftSecretChecker`] made of a request, separate from acting on it.
