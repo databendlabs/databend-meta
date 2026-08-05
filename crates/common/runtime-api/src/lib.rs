@@ -187,9 +187,14 @@ pub trait SpawnApi: Clone + Debug + Send + Sync + 'static {
 
     /// Resolve a hostname to IP addresses.
     ///
+    /// On success at least one address is returned, IPv4 ones first: callers
+    /// take the first address, and a node bound to an IPv4 listener must not be
+    /// handed the IPv6 form of the same host.
+    ///
     /// # Implementations
     ///
-    /// * `TokioRuntime` uses `hickory_resolver::TokioResolver`.
+    /// * `TokioRuntime` uses `tokio::net::lookup_host`, i.e. the resolver of the
+    ///   platform it runs on.
     /// * `DatabendRuntime` uses `databend_common_grpc::DNSResolver`.
     fn resolve(hostname: &str) -> BoxFuture<'static, std::io::Result<Vec<IpAddr>>>
     where Self: Sized;

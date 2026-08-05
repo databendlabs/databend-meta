@@ -16,12 +16,9 @@ use std::future::Future;
 use std::io;
 use std::net::IpAddr;
 use std::sync::Arc;
-use std::sync::LazyLock;
 use std::thread::JoinHandle as ThreadJoinHandle;
 use std::time::Duration;
 
-use hickory_resolver::TokioResolver;
-use hickory_resolver::config::LookupIpStrategy;
 use tokio::runtime::Handle;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -38,19 +35,36 @@ use crate::SpawnApi;
 use crate::TlsConfig;
 use crate::TrackingData;
 
-/// Global DNS resolver instance for TokioRuntime.
-static DNS_RESOLVER: LazyLock<io::Result<TokioResolver>> =
-    LazyLock::new(|| match TokioResolver::builder_tokio() {
-        Ok(mut builder) => {
-            // hickory 0.26 changed the default lookup strategy to `Ipv6AndIpv4`
-            // (AAAA before A). Pin the pre-0.26 `Ipv4thenIpv6` order so that
-            // `localhost` resolves to 127.0.0.1 first, matching IPv4-bound
-            // listeners.
-            builder.options_mut().ip_strategy = LookupIpStrategy::Ipv4thenIpv6;
-            builder.build().map_err(io::Error::other)
-        }
-        Err(e) => Err(io::Error::other(e)),
-    });
+/// How long to wait for the platform resolver before giving up on a hostname.
+///
+/// A healthy cold lookup takes single digit milliseconds, and the slowest one
+/// measured while choosing this value took 0.4 seconds, so this is not a
+/// budget. It is there for the other end: the platform resolver runs on the
+/// operating system's own timeout, 30 seconds on macOS, and a node that hits it
+/// while resolving its advertise host would stall that long at startup with
+/// nothing in the log to explain the pause.
+const RESOLVE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Fails `lookup` once it has run for [`RESOLVE_TIMEOUT`].
+///
+/// This hands back control, not the thread: the platform resolver runs on a
+/// blocking thread that cannot be cancelled, so it stays occupied until the
+/// operating system gives up on its own.
+async fn with_resolve_timeout<T>(
+    hostname: &str,
+    lookup: impl Future<Output = io::Result<T>>,
+) -> io::Result<T> {
+    match tokio::time::timeout(RESOLVE_TIMEOUT, lookup).await {
+        Ok(resolved) => resolved,
+        Err(_elapsed) => Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            format!(
+                "resolving {} took longer than {:?}",
+                hostname, RESOLVE_TIMEOUT
+            ),
+        )),
+    }
+}
 
 /// No-op metrics implementation for lightweight/testing scenarios.
 #[derive(Clone, Copy, Debug)]
@@ -253,14 +267,37 @@ impl SpawnApi for TokioRuntime {
     fn resolve(hostname: &str) -> BoxFuture<'static, io::Result<Vec<IpAddr>>> {
         let hostname = hostname.to_string();
         Box::pin(async move {
-            let resolver = DNS_RESOLVER
-                .as_ref()
-                .map_err(|e: &io::Error| io::Error::other(e.to_string()))?;
-            let lookup = resolver
-                .lookup_ip(&hostname)
-                .await
-                .map_err(|e| io::Error::other(e.to_string()))?;
-            Ok(lookup.iter().collect())
+            // An address literal is not a name to look up. Handling it here also
+            // keeps IPv6 literals intact, which appending a port would not.
+            if let Ok(ip) = hostname.parse::<IpAddr>() {
+                return Ok(vec![ip]);
+            }
+
+            // Port 0: `lookup_host` asks for a socket address, only the host
+            // part of the answer is used.
+            let resolved =
+                with_resolve_timeout(&hostname, tokio::net::lookup_host((hostname.as_str(), 0)))
+                    .await?;
+
+            let mut ips = resolved
+                .map(|socket_addr| socket_addr.ip())
+                .collect::<Vec<_>>();
+
+            if ips.is_empty() {
+                return Err(io::Error::other(format!(
+                    "no IP address found for hostname: {}",
+                    hostname
+                )));
+            }
+
+            // Callers take the first address, so a node bound to an IPv4
+            // listener must not be handed the IPv6 form of the same host.
+            // getaddrinfo orders by RFC 6724 policy, which is not ours to
+            // assume. The sort is stable, so the system order is kept within
+            // each family.
+            ips.sort_by_key(|ip| ip.is_ipv6());
+
+            Ok(ips)
         })
     }
 
@@ -375,5 +412,55 @@ mod tests {
     async fn test_spawn_blocking() {
         let handle = TokioRuntime::spawn_blocking(|| 42);
         assert_eq!(handle.await.unwrap(), 42);
+    }
+
+    /// An address literal is answered as itself, without a lookup. The IPv6
+    /// case would break if the host were resolved by appending a port to it.
+    #[tokio::test]
+    async fn test_resolve_an_address_literal() -> io::Result<()> {
+        for literal in ["127.0.0.1", "10.0.0.7", "::1", "fe80::1"] {
+            assert_eq!(TokioRuntime::resolve(literal).await?, vec![
+                literal.parse::<IpAddr>().unwrap()
+            ]);
+        }
+
+        Ok(())
+    }
+
+    /// `localhost` comes from the hosts file, so this needs no network. It
+    /// pins the ordering the callers depend on: they take the first address,
+    /// and the raft listeners are bound to IPv4.
+    #[tokio::test]
+    async fn test_resolve_puts_ipv4_first() -> io::Result<()> {
+        let ips = TokioRuntime::resolve("localhost").await?;
+
+        assert!(ips.contains(&IpAddr::from([127, 0, 0, 1])), "{:?}", ips);
+        assert!(ips[0].is_ipv4(), "{:?}", ips);
+        assert!(
+            ips.windows(2).all(|w| w[0].is_ipv6() <= w[1].is_ipv6()),
+            "every IPv6 address must come after every IPv4 one: {:?}",
+            ips
+        );
+
+        Ok(())
+    }
+
+    /// Time is paused, so this asserts the limit exists rather than waiting it
+    /// out. The message has to name the host: a node that cannot start says so
+    /// through this string.
+    #[tokio::test(start_paused = true)]
+    async fn test_resolve_gives_up_on_a_lookup_that_never_answers() {
+        let err = with_resolve_timeout("stuck.example", std::future::pending::<io::Result<()>>())
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "resolving stuck.example took longer than {:?}",
+                RESOLVE_TIMEOUT
+            )
+        );
     }
 }
