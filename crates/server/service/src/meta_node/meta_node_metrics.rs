@@ -78,8 +78,8 @@ pub struct ServerMetrics {
     pub version: BTreeMap<String, i64>,
 }
 
-/// `metasrv_raft_network_*` metrics. Every metric is per-peer; each map is
-/// keyed by the joined label set (e.g. `to=2` or `addr=1.2.3.4:9191,id=2`).
+/// `metasrv_raft_network_*` metrics. Each map is keyed by the joined label set
+/// (e.g. `to=2` or `addr=1.2.3.4:9191,id=2`).
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
 pub struct RaftNetworkMetrics {
     pub active_peers: BTreeMap<String, i64>,
@@ -96,6 +96,8 @@ pub struct RaftNetworkMetrics {
     pub snapshot_recv_seconds: BTreeMap<String, HistogramMetrics>,
     pub snapshot_recv_success: BTreeMap<String, u64>,
     pub snapshot_recv_failures: BTreeMap<String, u64>,
+    /// Keyed by why the secret was refused (`reason=missing`), not by peer.
+    pub unauthenticated_passed: BTreeMap<String, u64>,
 }
 
 /// `metasrv_raft_storage_*` metrics.
@@ -251,6 +253,10 @@ impl MetaMetrics {
                 snapshot_recv_failures: labeled_counter(
                     &fams,
                     "metasrv_raft_network_snapshot_recv_failures",
+                ),
+                unauthenticated_passed: labeled_counter(
+                    &fams,
+                    "metasrv_raft_network_unauthenticated_passed",
                 ),
             },
             raft_storage: RaftStorageMetrics {
@@ -727,6 +733,7 @@ mod tests {
             "metasrv_raft_network_snapshot_send_inflights",
             "metasrv_raft_network_snapshot_send_success",
             "metasrv_raft_network_snapshot_sent_seconds",
+            "metasrv_raft_network_unauthenticated_passed",
             // raft_metrics::storage
             "metasrv_raft_storage_raft_store_read_failed",
             "metasrv_raft_storage_raft_store_write_failed",

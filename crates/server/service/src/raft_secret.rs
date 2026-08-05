@@ -14,6 +14,14 @@
 
 //! The shared secret authenticating raft RPCs between the nodes of a cluster.
 
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::net::IpAddr;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::Duration;
+use std::time::Instant;
+
 use databend_meta_raft_config::config::RaftConfig;
 use log::warn;
 use subtle::Choice;
@@ -22,6 +30,8 @@ use tonic::Request;
 use tonic::Status;
 use tonic::metadata::AsciiMetadataValue;
 use tonic::service::Interceptor;
+
+use crate::metrics::raft_metrics;
 
 /// The request metadata key carrying the cluster shared secret.
 ///
@@ -80,6 +90,45 @@ enum Decision {
     Refused(&'static str),
 }
 
+/// How long a peer stays out of the log after being reported once.
+const REPORT_INTERVAL: Duration = Duration::from_secs(10);
+
+/// Remembers when each peer was last reported, so that a mixed cluster does not
+/// bury its log under one line per raft heartbeat per peer.
+///
+/// Entries that have aged out are dropped as they are passed over, which bounds
+/// this by the peers seen in the last [`REPORT_INTERVAL`] rather than by the
+/// peers ever seen. That distinction matters here: the check runs after the
+/// connection is accepted, so who appears in this map is not up to us.
+#[derive(Default)]
+struct ReportLimiter {
+    /// Keyed by address rather than by connection, so that a peer reconnecting
+    /// cannot report itself again, and by IP rather than by socket, so that it
+    /// cannot do so from a new port either.
+    ///
+    /// The `None` key is the one bucket for peers of unknown address.
+    reported_at: HashMap<Option<IpAddr>, Instant>,
+}
+
+impl ReportLimiter {
+    /// Whether `peer` should be reported at `now`, recording it if so.
+    ///
+    /// A peer that keeps failing is reported once per [`REPORT_INTERVAL`]: being
+    /// suppressed does not refresh its entry, so its silence has an end.
+    fn should_report(&mut self, peer: Option<IpAddr>, now: Instant) -> bool {
+        self.reported_at
+            .retain(|_, at| now.duration_since(*at) < REPORT_INTERVAL);
+
+        match self.reported_at.entry(peer) {
+            Entry::Occupied(_) => false,
+            Entry::Vacant(slot) => {
+                slot.insert(now);
+                true
+            }
+        }
+    }
+}
+
 /// Checks the cluster shared secret on every raft RPC this node receives.
 ///
 /// A node with no accepted secret configured checks nothing, so an unconfigured
@@ -90,6 +139,10 @@ enum Decision {
 pub(crate) struct RaftSecretChecker {
     accepted: Vec<String>,
     strict: bool,
+    /// Shared, because the router hands each request its own clone of the
+    /// service stack: a limiter kept as a plain field would start empty every
+    /// time and rate limit nothing.
+    limiter: Arc<Mutex<ReportLimiter>>,
 }
 
 impl RaftSecretChecker {
@@ -101,6 +154,7 @@ impl RaftSecretChecker {
                 .map(|secret| secret.expose().to_string())
                 .collect(),
             strict: config.raft_secret_strict(),
+            limiter: Default::default(),
         }
     }
 
@@ -141,8 +195,8 @@ impl Interceptor for RaftSecretChecker {
 
         // Never log the value that was presented: on a misconfigured peer it is
         // a valid secret of some other cluster.
-        let peer = request
-            .remote_addr()
+        let addr = request.remote_addr();
+        let peer = addr
             .map(|addr| addr.to_string())
             .unwrap_or_else(|| "unknown address".to_string());
 
@@ -153,10 +207,24 @@ impl Interceptor for RaftSecretChecker {
             )));
         }
 
-        warn!(
-            "raft secret is {}: from:{}: accepted because `raft_secret_strict` is off",
-            reason, peer
-        );
+        raft_metrics::network::incr_unauthenticated_passed(reason);
+
+        // The guard is dropped before the log is written: every raft RPC of
+        // every unconfigured peer arrives here, so the lock must not be held
+        // for as long as writing a line takes.
+        let should_report = self
+            .limiter
+            .lock()
+            .unwrap()
+            .should_report(addr.map(|addr| addr.ip()), Instant::now());
+
+        if should_report {
+            warn!(
+                "raft secret is {}: from:{}: accepted because `raft_secret_strict` is off; \
+                 further reports about this peer are suppressed for {:?}",
+                reason, peer, REPORT_INTERVAL
+            );
+        }
 
         Ok(request)
     }
@@ -164,6 +232,10 @@ impl Interceptor for RaftSecretChecker {
 
 #[cfg(test)]
 mod tests {
+    use std::net::IpAddr;
+    use std::time::Duration;
+    use std::time::Instant;
+
     use databend_meta_raft_config::Secret;
     use databend_meta_raft_config::config::RaftConfig;
     use tonic::Request;
@@ -171,8 +243,10 @@ mod tests {
 
     use crate::raft_secret::Decision;
     use crate::raft_secret::RAFT_SECRET_HEADER;
+    use crate::raft_secret::REPORT_INTERVAL;
     use crate::raft_secret::RaftSecretChecker;
     use crate::raft_secret::RaftSecretInterceptor;
+    use crate::raft_secret::ReportLimiter;
 
     fn intercept(config: &RaftConfig) -> Result<Request<()>, tonic::Status> {
         RaftSecretInterceptor::new(config).call(Request::new(()))
@@ -280,15 +354,59 @@ mod tests {
         }
     }
 
+    /// Counting is what tells an operator when `raft_secret_strict` can be
+    /// turned on: it is safe once this has stopped growing, and turning it on
+    /// while it still grows evicts whoever is being counted.
+    ///
+    /// The counts are exact because this is the only test that drives a
+    /// permissive refusal; the counter is global and shared by the whole test
+    /// binary, so a second such test would have to assert differently.
     #[test]
-    fn test_permissive_accepts_a_wrong_or_missing_secret() -> anyhow::Result<()> {
+    fn test_permissive_accepts_and_counts_a_wrong_or_missing_secret() -> anyhow::Result<()> {
         let config = receiver(&["s3cr3t"], false);
 
         for presented in [Some("from-another-cluster"), None] {
             check(&config, presented)?;
         }
 
+        let scraped = crate::metrics::meta_metrics_to_prometheus_string();
+        for reason in ["unaccepted", "missing"] {
+            let expected = format!(
+                "metasrv_raft_network_unauthenticated_passed_total{{reason=\"{}\"}} 1",
+                reason
+            );
+            assert!(
+                scraped.contains(&expected),
+                "{}\nin:\n{}",
+                expected,
+                scraped
+            );
+        }
+
         Ok(())
+    }
+
+    /// A peer that keeps failing is reported once per interval, and one that
+    /// has gone quiet for an interval is forgotten instead of remembered.
+    #[test]
+    fn test_report_limiter_reports_each_peer_once_per_interval() {
+        let mut limiter = ReportLimiter::default();
+        let start = Instant::now();
+        let peer = Some(IpAddr::from([127, 0, 0, 1]));
+
+        assert!(limiter.should_report(peer, start));
+        assert!(!limiter.should_report(peer, start));
+
+        // Each peer is silenced on its own account, not on another's.
+        assert!(limiter.should_report(Some(IpAddr::from([127, 0, 0, 2])), start));
+        assert!(limiter.should_report(None, start));
+
+        // Being suppressed the whole way through does not extend the silence.
+        assert!(!limiter.should_report(peer, start + REPORT_INTERVAL - Duration::from_millis(1)));
+        assert!(limiter.should_report(peer, start + REPORT_INTERVAL));
+
+        // The peers that aged out were dropped rather than accumulated.
+        assert_eq!(limiter.reported_at.len(), 1);
     }
 
     /// A cluster that never configured a secret keeps working untouched, and

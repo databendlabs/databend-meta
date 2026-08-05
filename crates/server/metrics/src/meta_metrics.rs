@@ -442,6 +442,11 @@ pub mod raft_metrics {
             pub addr: String,
         }
 
+        #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+        pub struct ReasonLabels {
+            pub reason: String,
+        }
+
         struct RaftMetrics {
             active_peers: Family<PeerLabels, Gauge>,
             fail_connect_to_peer: Family<PeerLabels, Gauge>,
@@ -458,6 +463,14 @@ pub mod raft_metrics {
             snapshot_recv_seconds: Family<FromLabels, Histogram>,
             snapshot_recv_success: Family<FromLabels, Counter>,
             snapshot_recv_failures: Family<FromLabels, Counter>,
+
+            /// Requests served without an accepted raft secret, because
+            /// `raft_secret_strict` is off.
+            ///
+            /// This is the signal that says when the cluster is ready for
+            /// `raft_secret_strict = true`: turning it on while this is still
+            /// growing evicts whichever peers are being counted here.
+            unauthenticated_passed: Family<ReasonLabels, Counter>,
         }
 
         impl RaftMetrics {
@@ -483,6 +496,7 @@ pub mod raft_metrics {
                     }), // 1s ~ 1024s
                     snapshot_recv_success: Family::default(),
                     snapshot_recv_failures: Family::default(),
+                    unauthenticated_passed: Family::default(),
                 };
 
                 let mut registry = crate::registry::load_global_registry();
@@ -547,6 +561,11 @@ pub mod raft_metrics {
                     key!("snapshot_recv_failures"),
                     "snapshot recv failures",
                     metrics.snapshot_recv_failures.clone(),
+                );
+                registry.register(
+                    key!("unauthenticated_passed"),
+                    "requests passed without an accepted raft secret",
+                    metrics.unauthenticated_passed.clone(),
                 );
                 metrics
             }
@@ -664,6 +683,22 @@ pub mod raft_metrics {
             }
             .get_or_create(&FromLabels { from: addr })
             .inc();
+        }
+
+        /// Count a request served without an accepted raft secret.
+        ///
+        /// `reason` names what was wrong with the secret and comes from a fixed
+        /// set. The peer is deliberately not a label: its address is chosen by
+        /// whoever connects, and the raft port accepts connections before this
+        /// check runs, so labeling by it would let a stranger grow this map
+        /// without bound. The peer is named in the log instead.
+        pub fn incr_unauthenticated_passed(reason: &str) {
+            RAFT_METRICS
+                .unauthenticated_passed
+                .get_or_create(&ReasonLabels {
+                    reason: reason.to_string(),
+                })
+                .inc();
         }
     }
 
