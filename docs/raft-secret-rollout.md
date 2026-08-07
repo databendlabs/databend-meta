@@ -3,12 +3,32 @@
 The raft port carries no authentication of its own: whoever can open a
 connection to it can forward arbitrary writes to the leader, read the whole
 store, or install a snapshot over the state machine. The cluster shared secret
-closes that hole. Each node attaches the secret to every raft RPC it sends, and
-checks the secret on every raft RPC it receives.
+closes that hole to a caller that cannot read the traffic. Each node attaches
+the secret to every raft RPC it sends, and checks the secret on every raft RPC
+it receives.
 
 Turning the check on has to happen after every node is already sending the
 secret. This document is the order that makes that safe, and what to watch at
 each step.
+
+## What the secret protects against
+
+The secret authenticates the caller, and does nothing else. Raft connects over
+`http://`, so every raft RPC travels in cleartext, the secret with it.
+
+It stops a caller that can reach the raft port but cannot observe traffic on
+it: a process on a neighbouring host, a misconfigured client, a node of a
+different cluster. Such a caller has to know the secret to use the port, and
+now it does not.
+
+It does not stop an adversary who can read the wire. That adversary takes the
+secret out of any raft RPC and replays it. Marking the header sensitive does
+not change this: sensitivity keeps the value out of this process's own logs and
+out of the HPACK dynamic table, not off the network.
+
+The raft port therefore still needs what it needed before — a trusted network,
+network-level encryption, or mTLS. The secret narrows who may talk to raft; it
+does not control who may listen.
 
 ## Prerequisite
 
