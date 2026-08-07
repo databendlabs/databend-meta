@@ -126,6 +126,24 @@ pub enum GrpcFeature {
     /// Used by the `kv_api` and `forward` RPCs since the beginning.
     /// Client reads `RaftReply.error` via `reply_to_api_result()` / `parse_raft_reply()`.
     RaftReplyError,
+
+    /// A non-leader server forwards the request to the leader and answers on
+    /// its behalf, instead of refusing it.
+    ///
+    /// The client relies on this whenever it sends a request to a node that
+    /// turns out not to be the leader, which it cannot rule out: it picks an
+    /// endpoint before knowing who leads.
+    ///
+    /// The alternative the newer RPCs use is a redirect: `kv_list`,
+    /// `kv_get_many` and `kv_transaction` answer a non-leader request with
+    /// `Status::unavailable("not leader")` plus the leader endpoint in the
+    /// metadata, leaving the retry to the client. A client that only calls
+    /// redirecting RPCs no longer needs this feature.
+    ///
+    /// `kv_read_v1` and `transaction` still forward, so the client still needs
+    /// it: turning either of them into a redirect is what would make this
+    /// removable on the client, and only then may a server drop it.
+    ServerSideForward,
 }
 
 impl GrpcFeature {
@@ -164,6 +182,7 @@ impl GrpcFeature {
             GrpcFeature::KvTransaction,
             GrpcFeature::KvTransactionPutMatchSeq,
             GrpcFeature::RaftReplyError,
+            GrpcFeature::ServerSideForward,
         ]
     }
 
@@ -202,6 +221,7 @@ impl GrpcFeature {
             GrpcFeature::KvTransaction => "kv_transaction",
             GrpcFeature::KvTransactionPutMatchSeq => "kv_transaction/put_match_seq",
             GrpcFeature::RaftReplyError => "raft_reply/error",
+            GrpcFeature::ServerSideForward => "server_side_forward",
         }
     }
 }
