@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use databend_meta_raft_config::MetaStartupError;
+use databend_meta_raft_config::Secret;
 use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_raft_config::config::get_default_raft_advertise_host;
 use databend_meta_raft_config::data_version::DATA_VERSION;
@@ -99,11 +100,12 @@ fn test_raft_config() -> anyhow::Result<()> {
     }
 
     {
-        // Leaving a cluster skips every other check.
+        // Leaving a cluster skips topology checks.
         let raft_config = &RaftConfig {
             single: true,
             join: vec!["j1".to_string()],
             leave_via: vec!["l1".to_string()],
+            leave_id: Some(1),
             ..Default::default()
         };
 
@@ -143,9 +145,197 @@ fn test_default_config() {
         cluster_name: "foo_cluster".to_string(),
         wait_leader_timeout: 70000,
         raft_grpc_max_message_size: None,
+        raft_secret: None,
+        raft_accepted_secrets: vec![],
+        raft_secret_strict: None,
     });
 
     assert_ne!(get_default_raft_advertise_host(), "");
+}
+
+/// `RaftConfig` is logged in whole with `{:?}` at several places and derives
+/// `Serialize`, so neither rendering may carry a secret in plain text.
+#[test]
+fn test_secret_is_not_rendered_in_plain_text() -> anyhow::Result<()> {
+    let c = RaftConfig {
+        raft_secret: Some(Secret::new("send-me")),
+        raft_accepted_secrets: vec![Secret::new("accept-1"), Secret::new("accept-2")],
+        raft_secret_strict: Some(true),
+        ..config()
+    };
+
+    let debug = format!("{:?}", c);
+    let json = serde_json::to_value(&c)?;
+
+    for plain in ["send-me", "accept-1", "accept-2"] {
+        assert!(!debug.contains(plain), "Debug leaked {plain}: {debug}");
+        assert!(
+            !json.to_string().contains(plain),
+            "Serialize leaked {plain}: {json}"
+        );
+    }
+
+    assert!(debug.contains("raft_secret: Some(***)"), "{debug}");
+    assert!(
+        debug.contains("raft_accepted_secrets: [***, ***]"),
+        "{debug}"
+    );
+    assert_eq!(json["raft_secret"], serde_json::json!("***"));
+    assert_eq!(
+        json["raft_accepted_secrets"],
+        serde_json::json!(["***", "***"])
+    );
+
+    // The value stays reachable for the code that has to compare it.
+    assert_eq!(c.raft_secret.as_ref().map(Secret::expose), Some("send-me"));
+
+    Ok(())
+}
+
+#[test]
+fn test_secret_strict() {
+    let mut c = config();
+    assert!(
+        !c.raft_secret_strict(),
+        "unspecified resolves to not strict"
+    );
+
+    for specified in [true, false] {
+        c.raft_secret_strict = Some(specified);
+        assert_eq!(c.raft_secret_strict(), specified);
+    }
+}
+
+#[test]
+fn test_check_strict_secret_needs_an_accepted_secret() {
+    let c = RaftConfig {
+        single: true,
+        raft_secret_strict: Some(true),
+        ..config()
+    };
+
+    assert_eq!(
+        c.check(),
+        Err(MetaStartupError::InvalidConfig(String::from(
+            "`raft_secret_strict` is enabled but `raft_accepted_secrets` is empty: the node would reject every incoming raft RPC",
+        )))
+    );
+
+    let c = RaftConfig {
+        raft_accepted_secrets: vec![Secret::new("accept-1")],
+        ..c
+    };
+    assert_eq!(c.check(), Ok(()));
+}
+
+#[test]
+fn test_check_rejects_an_empty_accepted_secret() {
+    let c = RaftConfig {
+        single: true,
+        raft_accepted_secrets: vec![Secret::new("")],
+        raft_secret_strict: Some(true),
+        ..config()
+    };
+
+    assert_eq!(
+        c.check(),
+        Err(MetaStartupError::InvalidConfig(String::from(
+            "`raft_accepted_secrets` must not contain an empty secret",
+        )))
+    );
+}
+
+/// A secret that cannot travel unchanged in a header is refused at startup.
+/// Left to the interceptor, it would instead fail every raft RPC the node
+/// sends, which its peers read as a node that is down rather than one that is
+/// misconfigured.
+#[test]
+fn test_check_rejects_a_secret_that_is_not_visible_ascii() {
+    let expected = |key: &str| {
+        Err(MetaStartupError::InvalidConfig(format!(
+            "`{}` must hold visible ASCII only, with no space: \
+             it is sent verbatim as an HTTP header value",
+            key
+        )))
+    };
+
+    // A control character is a header injection; a byte above 127 is
+    // deprecated in HTTP; a space can be gained or lost at the edges.
+    for bad in ["line\nbreak", "sécret", "two words", "tab\there"] {
+        assert_eq!(
+            RaftConfig {
+                single: true,
+                raft_secret: Some(Secret::new(bad)),
+                ..config()
+            }
+            .check(),
+            expected("raft_secret"),
+            "raft_secret: {:?}",
+            bad
+        );
+
+        assert_eq!(
+            RaftConfig {
+                single: true,
+                raft_accepted_secrets: vec![Secret::new("fine"), Secret::new(bad)],
+                ..config()
+            }
+            .check(),
+            expected("raft_accepted_secrets"),
+            "raft_accepted_secrets: {:?}",
+            bad
+        );
+    }
+
+    // The punctuation a generated secret is made of stays acceptable.
+    assert_eq!(
+        RaftConfig {
+            single: true,
+            raft_secret: Some(Secret::new("aB9-_.+/=~!@#$%^&*()[]{}|:;<>,?")),
+            ..config()
+        }
+        .check(),
+        Ok(())
+    );
+}
+
+/// A `leave_via` without a `leave_id` used to be treated as leave-only: the
+/// topology and secret checks were skipped, leaving is then skipped too for want
+/// of an id, and the node starts as an unchecked server.
+#[test]
+fn test_check_rejects_a_leave_without_an_id() {
+    let c = RaftConfig {
+        leave_via: vec!["meta-1:9191".to_string()],
+        leave_id: None,
+        raft_secret_strict: Some(true),
+        ..config()
+    };
+
+    assert_eq!(
+        c.check(),
+        Err(MetaStartupError::InvalidConfig(String::from(
+            "`leave_via` is set but `leave_id` is not: \
+             the node to remove from the cluster is unknown",
+        )))
+    );
+}
+
+#[test]
+fn test_check_rejects_an_empty_sending_secret() {
+    let c = RaftConfig {
+        single: true,
+        leave_via: vec!["meta-1:9191".to_string()],
+        leave_id: Some(1),
+        raft_secret: Some(Secret::new("")),
+        ..config()
+    };
+
+    assert_eq!(
+        c.check(),
+        Err(MetaStartupError::InvalidConfig(String::from(
+            "`raft_secret` must not be empty",
+        )))
+    );
 }
 
 #[test]
