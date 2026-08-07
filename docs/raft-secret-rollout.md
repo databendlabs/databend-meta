@@ -80,8 +80,8 @@ sends nothing, and the restarted peers let it through because `strict` is off.
 Every RPC that got through without an accepted secret is counted:
 
 ```
-metasrv_raft_network_unauthenticated_passed_total{reason="missing"}
-metasrv_raft_network_unauthenticated_passed_total{reason="unaccepted"}
+metasrv_raft_network_unauthenticated_passed_total{reason="missing"} 3428
+metasrv_raft_network_unauthenticated_passed_total{reason="unaccepted"} 12
 ```
 
 Scrape it from the admin API of each node, `/v1/metrics` (default
