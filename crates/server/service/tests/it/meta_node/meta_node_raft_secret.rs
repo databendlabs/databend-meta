@@ -27,10 +27,12 @@ use std::time::Instant;
 use databend_meta::message::ForwardRequest;
 use databend_meta::message::ForwardRequestBody;
 use databend_meta::meta_service::MetaNode;
+use databend_meta::raft_secret::connect_raft_service;
 use databend_meta_kvapi::KvApiExt;
 use databend_meta_raft_config::Secret;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_types::Cmd;
+use databend_meta_types::Endpoint;
 use databend_meta_types::LogEntry;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::node::Node;
@@ -310,6 +312,48 @@ async fn test_a_strict_node_refuses_a_peer_that_sends_no_secret() -> anyhow::Res
 
         assert_eq!(status.code(), Code::Unauthenticated);
     }
+
+    Ok(())
+}
+
+/// The counterpart of the refusal above, from outside this crate.
+///
+/// The `databend-meta` binary lives in another repository, and re-registers its
+/// own address on every startup by forwarding a write of its own -- not through
+/// `MetaNode`, and so not over the network openraft replicates on. A strict
+/// leader refuses that registration unless the binary can build a client that
+/// sends the secret, which is what [`connect_raft_service`] is public for. This
+/// test stands in for that caller: it is in `tests/`, so it reaches the API the
+/// same way the binary does.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_a_strict_node_accepts_a_registration_from_a_secret_client() -> anyhow::Result<()> {
+    let mut tc = secret_node(0, true);
+    let mn = boot(&mut tc).await?;
+
+    let leader_addr = tc
+        .config
+        .raft_config
+        .raft_api_addr::<TokioRuntime>()
+        .await?;
+
+    let mut client = connect_raft_service(&leader_addr, &tc.config.raft_config).await?;
+
+    let registered = Node::new(1, Endpoint::new("registering-node", 28104))
+        .with_grpc_advertise_address(Some("registering-node:9191".to_string()));
+
+    let req = ForwardRequest {
+        forward_to_leader: 1,
+        body: ForwardRequestBody::Write(LogEntry::new(Cmd::AddNode {
+            node_id: 1,
+            node: registered.clone(),
+            overriding: true,
+        })),
+    };
+
+    client.forward(req).await?;
+
+    assert_eq!(mn.get_node(&1).await, Some(registered));
 
     Ok(())
 }

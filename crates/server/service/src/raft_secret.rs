@@ -50,7 +50,7 @@ pub(crate) const RAFT_SECRET_HEADER: &str = "x-databend-meta-raft-secret";
 /// indistinguishable from those of a node that predates the secret. That is
 /// what makes the first stage of the rollout free of downtime.
 #[derive(Clone)]
-pub(crate) struct RaftSecretInterceptor {
+pub struct RaftSecretInterceptor {
     secret: Option<String>,
 }
 
@@ -84,16 +84,20 @@ impl Interceptor for RaftSecretInterceptor {
 }
 
 /// A raft client that carries this node's secret on every RPC it sends.
-pub(crate) type SecretRaftServiceClient =
+pub type SecretRaftServiceClient =
     RaftServiceClient<InterceptedService<Channel, RaftSecretInterceptor>>;
 
 /// Connect to the raft service at `addr` with a client that sends the secret.
 ///
 /// Every outgoing raft RPC has to come from a client built this way, or from
-/// [`RaftClient`](crate::raft_client::RaftClient) for the ones openraft sends.
-/// A client built straight from the generated stub compiles, connects and
-/// works, and sends no secret: the peers that check one refuse it.
-pub(crate) async fn connect_raft_service(
+/// `RaftClient` for the ones openraft sends. A client built straight from the
+/// generated stub compiles, connects and works, and sends no secret: the peers
+/// that check one refuse it.
+///
+/// This is public because the `databend-meta` binary lives in another
+/// repository and forwards its own RPCs -- node registration on startup among
+/// them. Those calls need this, not the generated stub.
+pub async fn connect_raft_service(
     addr: impl fmt::Display,
     config: &RaftConfig,
 ) -> Result<SecretRaftServiceClient, ConnectionError> {
