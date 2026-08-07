@@ -500,29 +500,24 @@ mod tests {
     /// Counting is what tells an operator when `raft_secret_strict` can be
     /// turned on: it is safe once this has stopped growing, and turning it on
     /// while it still grows evicts whoever is being counted.
-    ///
-    /// The counts are exact because this is the only test that drives a
-    /// permissive refusal; the counter is global and shared by the whole test
-    /// binary, so a second such test would have to assert differently.
     #[test]
     fn test_permissive_accepts_and_counts_a_wrong_or_missing_secret() -> anyhow::Result<()> {
+        const PASSED: &str = "metasrv_raft_network_unauthenticated_passed";
+
         let config = receiver(&["s3cr3t"], false);
 
-        for presented in [Some("from-another-cluster"), None] {
-            check(&config, presented)?;
-        }
+        for (presented, reason) in [
+            (Some("from-another-cluster"), "unaccepted"),
+            (None, "missing"),
+        ] {
+            let before = scraped_counter(PASSED, reason);
 
-        let scraped = crate::metrics::meta_metrics_to_prometheus_string();
-        for reason in ["unaccepted", "missing"] {
-            let expected = format!(
-                "metasrv_raft_network_unauthenticated_passed_total{{reason=\"{}\"}} 1",
-                reason
-            );
+            check(&config, presented)?;
+
             assert!(
-                scraped.contains(&expected),
-                "{}\nin:\n{}",
-                expected,
-                scraped
+                scraped_counter(PASSED, reason) > before,
+                "{} was not counted",
+                reason
             );
         }
 
