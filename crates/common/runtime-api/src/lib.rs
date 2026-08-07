@@ -185,53 +185,12 @@ pub trait SpawnApi: Clone + Debug + Send + Sync + 'static {
     where
         Self: Sized;
 
-    /// Resolve a hostname to IP addresses.
-    ///
-    /// On success at least one address is returned, IPv4 ones first: callers
-    /// take the first address, and a node bound to an IPv4 listener must not be
-    /// handed the IPv6 form of the same host.
-    ///
-    /// That contract is enforced here rather than asked of each implementation,
-    /// which is what keeps two implementations from answering differently. An
-    /// implementation supplies [`lookup_host`](SpawnApi::lookup_host) and must
-    /// not override this.
-    fn resolve(hostname: &str) -> BoxFuture<'static, std::io::Result<Vec<IpAddr>>>
-    where Self: Sized {
-        // An address literal is not a name to look up. Handling it here also
-        // keeps IPv6 literals intact, which appending a port would not.
-        if let Ok(ip) = hostname.parse::<IpAddr>() {
-            return Box::pin(std::future::ready(Ok(vec![ip])));
-        }
-
-        let looked_up = Self::lookup_host(hostname);
-        let hostname = hostname.to_string();
-
-        Box::pin(async move {
-            let mut ips = looked_up.await?;
-
-            if ips.is_empty() {
-                return Err(std::io::Error::other(format!(
-                    "no IP address found for hostname: {}",
-                    hostname
-                )));
-            }
-
-            // Callers take the first address, so a node bound to an IPv4
-            // listener must not be handed the IPv6 form of the same host.
-            // getaddrinfo orders by RFC 6724 policy, which is not ours to
-            // assume. The sort is stable, so the resolver's order is kept
-            // within each family.
-            ips.sort_by_key(|ip| ip.is_ipv6());
-
-            Ok(ips)
-        })
-    }
-
     /// Look up `hostname` through this runtime's resolver.
     ///
-    /// Neither the order nor the emptiness of the answer is this method's
-    /// concern, and `hostname` is never an address literal:
-    /// [`resolve`](SpawnApi::resolve) handles all three around it.
+    /// Callers do not use this directly; they use [`resolve`], which is where
+    /// the answer's order and emptiness are dealt with. `hostname` is never an
+    /// address literal, and this may answer in whatever order its resolver
+    /// used.
     ///
     /// # Implementations
     ///
@@ -252,6 +211,43 @@ pub trait SpawnApi: Clone + Debug + Send + Sync + 'static {
     /// * `DatabendRuntime` uses `databend_common_tracing::init_logging()`.
     fn init_test_logging() -> Box<dyn std::any::Any + Send>
     where Self: Sized;
+}
+
+/// Resolve `hostname` to IP addresses, looking it up through `SP`'s resolver.
+///
+/// On success at least one address is returned, IPv4 ones first: callers take
+/// the first address, and a node bound to an IPv4 listener must not be handed
+/// the IPv6 form of the same host.
+///
+/// This is a free function, not a method on [`SpawnApi`], so that the guarantee
+/// above holds for every runtime rather than for the ones that remembered it. A
+/// default method would leave each implementation free to replace it, which is
+/// how the policy came to hold in one runtime and not the other. An
+/// implementation supplies [`SpawnApi::lookup_host`], which is the part that is
+/// genuinely its own.
+pub async fn resolve<SP: SpawnApi>(hostname: &str) -> std::io::Result<Vec<IpAddr>> {
+    // An address literal is not a name to look up. Handling it here also keeps
+    // IPv6 literals intact, which appending a port would not.
+    if let Ok(ip) = hostname.parse::<IpAddr>() {
+        return Ok(vec![ip]);
+    }
+
+    let mut ips = SP::lookup_host(hostname).await?;
+
+    if ips.is_empty() {
+        return Err(std::io::Error::other(format!(
+            "no IP address found for hostname: {}",
+            hostname
+        )));
+    }
+
+    // Callers take the first address, so a node bound to an IPv4 listener must
+    // not be handed the IPv6 form of the same host. getaddrinfo orders by
+    // RFC 6724 policy, which is not ours to assume. The sort is stable, so the
+    // resolver's order is kept within each family.
+    ips.sort_by_key(|ip| ip.is_ipv6());
+
+    Ok(ips)
 }
 
 /// Owned runtime instance that can spawn tasks.

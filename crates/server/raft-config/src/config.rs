@@ -337,7 +337,7 @@ impl RaftConfig {
             return Ok(Endpoint::new(addr, self.raft_api_port));
         }
 
-        let ips = R::resolve(&self.raft_advertise_host).await?;
+        let ips = databend_meta_runtime_api::resolve::<R>(&self.raft_advertise_host).await?;
         let ip = ips.into_iter().next().ok_or_else(|| {
             io::Error::other(format!(
                 "No IP address found for hostname: {}",
