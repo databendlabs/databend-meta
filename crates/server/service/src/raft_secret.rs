@@ -73,9 +73,14 @@ impl Interceptor for RaftSecretInterceptor {
 
         // Rejected rather than dropped: a node that silently stopped sending
         // the secret would be evicted the moment its peers turn strict.
-        let value = AsciiMetadataValue::try_from(secret.as_str()).map_err(|e| {
+        let mut value = AsciiMetadataValue::try_from(secret.as_str()).map_err(|e| {
             Status::internal(format!("`raft_secret` is not a valid header value: {}", e))
         })?;
+
+        // Debug formatting renders a sensitive value as `Sensitive` instead of
+        // verbatim, and h2 keeps it out of the HPACK dynamic table. Without
+        // this, h2 logging a frame at DEBUG prints the credential.
+        value.set_sensitive(true);
 
         request.metadata_mut().insert(RAFT_SECRET_HEADER, value);
 
@@ -325,6 +330,30 @@ mod tests {
             request.metadata().get(RAFT_SECRET_HEADER).unwrap(),
             "s3cr3t"
         );
+
+        Ok(())
+    }
+
+    /// The value carries a credential, so it is marked sensitive: h2 logs whole
+    /// frames at DEBUG and would otherwise print it, and would be free to put it
+    /// in the HPACK dynamic table shared by the connection.
+    #[test]
+    fn test_the_secret_is_sent_as_a_sensitive_value() -> anyhow::Result<()> {
+        let config = RaftConfig {
+            raft_secret: Some(Secret::new("s3cr3t")),
+            ..Default::default()
+        };
+
+        let request = intercept(&config)?;
+        let value = request.metadata().get(RAFT_SECRET_HEADER).unwrap();
+
+        assert!(value.is_sensitive());
+
+        // What a log line would show. The whole metadata map is rendered, since
+        // that is what a frame dump reaches the value through.
+        let rendered = format!("{:?}", request.metadata());
+        assert!(!rendered.contains("s3cr3t"), "{}", rendered);
+        assert!(rendered.contains("Sensitive"), "{}", rendered);
 
         Ok(())
     }
