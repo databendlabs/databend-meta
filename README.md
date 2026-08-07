@@ -13,6 +13,11 @@ Standalone meta-service for [Databend](https://github.com/databendlabs/databend)
 | `raft-store` | Raft log and state machine storage |
 | `sled-store` | Sled-based persistent storage |
 
+## Docs
+
+- [Compatibility](docs/README.md) — client-server, server-server and on-disk data compatibility.
+- [Raft secret rollout](docs/raft-secret-rollout.md) — authenticating the raft port without downtime.
+
 ## Build
 
 ```bash
