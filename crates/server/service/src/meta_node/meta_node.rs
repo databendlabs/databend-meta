@@ -92,6 +92,7 @@ use tokio::sync::watch;
 use tokio::time::Instant;
 use tokio::time::sleep;
 use tonic::Status;
+use tonic::service::interceptor::InterceptedService;
 use tonic::transport::server::TcpIncoming;
 use watcher::EventFilter;
 use watcher::dispatch::Command;
@@ -127,6 +128,9 @@ use crate::meta_service::watcher::DispatcherHandle;
 use crate::meta_service::watcher::WatchTypes;
 use crate::metrics::network_metrics;
 use crate::metrics::server_metrics;
+use crate::raft_secret::RaftSecretChecker;
+use crate::raft_secret::RaftSecretInterceptor;
+use crate::raft_secret::connect_raft_service;
 use crate::request_handling::Forwarder;
 use crate::request_handling::Handler;
 use crate::store::RaftStore;
@@ -219,9 +223,12 @@ impl<SP: SpawnApi> MetaNode<SP> {
             max_msg_size / (1024 * 1024)
         );
 
-        let raft_server = RaftServiceServer::new(raft_service_impl)
-            .max_decoding_message_size(max_msg_size)
-            .max_encoding_message_size(max_msg_size);
+        let raft_server = InterceptedService::new(
+            RaftServiceServer::new(raft_service_impl)
+                .max_decoding_message_size(max_msg_size)
+                .max_encoding_message_size(max_msg_size),
+            RaftSecretChecker::new(&meta_node.raft_store.config),
+        );
 
         let ipv4_addr = host.parse::<Ipv4Addr>();
         let ip_port = match ipv4_addr {
@@ -650,7 +657,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
         for addr in addrs {
             info!("leave cluster via {}...", addr);
 
-            let conn_res = RaftServiceClient::connect(format!("http://{}", addr)).await;
+            let conn_res = connect_raft_service(addr, conf).await;
             let mut raft_client = match conn_res {
                 Ok(c) => c,
                 Err(e) => {
@@ -798,7 +805,10 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 return Err(MetaAPIError::NetworkError(net_err));
             }
         };
-        let mut raft_client = RaftServiceClient::new(chan);
+        let mut raft_client = RaftServiceClient::with_interceptor(
+            chan,
+            RaftSecretInterceptor::new(&config.raft_config),
+        );
 
         let join_req = JoinRequest::new(
             config.raft_config.id,
