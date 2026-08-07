@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt;
 use std::net::IpAddr;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -239,6 +240,18 @@ impl RaftSecretChecker {
             None => Decision::Refused("missing"),
         }
     }
+
+    /// Whether this refusal is the one to log, or a repeat to suppress.
+    ///
+    /// The guard is dropped before the caller writes its line: every raft RPC
+    /// of every peer that fails the check arrives here, so the lock must not be
+    /// held for as long as writing a line takes.
+    fn should_report(&self, addr: Option<SocketAddr>) -> bool {
+        self.limiter
+            .lock()
+            .unwrap()
+            .should_report(addr.map(|addr| addr.ip()), Instant::now())
+    }
 }
 
 impl Interceptor for RaftSecretChecker {
@@ -257,6 +270,19 @@ impl Interceptor for RaftSecretChecker {
             .unwrap_or_else(|| "unknown address".to_string());
 
         if self.strict {
+            // Counted and logged before returning: raft turns any status into
+            // `Unreachable`, so this node's own account of why it refused a
+            // peer is the only one that says `Unauthenticated` anywhere.
+            raft_metrics::network::incr_unauthenticated_refused(reason);
+
+            if self.should_report(addr) {
+                warn!(
+                    "raft secret is {}: from:{}: refused because `raft_secret_strict` is on; \
+                     further reports about this peer are suppressed for {:?}",
+                    reason, peer, REPORT_INTERVAL
+                );
+            }
+
             return Err(Status::unauthenticated(format!(
                 "raft secret is {}: from:{}",
                 reason, peer
@@ -265,16 +291,7 @@ impl Interceptor for RaftSecretChecker {
 
         raft_metrics::network::incr_unauthenticated_passed(reason);
 
-        // The guard is dropped before the log is written: every raft RPC of
-        // every unconfigured peer arrives here, so the lock must not be held
-        // for as long as writing a line takes.
-        let should_report = self
-            .limiter
-            .lock()
-            .unwrap()
-            .should_report(addr.map(|addr| addr.ip()), Instant::now());
-
-        if should_report {
+        if self.should_report(addr) {
             warn!(
                 "raft secret is {}: from:{}: accepted because `raft_secret_strict` is off; \
                  further reports about this peer are suppressed for {:?}",
@@ -430,6 +447,52 @@ mod tests {
             assert_eq!(
                 status.message(),
                 format!("raft secret is {}: from:unknown address", expected)
+            );
+        }
+    }
+
+    /// The value of `<metric>_total{reason="<reason>"}` in a fresh scrape, or 0
+    /// when the series is absent because that counter has never fired.
+    ///
+    /// The registry is process wide and the tests of this binary run in
+    /// parallel, so a total is a number any other test may have moved. What a
+    /// test can assert on its own is that its own call moved it.
+    fn scraped_counter(metric: &str, reason: &str) -> u64 {
+        let scraped = crate::metrics::meta_metrics_to_prometheus_string();
+        let prefix = format!("{}_total{{reason=\"{}\"}} ", metric, reason);
+
+        scraped
+            .lines()
+            .find_map(|line| line.strip_prefix(prefix.as_str()))
+            .map_or(0, |value| value.parse().unwrap())
+    }
+
+    /// A refusal is the only account of itself that leaves this node. Raft maps
+    /// every gRPC status to `Unreachable`, so a peer left behind by a rotation
+    /// looks down rather than rejected, and nothing but this counter says which
+    /// it was.
+    ///
+    /// The rate-limited warning next to it is not asserted here: it is the same
+    /// limiter the permissive branch uses, pinned by
+    /// [`test_report_limiter_reports_each_peer_once_per_interval`].
+    #[test]
+    fn test_strict_counts_what_it_refuses() {
+        const REFUSED: &str = "metasrv_raft_network_unauthenticated_refused";
+
+        let config = receiver(&["s3cr3t"], true);
+
+        for (presented, reason) in [
+            (Some("from-another-cluster"), "unaccepted"),
+            (None, "missing"),
+        ] {
+            let before = scraped_counter(REFUSED, reason);
+
+            check(&config, presented).unwrap_err();
+
+            assert!(
+                scraped_counter(REFUSED, reason) > before,
+                "{} was not counted",
+                reason
             );
         }
     }

@@ -471,6 +471,15 @@ pub mod raft_metrics {
             /// `raft_secret_strict = true`: turning it on while this is still
             /// growing evicts whichever peers are being counted here.
             unauthenticated_passed: Family<ReasonLabels, Counter>,
+
+            /// Requests refused for want of an accepted raft secret, because
+            /// `raft_secret_strict` is on.
+            ///
+            /// The counterpart of `unauthenticated_passed`, and what a node
+            /// left behind by a rotation shows up in: raft reports a refused
+            /// peer as unreachable, so without this the refusing node's own
+            /// view of why is not recorded anywhere a scrape can reach.
+            unauthenticated_refused: Family<ReasonLabels, Counter>,
         }
 
         impl RaftMetrics {
@@ -497,6 +506,7 @@ pub mod raft_metrics {
                     snapshot_recv_success: Family::default(),
                     snapshot_recv_failures: Family::default(),
                     unauthenticated_passed: Family::default(),
+                    unauthenticated_refused: Family::default(),
                 };
 
                 let mut registry = crate::registry::load_global_registry();
@@ -566,6 +576,11 @@ pub mod raft_metrics {
                     key!("unauthenticated_passed"),
                     "requests passed without an accepted raft secret",
                     metrics.unauthenticated_passed.clone(),
+                );
+                registry.register(
+                    key!("unauthenticated_refused"),
+                    "requests refused for want of an accepted raft secret",
+                    metrics.unauthenticated_refused.clone(),
                 );
                 metrics
             }
@@ -695,6 +710,21 @@ pub mod raft_metrics {
         pub fn incr_unauthenticated_passed(reason: &str) {
             RAFT_METRICS
                 .unauthenticated_passed
+                .get_or_create(&ReasonLabels {
+                    reason: reason.to_string(),
+                })
+                .inc();
+        }
+
+        /// Count a request refused for want of an accepted raft secret.
+        ///
+        /// `reason` and the absence of a peer label mean the same here as they
+        /// do in [`incr_unauthenticated_passed`], and for the same reasons: a
+        /// refused caller is exactly the one whose address is not to be trusted
+        /// with a label.
+        pub fn incr_unauthenticated_refused(reason: &str) {
+            RAFT_METRICS
+                .unauthenticated_refused
                 .get_or_create(&ReasonLabels {
                     reason: reason.to_string(),
                 })

@@ -111,6 +111,18 @@ Then set `raft_secret_strict = true` on every node and restart them one at a
 time. Since every node is already sending an accepted secret, the flip changes
 nothing observable.
 
+What a node refuses after the flip is counted separately, by the same two
+reasons:
+
+```
+metasrv_raft_network_unauthenticated_refused_total{reason="missing"} 4
+metasrv_raft_network_unauthenticated_refused_total{reason="unaccepted"} 61
+```
+
+This is the series to watch during and after phase 2, and the one to check
+first whenever a node looks unreachable to its peers: the next section explains
+why a refusal reaches raft as unreachability and nothing else.
+
 ## Why phase 1 cannot be skipped
 
 A node that refuses an RPC answers `Unauthenticated`. The raft network layer
@@ -118,11 +130,22 @@ turns every gRPC status into `Unreachable` without inspecting the code — see
 `status_to_unreachable_at()` in `crates/server/service/src/network.rs` — so raft
 never sees an authentication failure. It sees a peer that is down.
 
-The symptom of turning on `raft_secret_strict` too early is therefore not a log
-full of authentication failures on an otherwise healthy cluster. It is a cluster
+The symptom of turning on `raft_secret_strict` too early is therefore a cluster
 whose nodes all consider each other unreachable and elect leaders in a loop. No
 data is lost, but the cluster stops serving until the configuration is
 corrected.
+
+The refusing side is where the reason survives. Each node counts what it
+refused and warns about it, once per peer per 10 seconds, in the same shape as
+the phase 1 warning:
+
+```
+raft secret is missing: from:10.0.0.7:41244: refused because `raft_secret_strict` is on; ...
+```
+
+So a cluster that has gone quiet is diagnosed from the nodes doing the
+refusing, not from the ones being refused: the refused node only ever learns
+that a peer is unreachable.
 
 This is also why the counters must have stopped increasing before phase 2,
 rather than merely increasing slowly: whatever is still being counted is

@@ -98,6 +98,9 @@ pub struct RaftNetworkMetrics {
     pub snapshot_recv_failures: BTreeMap<String, u64>,
     /// Keyed by why the secret was refused (`reason=missing`), not by peer.
     pub unauthenticated_passed: BTreeMap<String, u64>,
+    /// Keyed the same way, for the refusals `raft_secret_strict` turns those
+    /// same requests into.
+    pub unauthenticated_refused: BTreeMap<String, u64>,
 }
 
 /// `metasrv_raft_storage_*` metrics.
@@ -257,6 +260,10 @@ impl MetaMetrics {
                 unauthenticated_passed: labeled_counter(
                     &fams,
                     "metasrv_raft_network_unauthenticated_passed",
+                ),
+                unauthenticated_refused: labeled_counter(
+                    &fams,
+                    "metasrv_raft_network_unauthenticated_refused",
                 ),
             },
             raft_storage: RaftStorageMetrics {
@@ -734,6 +741,7 @@ mod tests {
             "metasrv_raft_network_snapshot_send_success",
             "metasrv_raft_network_snapshot_sent_seconds",
             "metasrv_raft_network_unauthenticated_passed",
+            "metasrv_raft_network_unauthenticated_refused",
             // raft_metrics::storage
             "metasrv_raft_storage_raft_store_read_failed",
             "metasrv_raft_storage_raft_store_write_failed",
