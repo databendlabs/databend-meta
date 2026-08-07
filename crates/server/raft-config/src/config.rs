@@ -26,6 +26,7 @@ use raft_log::chunked_wal::Config as WalConfig;
 
 use crate::MetaStartupError;
 use crate::data_version::DATA_VERSION;
+use crate::secret::Secret;
 
 // Size unit constants
 const KB: u64 = 1024;
@@ -174,6 +175,35 @@ pub struct RaftConfig {
     /// Used for both encoding and decoding limits on raft gRPC channels.
     /// Default: 32MB (33,554,432 bytes).
     pub raft_grpc_max_message_size: Option<usize>,
+
+    /// The secret this node attaches to the raft RPCs it sends.
+    ///
+    /// `None` sends nothing, which is how a not yet configured node behaves.
+    /// Peers that are not strict still accept such a node, so a cluster can
+    /// adopt the secret without downtime.
+    ///
+    /// Visible ASCII only, with no space: it is sent verbatim as an HTTP header
+    /// value. [`RaftConfig::check`] refuses anything else.
+    pub raft_secret: Option<Secret>,
+
+    /// The secrets this node accepts on the raft RPCs it receives.
+    ///
+    /// Accepting more than one is what makes rotation possible without
+    /// downtime: add the new secret here on every node first, then move
+    /// `raft_secret` over node by node, then drop the old one from here.
+    ///
+    /// Restricted to the same characters as `raft_secret`, since these are the
+    /// values other nodes send.
+    pub raft_accepted_secrets: Vec<Secret>,
+
+    /// Whether to reject a received raft RPC carrying no or an unaccepted secret.
+    ///
+    /// `None` means unspecified, which is distinct from an explicit `false`:
+    /// the layer that merges config sources has to tell the two apart.
+    /// Must stay off until every node of the cluster sends a secret: turning
+    /// it on earlier makes the nodes declare each other unreachable.
+    /// Default: false.
+    pub raft_secret_strict: Option<bool>,
 }
 
 pub fn get_default_raft_advertise_host() -> String {
@@ -220,6 +250,9 @@ impl Default for RaftConfig {
             cluster_name: "foo_cluster".to_string(),
             wait_leader_timeout: 70000,
             raft_grpc_max_message_size: None,
+            raft_secret: None,
+            raft_accepted_secrets: vec![],
+            raft_secret_strict: None,
         }
     }
 }
@@ -238,6 +271,11 @@ impl RaftConfig {
     /// Used to check payload size before sending to avoid hitting the hard limit.
     pub fn raft_grpc_advisory_message_size(&self) -> usize {
         self.raft_grpc_max_message_size() * 9 / 10
+    }
+
+    /// Returns whether to reject a raft RPC carrying no or an unaccepted secret.
+    pub fn raft_secret_strict(&self) -> bool {
+        self.raft_secret_strict.unwrap_or(false)
     }
 
     pub fn to_rotbl_config(&self) -> rotbl::v001::Config {
@@ -321,13 +359,59 @@ impl RaftConfig {
     ///
     /// # Errors
     /// Returns `MetaStartupError::InvalidConfig` if:
+    /// - The sending raft secret is empty
+    /// - An accepted raft secret is empty
+    /// - A raft secret holds anything but visible ASCII
+    /// - `raft_secret_strict` is enabled with no accepted secret
+    /// - `leave_via` is specified without `leave_id`
     /// - Neither `single` nor `join` is specified
     /// - Both `single` and `join` are specified
     /// - Node tries to join itself (self-reference in join addresses)
     pub fn check(&self) -> Result<(), MetaStartupError> {
-        // If just leaving, does not need to check other config
+        if let Some(secret) = &self.raft_secret {
+            if secret.expose().is_empty() {
+                return Err(MetaStartupError::InvalidConfig(String::from(
+                    "`raft_secret` must not be empty",
+                )));
+            }
+
+            check_secret_encoding("raft_secret", secret)?;
+        }
+
+        // If just leaving, does not need to check server or cluster config.
+        //
+        // Without `leave_id` there is nothing to leave with, and leaving is
+        // skipped: accepting the config here would start a normal server that
+        // never had its topology or its secret checked.
         if !self.leave_via.is_empty() {
+            if self.leave_id.is_none() {
+                return Err(MetaStartupError::InvalidConfig(String::from(
+                    "`leave_via` is set but `leave_id` is not: \
+                     the node to remove from the cluster is unknown",
+                )));
+            }
             return Ok(());
+        }
+
+        if self
+            .raft_accepted_secrets
+            .iter()
+            .any(|secret| secret.expose().is_empty())
+        {
+            return Err(MetaStartupError::InvalidConfig(String::from(
+                "`raft_accepted_secrets` must not contain an empty secret",
+            )));
+        }
+
+        for secret in &self.raft_accepted_secrets {
+            check_secret_encoding("raft_accepted_secrets", secret)?;
+        }
+
+        if self.raft_secret_strict() && self.raft_accepted_secrets.is_empty() {
+            return Err(MetaStartupError::InvalidConfig(String::from(
+                "`raft_secret_strict` is enabled but `raft_accepted_secrets` is empty: \
+                 the node would reject every incoming raft RPC",
+            )));
         }
 
         // There two cases:
@@ -347,4 +431,28 @@ impl RaftConfig {
         }
         Ok(())
     }
+}
+
+/// Reject a secret that cannot travel unchanged as an HTTP header value.
+///
+/// A raft secret is sent verbatim in a header. A header value cannot hold a
+/// control character at all, and holds a byte above 127 only as something HTTP
+/// deprecated and each end is free to render differently. Requiring visible
+/// ASCII keeps the configured secret and the wire secret the same string, and
+/// it excludes the space so that a secret cannot pick up or lose one unnoticed
+/// at the edges.
+///
+/// Checking here is what makes a bad secret a node that refuses to start
+/// instead of a node that starts and then fails every raft RPC it sends --
+/// which its peers read as unreachable, not as misconfigured.
+fn check_secret_encoding(key: &str, secret: &Secret) -> Result<(), MetaStartupError> {
+    if secret.expose().bytes().all(|b| b.is_ascii_graphic()) {
+        return Ok(());
+    }
+
+    Err(MetaStartupError::InvalidConfig(format!(
+        "`{}` must hold visible ASCII only, with no space: \
+         it is sent verbatim as an HTTP header value",
+        key
+    )))
 }

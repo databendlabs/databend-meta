@@ -23,8 +23,10 @@ pub mod data_dir;
 pub mod data_version;
 pub mod header;
 pub mod meta_startup_error;
+pub mod secret;
 pub mod snapshot_config;
 mod state_machine_features;
 
 pub use meta_startup_error::MetaStartupError;
+pub use secret::Secret;
 pub use state_machine_features::StateMachineFeature;
