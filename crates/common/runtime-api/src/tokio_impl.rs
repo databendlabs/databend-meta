@@ -264,40 +264,16 @@ impl SpawnApi for TokioRuntime {
         })
     }
 
-    fn resolve(hostname: &str) -> BoxFuture<'static, io::Result<Vec<IpAddr>>> {
+    fn lookup_host(hostname: &str) -> BoxFuture<'static, io::Result<Vec<IpAddr>>> {
         let hostname = hostname.to_string();
         Box::pin(async move {
-            // An address literal is not a name to look up. Handling it here also
-            // keeps IPv6 literals intact, which appending a port would not.
-            if let Ok(ip) = hostname.parse::<IpAddr>() {
-                return Ok(vec![ip]);
-            }
-
             // Port 0: `lookup_host` asks for a socket address, only the host
             // part of the answer is used.
             let resolved =
                 with_resolve_timeout(&hostname, tokio::net::lookup_host((hostname.as_str(), 0)))
                     .await?;
 
-            let mut ips = resolved
-                .map(|socket_addr| socket_addr.ip())
-                .collect::<Vec<_>>();
-
-            if ips.is_empty() {
-                return Err(io::Error::other(format!(
-                    "no IP address found for hostname: {}",
-                    hostname
-                )));
-            }
-
-            // Callers take the first address, so a node bound to an IPv4
-            // listener must not be handed the IPv6 form of the same host.
-            // getaddrinfo orders by RFC 6724 policy, which is not ours to
-            // assume. The sort is stable, so the system order is kept within
-            // each family.
-            ips.sort_by_key(|ip| ip.is_ipv6());
-
-            Ok(ips)
+            Ok(resolved.map(|socket_addr| socket_addr.ip()).collect())
         })
     }
 
