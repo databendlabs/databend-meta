@@ -234,14 +234,12 @@ impl<SP: SpawnApi> MetaNode<SP> {
         let ip_port = match ipv4_addr {
             Ok(addr) => format!("{}:{}", addr, port),
             Err(_) => {
-                let ip_addrs = databend_meta_runtime_api::resolve::<SP>(host)
-                    .await
-                    .map_err(|e| {
-                        MetaNetworkError::GetNodeAddrError(format!(
-                            "resolve addr {} error: {}",
-                            host, e
-                        ))
-                    })?;
+                let ip_addrs = SP::resolve(host).await.map_err(|e| {
+                    MetaNetworkError::GetNodeAddrError(format!(
+                        "resolve addr {} error: {}",
+                        host, e
+                    ))
+                })?;
                 format!("{}:{}", ip_addrs[0], port)
             }
         };

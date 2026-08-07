@@ -395,7 +395,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_an_address_literal() -> io::Result<()> {
         for literal in ["127.0.0.1", "10.0.0.7", "::1", "fe80::1"] {
-            assert_eq!(crate::resolve::<TokioRuntime>(literal).await?, vec![
+            assert_eq!(TokioRuntime::resolve(literal).await?, vec![
                 literal.parse::<IpAddr>().unwrap()
             ]);
         }
@@ -408,7 +408,7 @@ mod tests {
     /// and the raft listeners are bound to IPv4.
     #[tokio::test]
     async fn test_resolve_puts_ipv4_first() -> io::Result<()> {
-        let ips = crate::resolve::<TokioRuntime>("localhost").await?;
+        let ips = TokioRuntime::resolve("localhost").await?;
 
         assert!(ips.contains(&IpAddr::from([127, 0, 0, 1])), "{:?}", ips);
         assert!(ips[0].is_ipv4(), "{:?}", ips);
