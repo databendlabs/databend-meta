@@ -356,6 +356,7 @@ impl RaftConfig {
     /// - The sending raft secret is empty
     /// - An accepted raft secret is empty
     /// - `raft_secret_strict` is enabled with no accepted secret
+    /// - `leave_via` is specified without `leave_id`
     /// - Neither `single` nor `join` is specified
     /// - Both `single` and `join` are specified
     /// - Node tries to join itself (self-reference in join addresses)
@@ -370,8 +371,18 @@ impl RaftConfig {
             )));
         }
 
-        // If just leaving, does not need to check server or cluster config
+        // If just leaving, does not need to check server or cluster config.
+        //
+        // Without `leave_id` there is nothing to leave with, and leaving is
+        // skipped: accepting the config here would start a normal server that
+        // never had its topology or its secret checked.
         if !self.leave_via.is_empty() {
+            if self.leave_id.is_none() {
+                return Err(MetaStartupError::InvalidConfig(String::from(
+                    "`leave_via` is set but `leave_id` is not: \
+                     the node to remove from the cluster is unknown",
+                )));
+            }
             return Ok(());
         }
 

@@ -105,6 +105,7 @@ fn test_raft_config() -> anyhow::Result<()> {
             single: true,
             join: vec!["j1".to_string()],
             leave_via: vec!["l1".to_string()],
+            leave_id: Some(1),
             ..Default::default()
         };
 
@@ -244,11 +245,33 @@ fn test_check_rejects_an_empty_accepted_secret() {
     );
 }
 
+/// A `leave_via` without a `leave_id` used to be treated as leave-only: the
+/// topology and secret checks were skipped, leaving is then skipped too for want
+/// of an id, and the node starts as an unchecked server.
+#[test]
+fn test_check_rejects_a_leave_without_an_id() {
+    let c = RaftConfig {
+        leave_via: vec!["meta-1:9191".to_string()],
+        leave_id: None,
+        raft_secret_strict: Some(true),
+        ..config()
+    };
+
+    assert_eq!(
+        c.check(),
+        Err(MetaStartupError::InvalidConfig(String::from(
+            "`leave_via` is set but `leave_id` is not: \
+             the node to remove from the cluster is unknown",
+        )))
+    );
+}
+
 #[test]
 fn test_check_rejects_an_empty_sending_secret() {
     let c = RaftConfig {
         single: true,
         leave_via: vec!["meta-1:9191".to_string()],
+        leave_id: Some(1),
         raft_secret: Some(Secret::new("")),
         ..config()
     };

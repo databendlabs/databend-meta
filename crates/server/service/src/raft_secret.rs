@@ -163,9 +163,10 @@ impl ReportLimiter {
 /// Checks the cluster shared secret on every raft RPC this node receives.
 ///
 /// A node with no accepted secret configured checks nothing, so an unconfigured
-/// cluster behaves exactly as before. Enabling `strict` without an accepted
-/// secret is refused at startup by [`RaftConfig::check`], so that empty case can
-/// never silently disable a strict node.
+/// cluster behaves exactly as before -- unless `strict` is on, in which case it
+/// refuses everything. [`RaftConfig::check`] refuses that combination at
+/// startup, but a caller that skips the check must not end up with a strict node
+/// that authenticates nothing.
 #[derive(Clone)]
 pub(crate) struct RaftSecretChecker {
     accepted: Vec<String>,
@@ -204,7 +205,11 @@ impl RaftSecretChecker {
     }
 
     fn decide(&self, presented: Option<&[u8]>) -> Decision {
-        if self.accepted.is_empty() {
+        // The short circuit is what keeps an unconfigured cluster quiet, and it
+        // must not apply to a strict node: with nothing to accept, a strict node
+        // refuses everything rather than accepts everything. `RaftConfig::check`
+        // rejects that combination, but only the startup paths that call it.
+        if self.accepted.is_empty() && !self.strict {
             return Decision::Pass;
         }
 
@@ -454,6 +459,27 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    /// The same empty list under `strict` refuses everything instead. The check
+    /// has to fail closed on its own: whether `RaftConfig::check` ran is up to
+    /// the caller, and a strict node that authenticates nothing is the one state
+    /// this whole mechanism exists to prevent.
+    #[test]
+    fn test_a_strict_node_with_no_accepted_secret_refuses_everything() {
+        let config = receiver(&[], true);
+        let checker = RaftSecretChecker::new(&config);
+
+        assert_eq!(
+            checker.decide(Some(b"anything")),
+            Decision::Refused("unaccepted")
+        );
+        assert_eq!(checker.decide(None), Decision::Refused("missing"));
+
+        for presented in [Some("anything"), None] {
+            let status = check(&config, presented).unwrap_err();
+            assert_eq!(status.code(), tonic::Code::Unauthenticated);
+        }
     }
 
     #[test]
