@@ -245,6 +245,60 @@ fn test_check_rejects_an_empty_accepted_secret() {
     );
 }
 
+/// A secret that cannot travel unchanged in a header is refused at startup.
+/// Left to the interceptor, it would instead fail every raft RPC the node
+/// sends, which its peers read as a node that is down rather than one that is
+/// misconfigured.
+#[test]
+fn test_check_rejects_a_secret_that_is_not_visible_ascii() {
+    let expected = |key: &str| {
+        Err(MetaStartupError::InvalidConfig(format!(
+            "`{}` must hold visible ASCII only, with no space: \
+             it is sent verbatim as an HTTP header value",
+            key
+        )))
+    };
+
+    // A control character is a header injection; a byte above 127 is
+    // deprecated in HTTP; a space can be gained or lost at the edges.
+    for bad in ["line\nbreak", "sécret", "two words", "tab\there"] {
+        assert_eq!(
+            RaftConfig {
+                single: true,
+                raft_secret: Some(Secret::new(bad)),
+                ..config()
+            }
+            .check(),
+            expected("raft_secret"),
+            "raft_secret: {:?}",
+            bad
+        );
+
+        assert_eq!(
+            RaftConfig {
+                single: true,
+                raft_accepted_secrets: vec![Secret::new("fine"), Secret::new(bad)],
+                ..config()
+            }
+            .check(),
+            expected("raft_accepted_secrets"),
+            "raft_accepted_secrets: {:?}",
+            bad
+        );
+    }
+
+    // The punctuation a generated secret is made of stays acceptable.
+    assert_eq!(
+        RaftConfig {
+            single: true,
+            raft_secret: Some(Secret::new("aB9-_.+/=~!@#$%^&*()[]{}|:;<>,?")),
+            ..config()
+        }
+        .check(),
+        Ok(())
+    );
+}
+
 /// A `leave_via` without a `leave_id` used to be treated as leave-only: the
 /// topology and secret checks were skipped, leaving is then skipped too for want
 /// of an id, and the node starts as an unchecked server.

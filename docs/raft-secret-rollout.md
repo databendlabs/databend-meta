@@ -37,10 +37,15 @@ databend-meta --raft-secret s3cr3t \
 Prefer the config file. A secret passed as a command line argument is visible
 to every user on the host through `ps`.
 
-Two settings are refused at startup, so a node cannot come up half configured:
-an empty secret in either key, and `raft_secret_strict` with an empty
-`raft_accepted_secrets` — a node in that state would reject every incoming raft
-RPC, including its own peers'.
+A secret is visible ASCII with no space: letters, digits and punctuation in the
+range `!` to `~`. It travels verbatim as an HTTP header value, which cannot
+carry a control character at all, renders a byte above 127 in a way HTTP has
+deprecated, and may gain or lose a space at either edge.
+
+Three settings are refused at startup, so a node cannot come up half
+configured: an empty secret in either key, a secret outside that character
+range, and `raft_secret_strict` with an empty `raft_accepted_secrets` — a node
+in that state would reject every incoming raft RPC, including its own peers'.
 
 ## Phase 1: everyone sends, nobody requires
 

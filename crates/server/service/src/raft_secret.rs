@@ -51,16 +51,30 @@ pub(crate) const RAFT_SECRET_HEADER: &str = "x-databend-meta-raft-secret";
 /// what makes the first stage of the rollout free of downtime.
 #[derive(Clone)]
 pub struct RaftSecretInterceptor {
-    secret: Option<String>,
+    /// The header value to send, built once instead of per RPC.
+    ///
+    /// `Err` holds the message every RPC then fails with. It is unreachable
+    /// through [`RaftConfig::check`], which refuses a secret that cannot be a
+    /// header value, and is kept for the callers that skip that check: a
+    /// request that could not be signed must not go out unsigned.
+    secret: Option<Result<AsciiMetadataValue, String>>,
 }
 
 impl RaftSecretInterceptor {
     pub(crate) fn new(config: &RaftConfig) -> Self {
         Self {
-            secret: config
-                .raft_secret
-                .as_ref()
-                .map(|secret| secret.expose().to_string()),
+            secret: config.raft_secret.as_ref().map(|secret| {
+                let mut value = AsciiMetadataValue::try_from(secret.expose())
+                    .map_err(|e| format!("`raft_secret` is not a valid header value: {}", e))?;
+
+                // Debug formatting renders a sensitive value as `Sensitive`
+                // instead of verbatim, and h2 keeps it out of the HPACK dynamic
+                // table. Without this, h2 logging a frame at DEBUG prints the
+                // credential.
+                value.set_sensitive(true);
+
+                Ok(value)
+            }),
         }
     }
 }
@@ -73,16 +87,13 @@ impl Interceptor for RaftSecretInterceptor {
 
         // Rejected rather than dropped: a node that silently stopped sending
         // the secret would be evicted the moment its peers turn strict.
-        let mut value = AsciiMetadataValue::try_from(secret.as_str()).map_err(|e| {
-            Status::internal(format!("`raft_secret` is not a valid header value: {}", e))
-        })?;
+        let value = secret
+            .as_ref()
+            .map_err(|message| Status::internal(message.clone()))?;
 
-        // Debug formatting renders a sensitive value as `Sensitive` instead of
-        // verbatim, and h2 keeps it out of the HPACK dynamic table. Without
-        // this, h2 logging a frame at DEBUG prints the credential.
-        value.set_sensitive(true);
-
-        request.metadata_mut().insert(RAFT_SECRET_HEADER, value);
+        request
+            .metadata_mut()
+            .insert(RAFT_SECRET_HEADER, value.clone());
 
         Ok(request)
     }
@@ -368,9 +379,9 @@ mod tests {
     }
 
     /// A control character in the secret would be a header injection, so it is
-    /// reported rather than sent. Note that non-ASCII bytes are accepted: a
-    /// header value may carry them even though the metadata type is named
-    /// after ASCII.
+    /// reported rather than sent. `RaftConfig::check` rejects such a secret at
+    /// startup, so reaching this means the check was skipped -- and a request
+    /// that cannot be signed still must not go out unsigned.
     #[test]
     fn test_a_secret_that_cannot_be_a_header_is_reported() {
         let config = RaftConfig {

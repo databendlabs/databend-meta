@@ -181,6 +181,9 @@ pub struct RaftConfig {
     /// `None` sends nothing, which is how a not yet configured node behaves.
     /// Peers that are not strict still accept such a node, so a cluster can
     /// adopt the secret without downtime.
+    ///
+    /// Visible ASCII only, with no space: it is sent verbatim as an HTTP header
+    /// value. [`RaftConfig::check`] refuses anything else.
     pub raft_secret: Option<Secret>,
 
     /// The secrets this node accepts on the raft RPCs it receives.
@@ -188,6 +191,9 @@ pub struct RaftConfig {
     /// Accepting more than one is what makes rotation possible without
     /// downtime: add the new secret here on every node first, then move
     /// `raft_secret` over node by node, then drop the old one from here.
+    ///
+    /// Restricted to the same characters as `raft_secret`, since these are the
+    /// values other nodes send.
     pub raft_accepted_secrets: Vec<Secret>,
 
     /// Whether to reject a received raft RPC carrying no or an unaccepted secret.
@@ -355,20 +361,21 @@ impl RaftConfig {
     /// Returns `MetaStartupError::InvalidConfig` if:
     /// - The sending raft secret is empty
     /// - An accepted raft secret is empty
+    /// - A raft secret holds anything but visible ASCII
     /// - `raft_secret_strict` is enabled with no accepted secret
     /// - `leave_via` is specified without `leave_id`
     /// - Neither `single` nor `join` is specified
     /// - Both `single` and `join` are specified
     /// - Node tries to join itself (self-reference in join addresses)
     pub fn check(&self) -> Result<(), MetaStartupError> {
-        if self
-            .raft_secret
-            .as_ref()
-            .is_some_and(|secret| secret.expose().is_empty())
-        {
-            return Err(MetaStartupError::InvalidConfig(String::from(
-                "`raft_secret` must not be empty",
-            )));
+        if let Some(secret) = &self.raft_secret {
+            if secret.expose().is_empty() {
+                return Err(MetaStartupError::InvalidConfig(String::from(
+                    "`raft_secret` must not be empty",
+                )));
+            }
+
+            check_secret_encoding("raft_secret", secret)?;
         }
 
         // If just leaving, does not need to check server or cluster config.
@@ -396,6 +403,10 @@ impl RaftConfig {
             )));
         }
 
+        for secret in &self.raft_accepted_secrets {
+            check_secret_encoding("raft_accepted_secrets", secret)?;
+        }
+
         if self.raft_secret_strict() && self.raft_accepted_secrets.is_empty() {
             return Err(MetaStartupError::InvalidConfig(String::from(
                 "`raft_secret_strict` is enabled but `raft_accepted_secrets` is empty: \
@@ -420,4 +431,28 @@ impl RaftConfig {
         }
         Ok(())
     }
+}
+
+/// Reject a secret that cannot travel unchanged as an HTTP header value.
+///
+/// A raft secret is sent verbatim in a header. A header value cannot hold a
+/// control character at all, and holds a byte above 127 only as something HTTP
+/// deprecated and each end is free to render differently. Requiring visible
+/// ASCII keeps the configured secret and the wire secret the same string, and
+/// it excludes the space so that a secret cannot pick up or lose one unnoticed
+/// at the edges.
+///
+/// Checking here is what makes a bad secret a node that refuses to start
+/// instead of a node that starts and then fails every raft RPC it sends --
+/// which its peers read as unreachable, not as misconfigured.
+fn check_secret_encoding(key: &str, secret: &Secret) -> Result<(), MetaStartupError> {
+    if secret.expose().bytes().all(|b| b.is_ascii_graphic()) {
+        return Ok(());
+    }
+
+    Err(MetaStartupError::InvalidConfig(format!(
+        "`{}` must hold visible ASCII only, with no space: \
+         it is sent verbatim as an HTTP header value",
+        key
+    )))
 }
