@@ -124,8 +124,11 @@ whose nodes all consider each other unreachable and elect leaders in a loop. No
 data is lost, but the cluster stops serving until the configuration is
 corrected.
 
-This is also why the counter must read zero before phase 2, rather than merely
-low: whatever is still being counted is exactly what phase 2 would evict.
+This is also why the counters must have stopped increasing before phase 2,
+rather than merely increasing slowly: whatever is still being counted is
+exactly what phase 2 would evict. Their totals are cumulative and stay at
+whatever phase 1 served, so it is the increase between two scrapes that has to
+be zero, not the number.
 
 ## Rollback
 
