@@ -10,6 +10,20 @@ Turning the check on has to happen after every node is already sending the
 secret. This document is the order that makes that safe, and what to watch at
 each step.
 
+## Prerequisite
+
+The `databend-meta` binary is built from the `databend` repository, and it is
+what reads the config file and the command line. The three keys below reach
+this crate only through the raft config that binary maps, and that mapping is a
+separate change in `databend` which has not shipped: no released binary accepts
+them.
+
+Confirm the binary supports them before starting, by checking that
+`databend-meta --cmd show-config` renders `raft_secret` in its `raft_config`
+section. Until it does, phase 1 cannot be executed, and the rest of this
+document describes what the rollout will look like rather than what can be done
+today.
+
 ## Configuration
 
 | Key | Meaning |
