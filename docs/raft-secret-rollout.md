@@ -34,15 +34,13 @@ does not control who may listen.
 
 The `databend-meta` binary is built from the `databend` repository, and it is
 what reads the config file and the command line. The three keys below reach
-this crate only through the raft config that binary maps, and that mapping is a
-separate change in `databend` which has not shipped: no released binary accepts
-them.
+this crate only through the raft config that binary maps, which landed in
+databend PR #20280.
 
-Confirm the binary supports them before starting, by checking that
+Whether the binary in front of you carries that mapping is better answered
+directly than from a version number: confirm that
 `databend-meta --cmd show-config` renders `raft_secret` in its `raft_config`
-section. Until it does, phase 1 cannot be executed, and the rest of this
-document describes what the rollout will look like rather than what can be done
-today.
+section. Do that before starting phase 1.
 
 ## Configuration
 
