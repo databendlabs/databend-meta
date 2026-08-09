@@ -35,7 +35,7 @@ does not control who may listen.
 The `databend-meta` binary is built from the `databend` repository, and it is
 what reads the config file and the command line. The three keys below reach
 this crate only through the raft config that binary maps, which landed in
-databend PR #20280.
+[databendlabs/databend#20280](https://github.com/databendlabs/databend/pull/20280).
 
 Whether the binary in front of you carries that mapping is better answered
 directly than from a version number: confirm that
