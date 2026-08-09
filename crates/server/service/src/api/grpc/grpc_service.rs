@@ -579,8 +579,10 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
     /// The exported data is a series of JSON encoded strings of `RaftStoreEntry`.
     async fn export(
         &self,
-        _request: Request<databend_meta_types::protobuf::Empty>,
+        request: Request<databend_meta_types::protobuf::Empty>,
     ) -> Result<Response<Self::ExportStream>, Status> {
+        self.check_token(request.metadata())?;
+
         let guard = InFlightRead::guard();
 
         let meta_handle = self.try_get_meta_handle()?;
@@ -614,6 +616,8 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
         &self,
         request: Request<pb::ExportRequest>,
     ) -> Result<Response<Self::ExportV1Stream>, Status> {
+        self.check_token(request.metadata())?;
+
         let guard = InFlightRead::guard();
 
         let meta_handle = self.try_get_meta_handle()?;
@@ -643,6 +647,8 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
         &self,
         request: Request<KeysLayoutRequest>,
     ) -> Result<Response<Self::SnapshotKeysLayoutStream>, Status> {
+        self.check_token(request.metadata())?;
+
         let guard = InFlightRead::guard();
 
         let layout_request = request.into_inner();
@@ -668,6 +674,8 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
         &self,
         request: Request<WatchRequest>,
     ) -> Result<Response<Self::WatchStream>, Status> {
+        self.check_token(request.metadata())?;
+
         let watch = request.into_inner();
 
         let meta_handle = self.try_get_meta_handle()?;
@@ -696,8 +704,10 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
 
     async fn get_cluster_status(
         &self,
-        _request: Request<Empty>,
+        request: Request<Empty>,
     ) -> Result<Response<ClusterStatus>, Status> {
+        self.check_token(request.metadata())?;
+
         let _guard = InFlightRead::guard();
 
         let meta_handle = self.try_get_meta_handle()?;
@@ -752,6 +762,8 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
         &self,
         request: Request<Empty>,
     ) -> Result<Response<ClientInfo>, Status> {
+        self.check_token(request.metadata())?;
+
         let _guard = InFlightRead::guard();
 
         let r = request.remote_addr();
