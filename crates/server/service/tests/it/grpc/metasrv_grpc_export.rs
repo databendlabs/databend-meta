@@ -18,12 +18,14 @@ use databend_meta_kvapi::KvApiExt;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::protobuf as pb;
+use databend_meta_types::protobuf::meta_service_client::MetaServiceClient;
 use log::info;
 use pretty_assertions::assert_eq;
 use regex::Regex;
 use test_harness::test;
 use tokio::time::sleep;
 use tokio_stream::StreamExt;
+use tonic::Code;
 
 use crate::testing::meta_service_test_harness;
 use crate::tests::service::grpc_client;
@@ -135,6 +137,39 @@ async fn test_export() -> anyhow::Result<()> {
         .collect::<Vec<_>>();
 
     assert_eq!(want, lines);
+
+    Ok(())
+}
+
+/// Both export RPCs stream the entire store -- header, raft state, log and
+/// state machine -- to whoever asks, so a caller that never handshook must not
+/// reach either of them.
+///
+/// Both are asserted because the client picks between them by server version
+/// (`export_from_grpc` falls back to `export` below 1.2.315): leaving one open
+/// leaves the whole dump open.
+///
+/// The client is the generated stub rather than `MetaGrpcClient`, since that
+/// one handshakes before every call and could not express this request.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_export_refuses_a_client_that_did_not_handshake() -> anyhow::Result<()> {
+    let (_tc, addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+
+    let mut client = MetaServiceClient::connect(format!("http://{}", addr)).await?;
+
+    let v0 = client.export(pb::Empty {}).await.unwrap_err();
+    let v1 = client
+        .export_v1(pb::ExportRequest { chunk_size: None })
+        .await
+        .unwrap_err();
+
+    for status in [v0, v1] {
+        assert_eq!(status.code(), Code::Unauthenticated);
+        // The message names the missing token, which is what tells this
+        // refusal apart from one the handshake version gate would produce.
+        assert_eq!(status.message(), "Error auth-token-bin is empty");
+    }
 
     Ok(())
 }

@@ -18,11 +18,13 @@ use databend_meta_kvapi::KvApiExt;
 use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::protobuf as pb;
+use databend_meta_types::protobuf::meta_service_client::MetaServiceClient;
 use log::info;
 use pretty_assertions::assert_eq;
 use test_harness::test;
 use tokio::time::sleep;
 use tokio_stream::StreamExt;
+use tonic::Code;
 
 use crate::testing::meta_service_test_harness;
 use crate::tests::service::grpc_client;
@@ -149,6 +151,32 @@ async fn test_snapshot_keys_layout() -> anyhow::Result<()> {
 
         assert_eq!(results, want);
     }
+
+    Ok(())
+}
+
+/// The key layout is reconnaissance rather than data: it hands out the shape
+/// of the keyspace -- which prefixes exist and how many keys sit under each --
+/// which is what a caller reads before deciding what is worth taking.
+///
+/// The client is the generated stub rather than `MetaGrpcClient`, since that
+/// one handshakes before every call and could not express this request.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_snapshot_keys_layout_refuses_a_client_that_did_not_handshake() -> anyhow::Result<()> {
+    let (_tc, addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+
+    let mut client = MetaServiceClient::connect(format!("http://{}", addr)).await?;
+
+    let status = client
+        .snapshot_keys_layout(pb::KeysLayoutRequest { depth: None })
+        .await
+        .unwrap_err();
+
+    assert_eq!(status.code(), Code::Unauthenticated);
+    // The message names the missing token, which is what tells this refusal
+    // apart from one the handshake version gate would produce.
+    assert_eq!(status.message(), "Error auth-token-bin is empty");
 
     Ok(())
 }

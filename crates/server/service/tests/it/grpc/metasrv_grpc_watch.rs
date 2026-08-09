@@ -42,12 +42,14 @@ use databend_meta_types::protobuf::KvMeta;
 use databend_meta_types::protobuf::SeqV;
 use databend_meta_types::protobuf::TxnRequest;
 use databend_meta_types::protobuf::WatchRequest;
+use databend_meta_types::protobuf::meta_service_client::MetaServiceClient;
 use databend_meta_types::protobuf::watch_request::FilterType;
 use databend_meta_types::txn_condition;
 use databend_meta_types::txn_op;
 use log::info;
 use test_harness::test;
 use tokio::time::sleep;
+use tonic::Code;
 
 use crate::testing::meta_service_test_harness;
 use crate::tests::service::grpc_client;
@@ -626,6 +628,33 @@ async fn test_watch_stream_count() -> anyhow::Result<()> {
 
         assert_eq!(1, got);
     }
+
+    Ok(())
+}
+
+/// `watch` streams every change under a key range for as long as the caller
+/// keeps the stream, so an unauthenticated watcher is a standing leak rather
+/// than a single theft: it never shows up as one large dump the way `export`
+/// does.
+///
+/// The client is the generated stub rather than `MetaGrpcClient`, since that
+/// one handshakes before every call and could not express this request.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_watch_refuses_a_client_that_did_not_handshake() -> anyhow::Result<()> {
+    let (_tc, addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+
+    let mut client = MetaServiceClient::connect(format!("http://{}", addr)).await?;
+
+    let status = client
+        .watch(WatchRequest::new(s("a"), None))
+        .await
+        .unwrap_err();
+
+    assert_eq!(status.code(), Code::Unauthenticated);
+    // The message names the missing token, which is what tells this refusal
+    // apart from one the handshake version gate would produce.
+    assert_eq!(status.message(), "Error auth-token-bin is empty");
 
     Ok(())
 }
