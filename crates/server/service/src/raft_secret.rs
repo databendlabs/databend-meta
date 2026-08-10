@@ -118,16 +118,29 @@ pub async fn connect_raft_service(
     addr: impl fmt::Display,
     config: &RaftConfig,
 ) -> Result<SecretRaftServiceClient, ConnectionError> {
-    let channel = Channel::from_shared(format!("http://{}", addr))
-        .map_err(|e| ConnectionError::new(e, format!("address: {}", addr)))?
-        .connect()
-        .await
-        .map_err(|e| ConnectionError::new(e, format!("address: {}", addr)))?;
+    let channel = connect_raft_channel(addr).await?;
 
     Ok(RaftServiceClient::with_interceptor(
         channel,
         RaftSecretInterceptor::new(config),
     ))
+}
+
+/// Open the transport to the raft service at `addr`, without wrapping it in a
+/// client.
+///
+/// Every outbound raft connection is opened here, so that the address and the
+/// scheme are decided once instead of at each call site. That matters for what
+/// comes next: putting the raft port behind TLS changes both, and a second
+/// place deciding them is a second place to forget.
+pub(crate) async fn connect_raft_channel(
+    addr: impl fmt::Display,
+) -> Result<Channel, ConnectionError> {
+    Channel::from_shared(format!("http://{}", addr))
+        .map_err(|e| ConnectionError::new(e, format!("address: {}", addr)))?
+        .connect()
+        .await
+        .map_err(|e| ConnectionError::new(e, format!("address: {}", addr)))
 }
 
 /// What a [`RaftSecretChecker`] made of a request, separate from acting on it.

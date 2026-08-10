@@ -27,6 +27,7 @@ use databend_meta_leveled_store::persisted_codec::PersistedCodec;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_snapshot_db::DB;
 use databend_meta_snapshot_db::Snapshot;
+use databend_meta_types::ConnectionError;
 use databend_meta_types::Endpoint;
 use databend_meta_types::GrpcHelper;
 use databend_meta_types::MetaNetworkError;
@@ -86,6 +87,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use crate::metrics::raft_metrics;
 use crate::raft_client::RaftClient;
 use crate::raft_client::RaftClientApi;
+use crate::raft_secret::connect_raft_channel;
 use crate::store::RaftStore;
 
 const APPEND_V002_CHANNEL_SIZE: usize = 64;
@@ -211,11 +213,10 @@ impl<SP: SpawnApi> Network<SP> {
     /// Create a new RaftClient to the specified target node.
     #[logcall::logcall(err = "debug")]
     #[fastrace::trace]
-    pub async fn new_client(&self, addr: &str) -> Result<RaftClient, tonic::transport::Error> {
-        info!(id = self.id; "Raft NetworkConnection connect: target={}: {}", self.target, addr);
+    pub async fn new_client(&self) -> Result<RaftClient, ConnectionError> {
+        info!(id = self.id; "Raft NetworkConnection connect: target={}: {}", self.target, self.endpoint);
 
-        let channel = tonic::transport::Endpoint::new(addr.to_string())?
-            .connect()
+        let channel = connect_raft_channel(&self.endpoint)
             .log_elapsed_debug(format!(
                 "Raft NetworkConnection new_client: connect target: {}",
                 self.target
@@ -231,7 +232,7 @@ impl<SP: SpawnApi> Network<SP> {
 
         info!(
             "Raft NetworkConnection connected to: target={}: {}",
-            self.target, addr
+            self.target, self.endpoint
         );
 
         Ok(client)
@@ -269,9 +270,7 @@ impl<SP: SpawnApi> Network<SP> {
 
             self.endpoint = endpoint;
 
-            let addr = format!("http://{}", self.endpoint);
-
-            let res = self.new_client(&addr).await;
+            let res = self.new_client().await;
             match res {
                 Ok(c) => {
                     return Ok(c);
@@ -279,7 +278,7 @@ impl<SP: SpawnApi> Network<SP> {
                 Err(e) => {
                     warn!(
                         "Raft NetworkConnection fail to connect: target={}: addr={}: {:?}",
-                        self.target, &addr, e
+                        self.target, self.endpoint, e
                     );
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }
