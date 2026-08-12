@@ -204,6 +204,45 @@ pub struct RaftConfig {
     /// it on earlier makes the nodes declare each other unreachable.
     /// Default: false.
     pub raft_secret_strict: Option<bool>,
+
+    /// Path to the certificate chain the raft TLS listener presents, in PEM.
+    ///
+    /// Read by the listening half of the node. [`RaftConfig::check`] refuses it
+    /// without `raft_tls_server_key`, since half an identity cannot serve TLS.
+    pub raft_tls_server_cert: Option<String>,
+
+    /// Path to the private key of `raft_tls_server_cert`, in PEM.
+    pub raft_tls_server_key: Option<String>,
+
+    /// Path to the CA that a peer's certificate is verified against.
+    ///
+    /// Read by the dialing half of the node, and setting it is what turns
+    /// dialing over TLS on: verifying a peer takes a CA to verify it against,
+    /// and there is no usable default, since the OS trust store holds public
+    /// CAs rather than the internal CA that signs raft certificates.
+    ///
+    /// This decides whether *this node* is willing to speak TLS at all.
+    /// Whether a given peer is actually dialed over TLS is a separate question,
+    /// answered per peer by whether that peer publishes a TLS port.
+    pub raft_tls_client_root_ca_cert: Option<String>,
+
+    /// The name this node expects in a peer's certificate.
+    ///
+    /// One certificate issued for this single name serves the whole cluster,
+    /// and the name does not have to resolve in DNS. `None` verifies the peer
+    /// against the address that was dialed instead. Only consulted when
+    /// `raft_tls_client_root_ca_cert` is set, so [`RaftConfig::check`] refuses
+    /// this one without it rather than letting it sit unused.
+    pub raft_tls_client_domain_name: Option<String>,
+
+    /// The port this node's raft TLS listener binds.
+    ///
+    /// A node publishes this port in its own `Node` record, so a peer reads it
+    /// from membership instead of deriving it, and every node is free to pick
+    /// its own. A peer that publishes no TLS port is dialed in plaintext, which
+    /// is what keeps the two upgrades from having to happen in a fixed order.
+    /// `None` disables the TLS listener.
+    pub raft_tls_port: Option<u16>,
 }
 
 pub fn get_default_raft_advertise_host() -> String {
@@ -253,6 +292,11 @@ impl Default for RaftConfig {
             raft_secret: None,
             raft_accepted_secrets: vec![],
             raft_secret_strict: None,
+            raft_tls_server_cert: None,
+            raft_tls_server_key: None,
+            raft_tls_client_root_ca_cert: None,
+            raft_tls_client_domain_name: None,
+            raft_tls_port: None,
         }
     }
 }
@@ -276,6 +320,27 @@ impl RaftConfig {
     /// Returns whether to reject a raft RPC carrying no or an unaccepted secret.
     pub fn raft_secret_strict(&self) -> bool {
         self.raft_secret_strict.unwrap_or(false)
+    }
+
+    /// Returns whether this node is willing to dial its peers over TLS.
+    ///
+    /// Configuring a CA is the whole switch: without one there is nothing to
+    /// verify a peer's certificate against, and with one there is no reason to
+    /// refuse. Which peers are then actually dialed over TLS is decided per
+    /// peer, by whether that peer publishes a TLS port in its `Node` record.
+    pub fn raft_tls_client_enabled(&self) -> bool {
+        self.raft_tls_client_root_ca_cert.is_some()
+    }
+
+    /// Returns whether this node listens on a raft TLS port.
+    ///
+    /// Serving TLS takes an identity to present and a port to bind, so a node
+    /// missing the certificate, its key, or the port does not listen. That is
+    /// what makes a node with no TLS configuration at all behave as before.
+    pub fn raft_tls_listener_enabled(&self) -> bool {
+        let has_cert = self.raft_tls_server_cert.is_some();
+        let has_key = self.raft_tls_server_key.is_some();
+        has_cert && has_key && self.raft_tls_port.is_some()
     }
 
     pub fn to_rotbl_config(&self) -> rotbl::v001::Config {
@@ -362,6 +427,9 @@ impl RaftConfig {
     /// - An accepted raft secret is empty
     /// - A raft secret holds anything but visible ASCII
     /// - `raft_secret_strict` is enabled with no accepted secret
+    /// - A raft TLS path or name is set to an empty string
+    /// - Only one of the raft TLS certificate and its key is set
+    /// - The raft TLS domain name is set with no root CA to go with it
     /// - `leave_via` is specified without `leave_id`
     /// - Neither `single` nor `join` is specified
     /// - Both `single` and `join` are specified
@@ -410,6 +478,54 @@ impl RaftConfig {
             return Err(MetaStartupError::InvalidConfig(String::from(
                 "`raft_secret_strict` is enabled but `raft_accepted_secrets` is empty: \
                  the node would reject every incoming raft RPC",
+            )));
+        }
+
+        // A half-configured node is refused here rather than started into a
+        // state that fails later. A TLS failure is especially worth refusing
+        // early: `status_to_unreachable_at()` turns it into `Unreachable`, so a
+        // misconfigured node is indistinguishable from a node that is down.
+        // An empty string is a mistake rather than an absent value, in the same
+        // way an empty `raft_secret` is: `None` is how these keys go
+        // unconfigured, so `Some("")` only arises from a config source that set
+        // one of them to nothing.
+        let tls_string_keys = [
+            ("raft_tls_server_cert", &self.raft_tls_server_cert),
+            ("raft_tls_server_key", &self.raft_tls_server_key),
+            (
+                "raft_tls_client_root_ca_cert",
+                &self.raft_tls_client_root_ca_cert,
+            ),
+            (
+                "raft_tls_client_domain_name",
+                &self.raft_tls_client_domain_name,
+            ),
+        ];
+
+        for (key, value) in tls_string_keys {
+            if value.as_deref() == Some("") {
+                return Err(MetaStartupError::InvalidConfig(format!(
+                    "`{}` is set to an empty string: leave it unset instead",
+                    key
+                )));
+            }
+        }
+
+        let has_cert = self.raft_tls_server_cert.is_some();
+        let has_key = self.raft_tls_server_key.is_some();
+        if has_cert != has_key {
+            return Err(MetaStartupError::InvalidConfig(String::from(
+                "`raft_tls_server_cert` and `raft_tls_server_key` must be set together: \
+                 a TLS listener needs both halves of its identity",
+            )));
+        }
+
+        let has_domain_name = self.raft_tls_client_domain_name.is_some();
+        if has_domain_name && self.raft_tls_client_root_ca_cert.is_none() {
+            return Err(MetaStartupError::InvalidConfig(String::from(
+                "`raft_tls_client_domain_name` is set but `raft_tls_client_root_ca_cert` is not: \
+                 the name would never be consulted, since a node that cannot verify \
+                 a peer certificate does not dial TLS at all",
             )));
         }
 

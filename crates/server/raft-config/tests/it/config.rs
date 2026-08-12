@@ -148,6 +148,11 @@ fn test_default_config() {
         raft_secret: None,
         raft_accepted_secrets: vec![],
         raft_secret_strict: None,
+        raft_tls_server_cert: None,
+        raft_tls_server_key: None,
+        raft_tls_client_root_ca_cert: None,
+        raft_tls_client_domain_name: None,
+        raft_tls_port: None,
     });
 
     assert_ne!(get_default_raft_advertise_host(), "");
@@ -336,6 +341,195 @@ fn test_check_rejects_an_empty_sending_secret() {
             "`raft_secret` must not be empty",
         )))
     );
+}
+
+/// A TLS listener needs a certificate and its key together. One without the
+/// other starts a node that cannot serve TLS, and a peer dialing it reads that
+/// as a node that is down.
+#[test]
+fn test_check_rejects_a_half_configured_tls_identity() {
+    let expected = Err(MetaStartupError::InvalidConfig(String::from(
+        "`raft_tls_server_cert` and `raft_tls_server_key` must be set together: \
+         a TLS listener needs both halves of its identity",
+    )));
+
+    let cert_only = RaftConfig {
+        single: true,
+        raft_tls_server_cert: Some("/tls/node.crt".to_string()),
+        ..config()
+    };
+    assert_eq!(cert_only.check(), expected);
+
+    let key_only = RaftConfig {
+        single: true,
+        raft_tls_server_key: Some("/tls/node.key".to_string()),
+        ..config()
+    };
+    assert_eq!(key_only.check(), expected);
+
+    let both = RaftConfig {
+        single: true,
+        raft_tls_server_cert: Some("/tls/node.crt".to_string()),
+        raft_tls_server_key: Some("/tls/node.key".to_string()),
+        raft_tls_port: Some(10191),
+        ..config()
+    };
+    assert_eq!(both.check(), Ok(()));
+}
+
+/// The expected name is only consulted while verifying a peer's certificate,
+/// which a node without a CA never does. Configuring the name alone is
+/// therefore a setting that silently does nothing, and that is exactly the
+/// shape of mistake this validation exists to catch.
+#[test]
+fn test_check_rejects_a_domain_name_without_a_root_ca() {
+    let name_only = RaftConfig {
+        single: true,
+        raft_tls_client_domain_name: Some("meta.internal".to_string()),
+        ..config()
+    };
+
+    assert_eq!(
+        name_only.check(),
+        Err(MetaStartupError::InvalidConfig(String::from(
+            "`raft_tls_client_domain_name` is set but `raft_tls_client_root_ca_cert` is not: \
+             the name would never be consulted, since a node that cannot verify \
+             a peer certificate does not dial TLS at all",
+        )))
+    );
+
+    // The CA alone is a complete dialing configuration: the name may be left
+    // out to verify a peer against the address that was dialed, and a peer's
+    // TLS port comes from its `Node` record rather than from this config.
+    let ca_only = RaftConfig {
+        single: true,
+        raft_tls_client_root_ca_cert: Some("/tls/ca.crt".to_string()),
+        ..config()
+    };
+    assert_eq!(ca_only.check(), Ok(()));
+}
+
+/// `None` is how these keys go unconfigured, so an empty string reaching them
+/// means a config source set one to nothing. Left alone it would become a file
+/// open on the path `""`, reported as a missing file rather than as the
+/// configuration mistake it is.
+#[test]
+fn test_check_rejects_an_empty_tls_string() {
+    let expected = |key: &str| {
+        Err(MetaStartupError::InvalidConfig(format!(
+            "`{}` is set to an empty string: leave it unset instead",
+            key
+        )))
+    };
+
+    let empty = || Some("".to_string());
+
+    let c = RaftConfig {
+        single: true,
+        raft_tls_server_cert: empty(),
+        ..config()
+    };
+    assert_eq!(c.check(), expected("raft_tls_server_cert"));
+
+    let c = RaftConfig {
+        single: true,
+        raft_tls_server_key: empty(),
+        ..config()
+    };
+    assert_eq!(c.check(), expected("raft_tls_server_key"));
+
+    let c = RaftConfig {
+        single: true,
+        raft_tls_client_root_ca_cert: empty(),
+        ..config()
+    };
+    assert_eq!(c.check(), expected("raft_tls_client_root_ca_cert"));
+
+    let c = RaftConfig {
+        single: true,
+        raft_tls_client_domain_name: empty(),
+        ..config()
+    };
+    assert_eq!(c.check(), expected("raft_tls_client_domain_name"));
+}
+
+/// Configuring a CA is the whole switch for dialing over TLS: there is no
+/// separate flag, because a node with a CA has no reason to refuse and a node
+/// without one has nothing to verify a peer against.
+#[test]
+fn test_raft_tls_client_enabled() {
+    let mut c = config();
+    assert!(!c.raft_tls_client_enabled(), "no CA, so no TLS dialing");
+
+    c.raft_tls_client_root_ca_cert = Some("/tls/ca.crt".to_string());
+    assert!(c.raft_tls_client_enabled());
+
+    // The name plays no part in the switch; it only shapes the check that the
+    // CA makes possible.
+    c.raft_tls_client_domain_name = Some("meta.internal".to_string());
+    assert!(c.raft_tls_client_enabled());
+
+    c.raft_tls_client_root_ca_cert = None;
+    assert!(!c.raft_tls_client_enabled());
+}
+
+/// The listener takes a certificate, its key and a port. Missing any one of
+/// them leaves the node serving plaintext only, which is what a node carrying
+/// no TLS configuration at all has to keep doing.
+#[test]
+fn test_raft_tls_listener_enabled() {
+    let complete = RaftConfig {
+        raft_tls_server_cert: Some("/tls/node.crt".to_string()),
+        raft_tls_server_key: Some("/tls/node.key".to_string()),
+        raft_tls_port: Some(10191),
+        ..config()
+    };
+    assert!(complete.raft_tls_listener_enabled());
+
+    let no_cert = RaftConfig {
+        raft_tls_server_cert: None,
+        ..complete.clone()
+    };
+    assert!(!no_cert.raft_tls_listener_enabled());
+
+    let no_key = RaftConfig {
+        raft_tls_server_key: None,
+        ..complete.clone()
+    };
+    assert!(!no_key.raft_tls_listener_enabled());
+
+    let no_port = RaftConfig {
+        raft_tls_port: None,
+        ..complete.clone()
+    };
+    assert!(!no_port.raft_tls_listener_enabled());
+
+    assert!(!config().raft_tls_listener_enabled());
+}
+
+/// These five keys hold paths, a name and a port rather than a secret, so
+/// unlike `raft_secret` they render as configured. That is what makes them
+/// readable in `--cmd show-config`.
+#[test]
+fn test_tls_config_is_rendered_in_plain_text() -> anyhow::Result<()> {
+    let c = RaftConfig {
+        raft_tls_server_cert: Some("/tls/node.crt".to_string()),
+        raft_tls_server_key: Some("/tls/node.key".to_string()),
+        raft_tls_client_root_ca_cert: Some("/tls/ca.crt".to_string()),
+        raft_tls_client_domain_name: Some("meta.internal".to_string()),
+        raft_tls_port: Some(10191),
+        ..config()
+    };
+
+    let json = serde_json::to_value(&c)?;
+
+    assert_eq!(json["raft_tls_server_cert"], "/tls/node.crt");
+    assert_eq!(json["raft_tls_server_key"], "/tls/node.key");
+    assert_eq!(json["raft_tls_client_root_ca_cert"], "/tls/ca.crt");
+    assert_eq!(json["raft_tls_client_domain_name"], "meta.internal");
+    assert_eq!(json["raft_tls_port"], 10191);
+
+    Ok(())
 }
 
 #[test]
