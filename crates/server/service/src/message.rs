@@ -24,6 +24,7 @@ use databend_meta_types::AppliedState;
 use databend_meta_types::Endpoint;
 use databend_meta_types::GrpcHelper;
 use databend_meta_types::LogEntry;
+use databend_meta_types::node::Node;
 use databend_meta_types::protobuf::RaftRequest;
 use databend_meta_types::raft_types::NodeId;
 
@@ -40,23 +41,49 @@ pub struct JoinRequest {
 
     pub grpc_api_advertise_address: Option<String>,
 
+    /// See [`Node::raft_tls_advertise_address`].
+    ///
+    /// `serde(default)` is what lets a node built before this field existed
+    /// join a cluster that already knows it: a rolling upgrade sends exactly
+    /// such a request, and it carries no key for this field.
+    #[serde(default)]
+    pub raft_tls_advertise_address: Option<String>,
+
     /// Valid role: "voter", "learner".
     /// A learner node does not participate in voting.
     pub role: Option<String>,
 }
 
 impl JoinRequest {
-    pub fn new(
-        node_id: NodeId,
-        endpoint: Endpoint,
-        grpc_api_advertise_address: Option<impl ToString>,
-    ) -> Self {
+    /// Build a request that asks the leader to store `node` under `node_id`.
+    ///
+    /// The advertised addresses come from one `Node` rather than one argument
+    /// each, so that a node joins with the record it publishes elsewhere. The
+    /// destructuring is exhaustive on purpose: an address added to `Node` later
+    /// stops this from compiling until the join path carries it too.
+    pub fn new(node_id: NodeId, node: Node) -> Self {
+        let Node {
+            name: _,
+            endpoint,
+            grpc_api_addr: _,
+            grpc_api_advertise_address,
+            raft_tls_advertise_address,
+        } = node;
+
         Self {
             node_id,
             endpoint,
-            grpc_api_advertise_address: grpc_api_advertise_address.map(|x| x.to_string()),
+            grpc_api_advertise_address,
+            raft_tls_advertise_address,
             ..Default::default()
         }
+    }
+
+    /// The node record this request asks the leader to store.
+    pub fn node(&self) -> Node {
+        Node::new(self.node_id, self.endpoint.clone())
+            .with_grpc_advertise_address(self.grpc_api_advertise_address.clone())
+            .with_raft_tls_advertise_address(self.raft_tls_advertise_address.clone())
     }
 
     pub fn with_role_voter(self) -> Self {

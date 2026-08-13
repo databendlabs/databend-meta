@@ -27,6 +27,7 @@ use databend_meta_types::Cmd;
 use databend_meta_types::Endpoint;
 use databend_meta_types::LogEntry;
 use databend_meta_types::UpsertKV;
+use databend_meta_types::node::Node;
 use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
 use databend_meta_types::raft_types::NodeId;
 use databend_meta_types::raft_types::new_log_id;
@@ -279,11 +280,12 @@ async fn test_meta_node_join_as_learner() -> anyhow::Result<()> {
             .await?;
         let grpc_api_advertise_address = tc2.config.grpc.advertise_address();
 
+        let node =
+            Node::new(node_id, endpoint).with_grpc_advertise_address(grpc_api_advertise_address);
+
         let admin_req = ForwardRequest {
             forward_to_leader: 0,
-            body: ForwardRequestBody::Join(
-                JoinRequest::new(node_id, endpoint, grpc_api_advertise_address).with_role_learner(),
-            ),
+            body: ForwardRequestBody::Join(JoinRequest::new(node_id, node).with_role_learner()),
         };
 
         leader.handle_forwardable_request(admin_req).await?;
@@ -941,13 +943,11 @@ fn join_req(
     grpc_api_advertise_address: Option<String>,
     forward: u64,
 ) -> ForwardRequest<ForwardRequestBody> {
+    let node = Node::new(node_id, endpoint).with_grpc_advertise_address(grpc_api_advertise_address);
+
     ForwardRequest {
         forward_to_leader: forward,
-        body: ForwardRequestBody::Join(JoinRequest::new(
-            node_id,
-            endpoint,
-            grpc_api_advertise_address,
-        )),
+        body: ForwardRequestBody::Join(JoinRequest::new(node_id, node)),
     }
 }
 
