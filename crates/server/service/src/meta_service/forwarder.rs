@@ -16,7 +16,6 @@
 
 use databend_meta_client::MetaGrpcReadReq;
 use databend_meta_runtime_api::SpawnApi;
-use databend_meta_types::Endpoint;
 use databend_meta_types::MetaAPIError;
 use databend_meta_types::MetaNetworkError;
 use databend_meta_types::protobuf::StreamItem;
@@ -30,6 +29,7 @@ use crate::message::ForwardResponse;
 use crate::meta_node::meta_node::MetaRaft;
 use crate::meta_service::MetaNode;
 use crate::meta_service::forward_rpc_error::ForwardRPCError;
+use crate::raft_secret::RaftPeerTarget;
 use crate::raft_secret::SecretRaftServiceClient;
 use crate::raft_secret::connect_raft_service;
 use crate::request_handling::Forwarder;
@@ -54,28 +54,26 @@ impl<'a, SP: SpawnApi> MetaForwarder<'a, SP> {
     async fn new_raft_client(
         &self,
         target: &NodeId,
-    ) -> Result<(Endpoint, SecretRaftServiceClient), MetaNetworkError> {
+    ) -> Result<(RaftPeerTarget, SecretRaftServiceClient), MetaNetworkError> {
         debug!("new RaftServiceClient to: {}", target);
 
-        let endpoint = self
-            .sto
-            .get_node_raft_endpoint(target)
-            .await
-            .ok_or_else(|| {
-                MetaNetworkError::GetNodeAddrError(format!(
-                    "Node {} not found in state machine",
-                    target
-                ))
-            })?;
+        let node = self.sto.get_node(target).await.ok_or_else(|| {
+            MetaNetworkError::GetNodeAddrError(format!(
+                "Node {} not found in state machine",
+                target
+            ))
+        })?;
 
-        let client = connect_raft_service(&endpoint, &self.sto.config).await?;
+        let peer = RaftPeerTarget::of_node(&node, &self.sto.config).await?;
+
+        let client = connect_raft_service(&peer, &self.sto.config).await?;
 
         let max_msg_size = self.sto.config.raft_grpc_max_message_size();
         let client = client
             .max_decoding_message_size(max_msg_size)
             .max_encoding_message_size(max_msg_size);
 
-        Ok((endpoint, client))
+        Ok((peer, client))
     }
 }
 
@@ -86,21 +84,20 @@ impl<SP: SpawnApi> Forwarder<ForwardRequestBody> for MetaForwarder<'_, SP> {
         &self,
         target: NodeId,
         req: ForwardRequest<ForwardRequestBody>,
-    ) -> Result<(Endpoint, ForwardResponse), ForwardRPCError> {
+    ) -> Result<ForwardResponse, ForwardRPCError> {
         debug!("forward ForwardRequest to: {} {:?}", target, req);
 
-        let (endpoint, mut client) = self.new_raft_client(&target).await?;
+        let (peer, mut client) = self.new_raft_client(&target).await?;
 
         let resp = client.forward(req).await.map_err(|e| {
-            MetaNetworkError::from(e)
-                .add_context(format!("target: {}, endpoint: {}", target, endpoint))
+            MetaNetworkError::from(e).add_context(format!("target: {}, endpoint: {}", target, peer))
         })?;
         let raft_mes = resp.into_inner();
 
         let res: Result<ForwardResponse, MetaAPIError> = reply_to_api_result(raft_mes);
         let resp = res?;
 
-        Ok((endpoint, resp))
+        Ok(resp)
     }
 }
 
@@ -111,17 +108,16 @@ impl<SP: SpawnApi> Forwarder<MetaGrpcReadReq> for MetaForwarder<'_, SP> {
         &self,
         target: NodeId,
         req: ForwardRequest<MetaGrpcReadReq>,
-    ) -> Result<(Endpoint, BoxStream<StreamItem>), ForwardRPCError> {
+    ) -> Result<BoxStream<StreamItem>, ForwardRPCError> {
         debug!("forward ReadRequest to: {} {:?}", target, req);
 
-        let (endpoint, mut client) = self.new_raft_client(&target).await?;
+        let (peer, mut client) = self.new_raft_client(&target).await?;
 
         let strm = client.kv_read_v1(req).await.map_err(|e| {
-            MetaNetworkError::from(e)
-                .add_context(format!("target: {}, endpoint: {}", target, endpoint))
+            MetaNetworkError::from(e).add_context(format!("target: {}, endpoint: {}", target, peer))
         })?;
 
         let strm = strm.into_inner();
-        Ok((endpoint, Box::pin(strm)))
+        Ok(Box::pin(strm))
     }
 }
