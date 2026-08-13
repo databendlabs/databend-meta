@@ -507,6 +507,31 @@ fn test_raft_tls_listener_enabled() {
     assert!(!config().raft_tls_listener_enabled());
 }
 
+/// What a node publishes to its peers, so a half-configured listener has to
+/// yield `None` rather than an address nothing answers on.
+#[test]
+fn test_raft_tls_advertise_host_string() {
+    let complete = RaftConfig {
+        raft_tls_server_cert: Some("/tls/node.crt".to_string()),
+        raft_tls_server_key: Some("/tls/node.key".to_string()),
+        raft_tls_port: Some(10191),
+        ..config()
+    };
+    assert_eq!(
+        Some("meta-1:10191".to_string()),
+        complete.raft_tls_advertise_host_string(),
+        "built from raft_advertise_host, not from the listen host"
+    );
+
+    let no_key = RaftConfig {
+        raft_tls_server_key: None,
+        ..complete.clone()
+    };
+    assert_eq!(None, no_key.raft_tls_advertise_host_string());
+
+    assert_eq!(None, config().raft_tls_advertise_host_string());
+}
+
 /// These five keys hold paths, a name and a port rather than a secret, so
 /// unlike `raft_secret` they render as configured. That is what makes them
 /// readable in `--cmd show-config`.
