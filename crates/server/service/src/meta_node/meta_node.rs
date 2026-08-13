@@ -132,6 +132,7 @@ use crate::meta_service::watcher::DispatcherHandle;
 use crate::meta_service::watcher::WatchTypes;
 use crate::metrics::network_metrics;
 use crate::metrics::server_metrics;
+use crate::raft_secret::RaftPeerTarget;
 use crate::raft_secret::RaftSecretChecker;
 use crate::raft_secret::RaftSecretInterceptor;
 use crate::raft_secret::connect_raft_service;
@@ -789,7 +790,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
         for addr in addrs {
             info!("leave cluster via {}...", addr);
 
-            let conn_res = connect_raft_service(addr, conf).await;
+            let conn_res = connect_raft_service(&RaftPeerTarget::plaintext(addr), conf).await;
             let mut raft_client = match conn_res {
                 Ok(c) => c,
                 Err(e) => {
@@ -1303,7 +1304,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
             let res = f.forward(leader_id, req_cloned).await;
 
             let forward_err = match res {
-                Ok((_leader_raft_endpoint, reply)) => {
+                Ok(reply) => {
                     let leader_grpc_endpoint = self
                         .get_node(&leader_id)
                         .await
