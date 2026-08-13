@@ -14,7 +14,6 @@
 
 use databend_base::counter;
 use databend_meta_raft_config::config::RaftConfig;
-use databend_meta_types::Endpoint;
 use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
 use databend_meta_types::raft_types::NodeId;
 use log::debug;
@@ -42,12 +41,14 @@ pub type RaftClient = counter::Counted<PeerCounter, SecretRaftServiceClient>;
 
 /// Defines the API of the client to a raft node.
 pub trait RaftClientApi {
-    fn new(target: NodeId, endpoint: Endpoint, channel: Channel, config: &RaftConfig) -> Self;
+    /// `address` is the address `channel` was dialed at, which is what the
+    /// `active_peers` metric is labelled by.
+    fn new(target: NodeId, address: &str, channel: Channel, config: &RaftConfig) -> Self;
 }
 
 impl RaftClientApi for RaftClient {
-    fn new(target: NodeId, endpoint: Endpoint, channel: Channel, config: &RaftConfig) -> Self {
-        let endpoint_str = endpoint.to_string();
+    fn new(target: NodeId, address: &str, channel: Channel, config: &RaftConfig) -> Self {
+        let endpoint_str = address.to_string();
 
         debug!(
             "RaftClient::new: target: {} endpoint: {}",

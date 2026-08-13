@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use databend_meta_client::RequestFor;
-use databend_meta_types::Endpoint;
 use databend_meta_types::raft_types::NodeId;
 
 use crate::message::ForwardRequest;
@@ -39,7 +38,7 @@ pub trait Forwarder<Req: RequestFor> {
         &self,
         target: NodeId,
         req: ForwardRequest<Req>,
-    ) -> Result<(Endpoint, Req::Reply), ForwardRPCError>;
+    ) -> Result<Req::Reply, ForwardRPCError>;
 }
 
 impl RequestFor for ForwardRequestBody {
