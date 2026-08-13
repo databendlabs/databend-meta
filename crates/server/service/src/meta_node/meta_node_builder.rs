@@ -26,6 +26,7 @@ use tokio::sync::watch;
 use watcher::dispatch::Dispatcher;
 
 use crate::meta_node::meta_node::MetaRaft;
+use crate::meta_node::raft_listener;
 use crate::meta_service::MetaNode;
 use crate::meta_service::runtime_config::RuntimeConfig;
 use crate::meta_service::watcher::DispatcherHandle;
@@ -117,7 +118,7 @@ impl<SP: SpawnApi> MetaNodeBuilder<SP> {
             })?
         };
 
-        MetaNode::start_raft_service(meta_node.clone(), &endpoint).await?;
+        raft_listener::start_raft_service(meta_node.clone(), &endpoint).await?;
 
         Ok(meta_node)
     }
