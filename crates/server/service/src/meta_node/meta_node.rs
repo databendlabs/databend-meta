@@ -919,8 +919,11 @@ impl<SP: SpawnApi> MetaNode<SP> {
         config: &MetaServiceConfig,
         addr: &String,
     ) -> Result<(), MetaAPIError> {
-        // Joining cluster has to use advertise host instead of listen host.
-        let advertise_endpoint = config.raft_config.raft_api_advertise_host_endpoint();
+        // Joining a cluster publishes the same record this node would have
+        // published had it booted a cluster of its own, advertise addresses
+        // included. Building it anywhere but here would be a second answer to
+        // what this node advertises, and a chance for the two to disagree.
+        let advertised_node = config.get_node();
 
         let timeout = Some(Duration::from_millis(10_000));
         info!(
@@ -942,11 +945,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
             RaftSecretInterceptor::new(&config.raft_config),
         );
 
-        let join_req = JoinRequest::new(
-            config.raft_config.id,
-            advertise_endpoint.clone(),
-            config.grpc.advertise_address(),
-        );
+        let join_req = JoinRequest::new(config.raft_config.id, advertised_node);
 
         let join_req = if config.raft_config.learner {
             join_req.with_role_learner()

@@ -219,6 +219,55 @@ async fn test_both_ports_refuse_a_caller_with_no_secret_alike() -> anyhow::Resul
     Ok(())
 }
 
+/// A node that joins an existing cluster publishes its TLS address, exactly as
+/// a node that boots a cluster of its own does.
+///
+/// Joining is the only way a production node ever enters a cluster, and it is
+/// the one path that carries the node record over the wire and rebuilds it on
+/// the leader. A record that loses its TLS address there leaves every peer
+/// dialing the joined node in plaintext, with nothing to say the TLS listener
+/// it is running was ever meant to be used.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_a_joining_node_publishes_its_tls_address() -> anyhow::Result<()> {
+    let mut tc0 = tls_node(0);
+    let mut tc1 = tls_node(1);
+
+    let leader_addr = tc0
+        .config
+        .raft_config
+        .raft_api_addr::<TokioRuntime>()
+        .await?;
+
+    tc1.config.raft_config.single = false;
+    tc1.config.raft_config.join = vec![leader_addr.to_string()];
+
+    let leader = MetaNode::<TokioRuntime>::boot(&tc0.config).await?;
+    tc0.meta_node = Some(leader.clone());
+
+    leader
+        .raft
+        .wait(timeout())
+        .state(ServerState::Leader, "leader started")
+        .await?;
+
+    info!("--- the follower joins through the join path, not through add_node()");
+    let follower = MetaNode::<TokioRuntime>::start(&tc1.config).await?;
+    tc1.meta_node = Some(follower.clone());
+
+    let joined = follower.join_cluster(&tc1.config).await?;
+    assert_eq!(Ok(()), joined);
+
+    info!("--- the leader stored the record the follower advertises, TLS address included");
+    let stored = leader.raft_store.get_node(&1).await;
+    assert_eq!(Some(tc1.config.get_node()), stored);
+
+    let published_tls_address = stored.and_then(|node| node.raft_tls_advertise_address);
+    assert_eq!(Some(tls_addr(&tc1)), published_tls_address);
+
+    Ok(())
+}
+
 /// A node that cannot start every listener it was configured for starts none
 /// of them, whichever of the two fallible steps is the one that fails.
 ///

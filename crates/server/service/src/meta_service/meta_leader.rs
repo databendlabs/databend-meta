@@ -28,7 +28,6 @@ use databend_meta_types::AppliedState;
 use databend_meta_types::Cmd;
 use databend_meta_types::LogEntry;
 use databend_meta_types::MetaDataReadError;
-use databend_meta_types::node::Node;
 use databend_meta_types::protobuf::KvGetManyRequest;
 use databend_meta_types::protobuf::StreamItem;
 use databend_meta_types::raft_types::ClientWriteError;
@@ -191,7 +190,7 @@ impl<'a, SP: SpawnApi> MetaLeader<'a, SP> {
     pub async fn join(&self, req: JoinRequest) -> Result<(), RaftError<ClientWriteError>> {
         let role = req.role();
         let node_id = req.node_id;
-        let endpoint = req.endpoint;
+        let node = req.node();
         let metrics = self.raft.metrics().borrow_watched().clone();
         let membership = metrics.membership_config.membership();
 
@@ -203,8 +202,7 @@ impl<'a, SP: SpawnApi> MetaLeader<'a, SP> {
 
         let ent = LogEntry::new(Cmd::AddNode {
             node_id,
-            node: Node::new(node_id, endpoint)
-                .with_grpc_advertise_address(req.grpc_api_advertise_address),
+            node,
             overriding: false,
         });
         self.write(ent).await?;

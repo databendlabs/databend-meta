@@ -20,6 +20,7 @@ use databend_meta::message::ForwardRequestBody;
 use databend_meta::message::JoinRequest;
 use databend_meta::meta_service::MetaNode;
 use databend_meta_runtime_api::TokioRuntime;
+use databend_meta_types::node::Node;
 use openraft::ServerState;
 use pretty_assertions::assert_eq;
 use test_harness::test;
@@ -109,15 +110,13 @@ async fn test_member_list_with_learner() -> anyhow::Result<()> {
         .advertise_address()
         .unwrap_or_else(|| "127.0.0.1:29191".to_string());
 
+    let learner_node = Node::new(learner_node_id, endpoint)
+        .with_grpc_advertise_address(Some(grpc_api_advertise_address.clone()));
+
     let admin_req = ForwardRequest {
         forward_to_leader: 0,
         body: ForwardRequestBody::Join(
-            JoinRequest::new(
-                learner_node_id,
-                endpoint,
-                Some(grpc_api_advertise_address.clone()),
-            )
-            .with_role_learner(),
+            JoinRequest::new(learner_node_id, learner_node).with_role_learner(),
         ),
     };
 
