@@ -415,6 +415,23 @@ impl RaftConfig {
         Endpoint::new(&self.raft_advertise_host, self.raft_api_port)
     }
 
+    /// The address this node's raft TLS listener binds.
+    ///
+    /// `None` unless that listener is configured to run, which is what decides
+    /// whether the node opens a second raft port at all.
+    ///
+    /// It binds `raft_listen_host`, the same interface the plaintext raft port
+    /// binds; only the port differs.
+    pub fn raft_tls_listen_host_endpoint(&self) -> Option<Endpoint> {
+        if !self.raft_tls_listener_enabled() {
+            return None;
+        }
+
+        let port = self.raft_tls_port?;
+
+        Some(Endpoint::new(&self.raft_listen_host, port))
+    }
+
     /// Resolves the advertise host to an endpoint, supporting both IP addresses and hostnames.
     pub async fn raft_api_addr<R: SpawnApi>(&self) -> Result<Endpoint, io::Error> {
         if let Ok(addr) = self.raft_advertise_host.parse::<Ipv4Addr>() {

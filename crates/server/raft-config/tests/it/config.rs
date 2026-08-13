@@ -532,6 +532,31 @@ fn test_raft_tls_advertise_host_string() {
     assert_eq!(None, config().raft_tls_advertise_host_string());
 }
 
+/// Where the TLS listener binds, which is the listen host and not the one the
+/// node publishes: a node advertising a name still binds an interface.
+#[test]
+fn test_raft_tls_listen_host_endpoint() {
+    let complete = RaftConfig {
+        raft_tls_server_cert: Some("/tls/node.crt".to_string()),
+        raft_tls_server_key: Some("/tls/node.key".to_string()),
+        raft_tls_port: Some(10191),
+        ..config()
+    };
+    assert_eq!(
+        Some(Endpoint::new("0.0.0.0", 10191)),
+        complete.raft_tls_listen_host_endpoint(),
+        "built from raft_listen_host, not from the advertise host"
+    );
+
+    let no_cert = RaftConfig {
+        raft_tls_server_cert: None,
+        ..complete.clone()
+    };
+    assert_eq!(None, no_cert.raft_tls_listen_host_endpoint());
+
+    assert_eq!(None, config().raft_tls_listen_host_endpoint());
+}
+
 /// These five keys hold paths, a name and a port rather than a secret, so
 /// unlike `raft_secret` they render as configured. That is what makes them
 /// readable in `--cmd show-config`.
