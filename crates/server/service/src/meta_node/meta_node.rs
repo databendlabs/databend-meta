@@ -17,6 +17,7 @@ use std::collections::BTreeSet;
 use std::future;
 use std::io;
 use std::net::Ipv4Addr;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::Weak;
 use std::sync::atomic::AtomicI32;
@@ -93,6 +94,9 @@ use tokio::time::Instant;
 use tokio::time::sleep;
 use tonic::Status;
 use tonic::service::interceptor::InterceptedService;
+use tonic::transport::Identity;
+use tonic::transport::ServerTlsConfig;
+use tonic::transport::server::Router;
 use tonic::transport::server::TcpIncoming;
 use watcher::EventFilter;
 use watcher::dispatch::Command;
@@ -167,6 +171,15 @@ impl<SP: SpawnApi> Drop for MetaNode<SP> {
     }
 }
 
+/// A raft service that already holds its port but is not yet served.
+struct RaftListener {
+    socket_addr: SocketAddr,
+    /// `http` or `https`, for logging and for naming the serving task.
+    scheme: &'static str,
+    incoming: TcpIncoming,
+    server: Router,
+}
+
 impl<SP: SpawnApi> MetaNode<SP> {
     pub fn builder(config: &RaftConfig) -> MetaNodeBuilder<SP> {
         let raft_config = Self::new_raft_config(config);
@@ -203,6 +216,13 @@ impl<SP: SpawnApi> MetaNode<SP> {
     }
 
     /// Start the grpc service for raft communication and meta operation API.
+    ///
+    /// A node with a configured TLS identity serves raft on a second port as
+    /// well. Both listeners run the same service and the same secret check, so
+    /// they differ only in transport, and the plaintext one stays open: peers
+    /// that cannot dial TLS have to keep reaching this node throughout the
+    /// migration. Which port a peer picks is decided by the TLS address this
+    /// node publishes in its own record, not by anything here.
     #[fastrace::trace]
     pub async fn start_raft_service(
         meta_node: Arc<MetaNode<SP>>,
@@ -210,25 +230,51 @@ impl<SP: SpawnApi> MetaNode<SP> {
     ) -> Result<(), MetaNetworkError> {
         info!("Start raft service listening on: {}", endpoint);
 
-        let host = endpoint.addr();
-        let port = endpoint.port();
-
-        let mut running_rx = meta_node.running_rx.clone();
-
-        let raft_service_impl = RaftServiceImpl::create(meta_node.clone());
-
         let max_msg_size = meta_node.raft_store.config.raft_grpc_max_message_size();
         info!(
             "RaftService gRPC message size limit: {}MB",
             max_msg_size / (1024 * 1024)
         );
 
-        let raft_server = InterceptedService::new(
-            RaftServiceServer::new(raft_service_impl)
-                .max_decoding_message_size(max_msg_size)
-                .max_encoding_message_size(max_msg_size),
-            RaftSecretChecker::new(&meta_node.raft_store.config),
-        );
+        let socket_addr = Self::resolve_listen_addr(endpoint).await?;
+
+        // Every listener is built, port included, before any of them is
+        // spawned. A spawned listener cannot be called back: its service owns
+        // an `Arc<MetaNode>`, so it keeps the node and its port alive after
+        // this function returns an error, with nobody left holding a handle to
+        // stop it. Building first leaves a failure with nothing but bound
+        // sockets to drop.
+        let plaintext_listener = Self::build_raft_listener(&meta_node, socket_addr, None)?;
+
+        let config = &meta_node.raft_store.config;
+
+        let tls_listener = match config.raft_tls_listen_host_endpoint() {
+            Some(tls_endpoint) => {
+                info!("Start raft TLS service listening on: {}", tls_endpoint);
+
+                let tls = Self::raft_tls_config(config).await?;
+                let tls_socket_addr = Self::resolve_listen_addr(&tls_endpoint).await?;
+                let listener = Self::build_raft_listener(&meta_node, tls_socket_addr, Some(tls))?;
+
+                Some(listener)
+            }
+            None => None,
+        };
+
+        Self::spawn_raft_listener(&meta_node, plaintext_listener).await;
+
+        if let Some(tls_listener) = tls_listener {
+            Self::spawn_raft_listener(&meta_node, tls_listener).await;
+        }
+
+        Ok(())
+    }
+
+    /// Resolve a listen endpoint to a socket address, looking up the host when
+    /// it is a name rather than an address.
+    async fn resolve_listen_addr(endpoint: &Endpoint) -> Result<SocketAddr, MetaNetworkError> {
+        let host = endpoint.addr();
+        let port = endpoint.port();
 
         let ipv4_addr = host.parse::<Ipv4Addr>();
         let ip_port = match ipv4_addr {
@@ -244,15 +290,70 @@ impl<SP: SpawnApi> MetaNode<SP> {
             }
         };
 
-        info!("about to start raft grpc on: {}", ip_port);
+        let socket_addr = ip_port.parse::<SocketAddr>()?;
 
-        let socket_addr = ip_port.parse::<std::net::SocketAddr>()?;
-        let node_id = meta_node.raft_store.id;
+        Ok(socket_addr)
+    }
 
-        // Bind before spawning: if the port is taken, startup must fail loudly.
-        // `serve_with_shutdown()` binds inside the spawned task, where the error is
-        // only observed when the task is joined at shutdown. Until then the node
-        // reports a successful start while having no raft service at all.
+    /// Read this node's TLS identity off disk.
+    ///
+    /// Failing here fails startup, which is the point: a node that cannot load
+    /// its certificate but starts anyway serves plaintext only, and peers see
+    /// that as a node that is down rather than as a misconfigured one.
+    async fn raft_tls_config(config: &RaftConfig) -> Result<ServerTlsConfig, MetaNetworkError> {
+        let read = async |path: &Option<String>| -> Result<Vec<u8>, MetaNetworkError> {
+            // `raft_tls_listener_enabled()` is what guarantees both are set.
+            let Some(path) = path else {
+                let e = AnyError::error("raft TLS listener enabled without a certificate or key");
+                return Err(MetaNetworkError::TLSConfigError(e));
+            };
+
+            let content = tokio::fs::read(path).await.map_err(|e| {
+                let e = AnyError::new(&e).add_context(|| format!("read raft TLS file {}", path));
+                MetaNetworkError::TLSConfigError(e)
+            })?;
+
+            Ok(content)
+        };
+
+        let cert = read(&config.raft_tls_server_cert).await?;
+        let key = read(&config.raft_tls_server_key).await?;
+
+        let identity = Identity::from_pem(cert, key);
+
+        Ok(ServerTlsConfig::new().identity(identity))
+    }
+
+    /// Build one raft listener, taking its port, but leave it unserved.
+    ///
+    /// Serving plaintext when `tls` is `None`.
+    fn build_raft_listener(
+        meta_node: &Arc<MetaNode<SP>>,
+        socket_addr: SocketAddr,
+        tls: Option<ServerTlsConfig>,
+    ) -> Result<RaftListener, MetaNetworkError> {
+        // One service instance per listener: `RaftServiceImpl` is not `Clone`,
+        // and creating a second one costs nothing but another handle.
+        let raft_service_impl = RaftServiceImpl::create(meta_node.clone());
+
+        let max_msg_size = meta_node.raft_store.config.raft_grpc_max_message_size();
+
+        let raft_server = InterceptedService::new(
+            RaftServiceServer::new(raft_service_impl)
+                .max_decoding_message_size(max_msg_size)
+                .max_encoding_message_size(max_msg_size),
+            RaftSecretChecker::new(&meta_node.raft_store.config),
+        );
+
+        let scheme = if tls.is_some() { "https" } else { "http" };
+
+        info!("about to build raft grpc on: {}://{}", scheme, socket_addr);
+
+        // Bind here rather than inside the spawned task: if the port is taken,
+        // startup must fail loudly. `serve_with_shutdown()` binds inside the
+        // task, where the error is only observed when the task is joined at
+        // shutdown. Until then the node reports a successful start while having
+        // no raft service at all.
         let incoming = TcpIncoming::bind(socket_addr)
             .map_err(|e| {
                 MetaNetworkError::BadAddressFormat(
@@ -262,33 +363,64 @@ impl<SP: SpawnApi> MetaNode<SP> {
             })?
             .with_nodelay(Some(true));
 
-        let srv = tonic::transport::Server::builder()
-            // .concurrency_limit_per_connection()
-            // .timeout(Duration::from_secs(60))
-            .add_service(raft_server);
+        let mut builder = tonic::transport::Server::builder();
+        // .concurrency_limit_per_connection()
+        // .timeout(Duration::from_secs(60))
+
+        if let Some(tls) = tls {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+
+            builder = builder
+                .tls_config(tls)
+                .map_err(|e| MetaNetworkError::TLSConfigError(AnyError::new(&e)))?;
+        }
+
+        let server = builder.add_service(raft_server);
+
+        Ok(RaftListener {
+            socket_addr,
+            scheme,
+            incoming,
+            server,
+        })
+    }
+
+    /// Serve a built listener, and register its task so that shutdown joins it.
+    async fn spawn_raft_listener(meta_node: &Arc<MetaNode<SP>>, listener: RaftListener) {
+        let RaftListener {
+            socket_addr,
+            scheme,
+            incoming,
+            server,
+        } = listener;
+
+        let mut running_rx = meta_node.running_rx.clone();
+        let node_id = meta_node.raft_store.id;
+
+        info!("about to serve raft grpc on: {}://{}", scheme, socket_addr);
 
         let h = SP::spawn(
             async move {
-                srv.serve_with_incoming_shutdown(incoming, async move {
-                    let _ = running_rx.changed().await;
-                    info!(
-                        "running_rx for Raft server received, shutting down: id={} {} ",
-                        node_id, ip_port
-                    );
-                })
-                .await
-                .map_err(|e| {
-                    AnyError::new(&e).add_context(|| "when serving meta-service raft service")
-                })?;
+                server
+                    .serve_with_incoming_shutdown(incoming, async move {
+                        let _ = running_rx.changed().await;
+                        info!(
+                            "running_rx for Raft server received, shutting down: id={} {}://{} ",
+                            node_id, scheme, socket_addr
+                        );
+                    })
+                    .await
+                    .map_err(|e| {
+                        AnyError::new(&e).add_context(|| "when serving meta-service raft service")
+                    })?;
 
                 Ok::<(), AnyError>(())
             },
-            Some("raft-server".into()),
+            Some(format!("raft-server-{}", scheme)),
         );
 
         let mut jh = meta_node.join_handles.lock().await;
         jh.push(h);
-        Ok(())
     }
 
     /// Open or create a meta node.
