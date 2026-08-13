@@ -387,6 +387,26 @@ impl RaftConfig {
         format!("{}:{}", self.raft_advertise_host, self.raft_api_port)
     }
 
+    /// The address a peer dials to reach this node's raft TLS listener.
+    ///
+    /// `None` unless that listener is configured to run, because this is what
+    /// the node publishes to its peers: an address that nothing answers on
+    /// reads to them as a node that is down.
+    ///
+    /// It is built from `raft_advertise_host` today, so TLS is advertised on
+    /// the same host as plaintext. Peers read the whole address rather than
+    /// just the port, so giving TLS a host of its own later is a config
+    /// addition and not a change to what is published.
+    pub fn raft_tls_advertise_host_string(&self) -> Option<String> {
+        if !self.raft_tls_listener_enabled() {
+            return None;
+        }
+
+        let port = self.raft_tls_port?;
+
+        Some(format!("{}:{}", self.raft_advertise_host, port))
+    }
+
     pub fn raft_api_listen_host_endpoint(&self) -> Endpoint {
         Endpoint::new(&self.raft_listen_host, self.raft_api_port)
     }

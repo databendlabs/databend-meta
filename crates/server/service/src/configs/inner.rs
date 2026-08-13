@@ -166,5 +166,6 @@ impl MetaServiceConfig {
             self.raft_config.raft_api_advertise_host_endpoint(),
         )
         .with_grpc_advertise_address(self.grpc.advertise_address())
+        .with_raft_tls_advertise_address(self.raft_config.raft_tls_advertise_host_string())
     }
 }

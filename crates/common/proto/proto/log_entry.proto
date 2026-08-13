@@ -31,6 +31,17 @@ message Node {
   string addr = 4;
   uint32 port = 5;
   optional string grpc_api_advertise_address = 3;
+  // The `addr:port` where this node's raft TLS listener answers, absent when
+  // it has none.
+  //
+  // It is a whole address rather than a port beside `addr` so that a node can
+  // advertise TLS on an interface or a name it does not serve plaintext on,
+  // and so that its certificate can be issued for that name.
+  //
+  // A peer that predates this field drops it while decoding and keeps dialing
+  // the plaintext `addr`:`port`, which is what makes the field safe to send
+  // into a mixed-version cluster.  Tag 2 is retired; do not reuse it.
+  optional string raft_tls_advertise_address = 6;
 }
 
 // Add a node to the cluster (Cmd::AddNode).
