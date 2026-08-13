@@ -153,6 +153,11 @@ impl<R: RuntimeApi> MetaSrvTestContext<R> {
 
         config.raft_config.raft_api_port = next_port();
 
+        // Reserved unconditionally, the same way the raft port is: the TLS
+        // listener also needs a certificate and a key, so a test that sets
+        // neither does not open this port and only pays for the reservation.
+        config.raft_config.raft_tls_port = Some(next_port());
+
         // when running unit tests, set raft_listen_host to "127.0.0.1" and raft_advertise_host to localhost,
         // so if something wrong in raft meta nodes communication we will catch bug in unit tests.
         config.raft_config.raft_listen_host = "127.0.0.1".to_string();
