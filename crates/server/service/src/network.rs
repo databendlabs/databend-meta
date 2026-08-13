@@ -86,7 +86,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use crate::metrics::raft_metrics;
 use crate::raft_client::RaftClient;
 use crate::raft_client::RaftClientApi;
-use crate::raft_secret::RaftPeerTarget;
+use crate::raft_transport::RaftPeerTarget;
 use crate::store::RaftStore;
 
 const APPEND_V002_CHANNEL_SIZE: usize = 64;
