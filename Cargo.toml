@@ -125,7 +125,7 @@ tokio = { version = "1.35.0", features = ["full"] }
 tokio-stream = { version = "0.1.11", features = ["net"] }
 toml = "0.8"
 tonic = { version = "0.13", features = ["transport", "codegen", "tls-native-roots"] }
-tonic-build = "0.13"
+tonic-build = "0.14"
 tonic-reflection = "0.13"
 watcher = "0.5.0"
 
