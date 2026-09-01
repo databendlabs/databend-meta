@@ -91,7 +91,7 @@ async fn test_grpc_client_handshake_timeout() {
         .await;
 
         let got = res.unwrap_err();
-        let expect = "HandshakeError with databend-meta: Connection Failure; cause: tonic::status::Status: status: Cancelled, message: \"Timeout expired\", details: [], metadata: MetadataMap { headers: {} }; source: transport error; source: Timeout expired";
+        let expect = "HandshakeError with databend-meta: Connection Failure; cause: tonic::status::Status: code: 'The operation was cancelled', message: \"Timeout expired\", source: tonic::transport::Error(Transport, TimeoutExpired(())); source: transport error; source: Timeout expired";
 
         assert_eq!(got.to_string(), expect);
     }
