@@ -44,28 +44,33 @@ fn build_proto() {
     config.protoc_arg("--experimental_allow_proto3_optional");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    tonic_build::configure()
-        .btree_map(["RaftLogStatus.wal_closed_chunk_sizes"])
+
+    // prost-build derives `Eq` and `Hash` itself for every message whose fields allow it.
+    // It declines for a message that holds a `repeated` message field, directly or through
+    // another message, so those messages still list `Eq` below. Listing `Eq` on any other
+    // message collides with the derive prost-build already emits.
+    tonic_prost_build::configure()
+        .btree_map("RaftLogStatus.wal_closed_chunk_sizes")
         .file_descriptor_set_path(out_dir.join("meta_descriptor.bin"))
         .type_attribute(
             "SeqV",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "TxnGetRequest",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "TxnPutRequest",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "TxnDeleteRequest",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "TxnDeleteByPrefixRequest",
-            "#[derive(Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(PartialOrd, Ord, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "TxnCondition.ConditionResult",
@@ -73,15 +78,15 @@ fn build_proto() {
         )
         .type_attribute(
             "TxnCondition.target",
-            "#[derive(Eq,serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "TxnOp.request",
-            "#[derive(Eq,serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "TxnCondition",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "ConditionalOperation",
@@ -97,7 +102,7 @@ fn build_proto() {
         )
         .type_attribute(
             "TxnOp",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "TxnRequest",
@@ -105,27 +110,27 @@ fn build_proto() {
         )
         .type_attribute(
             "TxnGetResponse",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "TxnPutResponse",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "TxnDeleteResponse",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "TxnDeleteByPrefixResponse",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "TxnOpResponse.response",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, derive_more::TryInto, derive_more::From, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, derive_more::TryInto, derive_more::From, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "TxnOpResponse",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "TxnReply",
@@ -141,19 +146,19 @@ fn build_proto() {
         )
         .type_attribute(
             "WatchRequest",
-            "#[derive(Eq, deepsize::DeepSizeOf)]",
+            "#[derive(deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "WatchResponse",
-            "#[derive(Eq, deepsize::DeepSizeOf)]",
+            "#[derive(deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "Event",
-            "#[derive(Eq, deepsize::DeepSizeOf)]",
+            "#[derive(deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "KVMeta",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .field_attribute(
             "TxnPutRequest.ttl_ms",
@@ -165,35 +170,35 @@ fn build_proto() {
         )
         .type_attribute(
             "FetchIncreaseU64",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "FetchIncreaseU64Response",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         .type_attribute(
             "PutSequential",
-            "#[derive(Eq, serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
+            "#[derive(serde::Serialize, serde::Deserialize, deepsize::DeepSizeOf)]",
         )
         // raft.proto base types (needed for DeepSizeOf on new types)
-        .type_attribute("Vote", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        .type_attribute("LogId", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        .type_attribute("LeaderId", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        .type_attribute("VoteRequest", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        .type_attribute("VoteResponse", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("Vote", "#[derive(deepsize::DeepSizeOf)]")
+        .type_attribute("LogId", "#[derive(deepsize::DeepSizeOf)]")
+        .type_attribute("LeaderId", "#[derive(deepsize::DeepSizeOf)]")
+        .type_attribute("VoteRequest", "#[derive(deepsize::DeepSizeOf)]")
+        .type_attribute("VoteResponse", "#[derive(deepsize::DeepSizeOf)]")
         // log_entry.proto types
-        .type_attribute("Node", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        .type_attribute("CmdAddNode", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        .type_attribute("CmdRemoveNode", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        .type_attribute("CmdSetFeature", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        .type_attribute("MatchSeq", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        .type_attribute("CmdUpsertKV", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("Node", "#[derive(deepsize::DeepSizeOf)]")
+        .type_attribute("CmdAddNode", "#[derive(deepsize::DeepSizeOf)]")
+        .type_attribute("CmdRemoveNode", "#[derive(deepsize::DeepSizeOf)]")
+        .type_attribute("CmdSetFeature", "#[derive(deepsize::DeepSizeOf)]")
+        .type_attribute("MatchSeq", "#[derive(deepsize::DeepSizeOf)]")
+        .type_attribute("CmdUpsertKV", "#[derive(deepsize::DeepSizeOf)]")
         .type_attribute("LogEntry", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("LogEntry.cmd", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("Membership", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        .type_attribute("VoterGroup", "#[derive(Eq, deepsize::DeepSizeOf)]")
+        .type_attribute("VoterGroup", "#[derive(deepsize::DeepSizeOf)]")
         .type_attribute("AppendRequest", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        .type_attribute("AppendResponse", "#[derive(Eq, deepsize::DeepSizeOf)]")
-        .compile_protos_with_config(config, &protos, &[&proto_dir])
+        .type_attribute("AppendResponse", "#[derive(deepsize::DeepSizeOf)]")
+        .compile_with_config(config, &protos, &[&proto_dir])
         .unwrap();
 }
