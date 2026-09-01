@@ -169,7 +169,11 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
 
     let mut client0 = tc0.raft_client().await?;
 
-    let last_log_id = log_id::<TypeConfig>(10, 2, 4);
+    // The index sits far above anything the concurrent write loop below can
+    // reach while the snapshot streams. This node is the only voter, so it
+    // commits every entry it appends; a snapshot whose index fell inside that
+    // committed range would contradict it and could not be installed.
+    let last_log_id = log_id::<TypeConfig>(10, 2, 1_000_000);
 
     let snapshot_id = MetaSnapshotId::new(Some(last_log_id), 1);
 
@@ -212,16 +216,26 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
     // Client writes concurrent to the snapshot RPC: installation must
     // serialize with them, and the snapshot supersedes them all because its
     // log id carries a greater term.
+    //
+    // The test ends the loop through `stop_writes` once the snapshot is
+    // installed. A failing write ends it too, but only as a backstop: whether
+    // the node rejects a write after accepting the term-10 vote is not what
+    // this test pins down.
+    let (stop_writes, mut stop_rx) = tokio::sync::oneshot::channel::<()>();
+
     let write_task = {
         let mn = tc0.meta_node();
         tokio::spawn(async move {
             for i in 0.. {
+                if stop_rx.try_recv().is_ok() {
+                    break;
+                }
+
                 let key = format!("during-install-{}", i);
                 let res = mn
                     .write(LogEntry::new(Cmd::UpsertKV(UpsertKV::update(&key, b"v"))))
                     .await;
 
-                // The node steps down once it accepts the term-10 snapshot.
                 if res.is_err() {
                     break;
                 }
@@ -248,6 +262,8 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
         .snapshot(last_log_id, "snapshot is installed")
         .await?;
 
+    // A closed receiver means the loop already ended on a failing write.
+    let _ = stop_writes.send(());
     write_task.await?;
 
     // The installed snapshot replaced the state machine wholesale.

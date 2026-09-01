@@ -185,7 +185,10 @@ async fn test_meta_store_restart() -> anyhow::Result<()> {
 
         sto.log()
             .clone()
-            .blocking_append([Entry::new_blank(log_id::<TypeConfig>(1, 2, 1))])
+            .blocking_append([
+                Entry::new_blank(log_id::<TypeConfig>(1, 2, 1)),
+                Entry::new_blank(log_id::<TypeConfig>(1, 2, 2)),
+            ])
             .await?;
 
         sto.log()
