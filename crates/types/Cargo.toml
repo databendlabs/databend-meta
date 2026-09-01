@@ -26,17 +26,18 @@ serde_json = { workspace = true }
 state-machine-api = { workspace = true }
 thiserror = { workspace = true }
 tonic = { workspace = true }
+tonic-prost = { workspace = true }
 
 [build-dependencies]
 prost-build = { workspace = true }
-tonic-build = { workspace = true }
+tonic-prost-build = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
 tempfile = { workspace = true }
 
 [package.metadata.cargo-machete]
-ignored = ["num-derive", "prost"]
+ignored = ["num-derive", "prost", "tonic-prost"]
 
 [lints]
 workspace = true
