@@ -303,12 +303,11 @@ impl RaftConfig {
         raft_log::Config {
             wal: WalConfig {
                 dir,
-                read_buffer_size: None,
                 chunk_max_records: Some(self.log_wal_chunk_max_records as usize),
                 chunk_max_size: Some(self.log_wal_chunk_max_size as usize),
-                truncate_incomplete_record: None,
                 flush_batch_wait: Some(Duration::from_millis(1)),
                 flush_batch_max_items: Some(1024),
+                ..Default::default()
             },
             log_cache_max_items: Some(self.log_cache_max_items as usize),
             log_cache_capacity: Some(self.log_cache_capacity as usize),

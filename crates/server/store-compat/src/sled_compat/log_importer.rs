@@ -144,12 +144,9 @@ mod tests {
         let config = RaftLogConfig {
             wal: WalConfig {
                 dir: dir.path().to_str().unwrap().to_string(),
-                read_buffer_size: None,
                 chunk_max_records: Some(100),
                 chunk_max_size: Some(1024 * 1024),
-                truncate_incomplete_record: None,
-                flush_batch_wait: None,
-                flush_batch_max_items: None,
+                ..Default::default()
             },
             log_cache_max_items: Some(1000),
             log_cache_capacity: Some(1024 * 1024),
