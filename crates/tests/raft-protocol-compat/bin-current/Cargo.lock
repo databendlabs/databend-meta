@@ -677,9 +677,9 @@ dependencies = [
 
 [[package]]
 name = "chunked-wal"
-version = "0.2.0"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cb4664e0ebe1a145b88ebc9973327512d3997f796ce49d41b08196cf0d51285"
+checksum = "cfec3827d0ac8bce1998c2991795f3ec0ea45b4fb2f14b87585a57fb35b5c039"
 dependencies = [
  "base2histogram",
  "byteorder",
@@ -3034,9 +3034,9 @@ checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 
 [[package]]
 name = "raft-log"
-version = "0.4.4"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4290f29c4516c8bbd0bf3ce01d59db968dfc071d056e458ff38e74457473c506"
+checksum = "d01737994dee2308488e1009544d3898991a9fb2282673a57f6e8b67e242bdc9"
 dependencies = [
  "base2histogram",
  "byteorder",
