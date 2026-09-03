@@ -30,6 +30,12 @@ use crate::sled_compat::key_spaces::RaftStoreEntry;
 pub struct Importer {
     pub raft_log: RaftLog,
     pub max_log_id: Option<LogId>,
+    /// The committed log id, applied by [`Importer::flush`].
+    ///
+    /// An export writes the committed log id before the log entries, but
+    /// `RaftLog::commit()` rejects a log id above the last stored one. Hold it
+    /// until every log entry is appended.
+    committed: Option<LogId>,
 }
 
 impl Importer {
@@ -37,10 +43,15 @@ impl Importer {
         Importer {
             raft_log,
             max_log_id: None,
+            committed: None,
         }
     }
 
     pub async fn flush(mut self) -> Result<RaftLog, io::Error> {
+        if let Some(committed) = self.committed.take() {
+            self.raft_log.commit(Cw(committed))?;
+        }
+
         util::blocking_flush(&mut self.raft_log).await?;
         Ok(self.raft_log)
     }
@@ -73,7 +84,7 @@ impl Importer {
 
             RaftStoreEntry::Committed(committed) => {
                 if let Some(committed) = committed {
-                    self.raft_log.commit(Cw(committed))?;
+                    self.committed = Some(committed);
                 }
             }
 
@@ -177,6 +188,40 @@ mod tests {
         importer.import_raft_store_entry(RaftStoreEntry::Purged(Some(new_log_id(1, 1, 0))))?;
 
         assert_eq!(importer.max_log_id, Some(new_log_id(1, 1, 2)));
+
+        let raft_log = importer.flush().await?;
+        let state = raft_log.log_state();
+
+        assert_eq!(state.vote(), Some(&Cw(Vote::new(3, 1))));
+        assert_eq!(state.committed(), Some(&Cw(new_log_id(1, 1, 2))));
+        assert_eq!(state.purged(), Some(&Cw(new_log_id(1, 1, 0))));
+        assert_eq!(state.last(), Some(&Cw(new_log_id(1, 1, 2))));
+        assert_eq!(state.user_data, Some(LogStoreMeta { node_id: Some(7) }));
+
+        let log_ids = raft_log
+            .read(0, 3)
+            .map(|r| r.map(|(id, _)| id.0))
+            .collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(log_ids, vec![new_log_id(1, 1, 1), new_log_id(1, 1, 2)]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_import_in_export_order() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let mut importer = Importer::new(new_raft_log(&temp_dir)?);
+
+        // The order `RaftStore::export()` writes: state first, log entries
+        // last. The committed log id therefore arrives while the raft log is
+        // still empty.
+        importer.import_raft_store_entry(RaftStoreEntry::NodeId(Some(7)))?;
+        importer.import_raft_store_entry(RaftStoreEntry::Vote(Some(Vote::new(3, 1))))?;
+        importer.import_raft_store_entry(RaftStoreEntry::Committed(Some(new_log_id(1, 1, 2))))?;
+        importer.import_raft_store_entry(RaftStoreEntry::Purged(Some(new_log_id(1, 1, 0))))?;
+        for index in 1..3 {
+            importer.import_raft_store_entry(log_entry(index))?;
+        }
 
         let raft_log = importer.flush().await?;
         let state = raft_log.log_state();
