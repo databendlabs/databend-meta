@@ -338,7 +338,7 @@ async fn test_a_strict_node_accepts_a_registration_from_a_secret_client() -> any
         .raft_api_addr::<TokioRuntime>()
         .await?;
 
-    let leader = RaftPeerTarget::plaintext(&leader_addr);
+    let leader = RaftPeerTarget::plaintext(leader_addr);
     let mut client = connect_raft_service(&leader, &tc.config.raft_config).await?;
 
     let registered = Node::new(1, Endpoint::new("registering-node", 28104))

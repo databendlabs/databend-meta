@@ -230,8 +230,12 @@ impl<SP: SpawnApi> Network<SP> {
             ))
             .await?;
 
-        let client =
-            RaftClientApi::new(self.target, self.peer.address(), channel, &self.sto.config);
+        let client = RaftClientApi::new(
+            self.target,
+            &self.peer.to_address(),
+            channel,
+            &self.sto.config,
+        );
 
         info!(
             "Raft NetworkConnection connected to: target={}: {}",
@@ -391,13 +395,13 @@ impl<SP: SpawnApi> Network<SP> {
 
     /// Convert gRPC status to `Unreachable`
     fn status_to_unreachable(&self, status: tonic::Status) -> Unreachable {
-        Self::status_to_unreachable_at(self.target, self.peer.address(), status)
+        Self::status_to_unreachable_at(self.target, &self.peer, status)
     }
 
     /// Convert gRPC status to `Unreachable` without borrowing `self`.
     fn status_to_unreachable_at(
         target: NodeId,
-        endpoint: &str,
+        endpoint: &impl Display,
         status: tonic::Status,
     ) -> Unreachable {
         warn!(
@@ -819,11 +823,10 @@ impl<SP: SpawnApi> NetStreamAppend<TypeConfig> for Network<SP> {
                 Some("append_v002_request_stream".into()),
             );
 
-            let endpoint = self.peer.address().to_string();
             let response_stream = response.into_inner().map(move |resp| match resp {
                 Ok(pb_resp) => Ok(pb_resp.into_stream_result()),
                 Err(status) => Err(RPCError::Unreachable(Self::status_to_unreachable_at(
-                    target, &endpoint, status,
+                    target, &self.peer, status,
                 ))),
             });
 
@@ -1027,10 +1030,7 @@ impl<SP: SpawnApi> RaftNetworkFactory<TypeConfig> for NetworkFactory<SP> {
     }
 }
 
-fn new_net_err<D: Display>(
-    e: &(impl std::error::Error + 'static),
-    msg: impl FnOnce() -> D,
-) -> NetworkError {
+fn new_net_err<D: Display>(e: &(impl Error + 'static), msg: impl FnOnce() -> D) -> NetworkError {
     NetworkError::new(&AnyError::new(e).add_context(msg))
 }
 

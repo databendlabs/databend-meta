@@ -264,7 +264,7 @@ async fn test_which_address_an_outbound_connection_dials() -> anyhow::Result<()>
     {
         let peer = peer_target(dead_addr(), Some(tls_addr(&tc)), &with_ca).await?;
 
-        assert_eq!(peer.address(), tls_addr(&tc));
+        assert_eq!(peer.to_address(), tls_addr(&tc));
         assert_eq!(peer.to_string(), format!("https://{}", tls_addr(&tc)));
 
         assert_eq!(ping_over(&peer, &with_ca).await?, ForwardResponse::Pong);
@@ -275,7 +275,7 @@ async fn test_which_address_an_outbound_connection_dials() -> anyhow::Result<()>
         let dead = dead_addr().to_string();
         let peer = peer_target(plaintext_addr.clone(), Some(dead), &no_ca).await?;
 
-        assert_eq!(peer.address(), plaintext_addr.to_string());
+        assert_eq!(peer.to_address(), plaintext_addr.to_string());
         assert_eq!(peer.to_string(), format!("http://{}", plaintext_addr));
 
         assert_eq!(ping_over(&peer, &no_ca).await?, ForwardResponse::Pong);
@@ -285,7 +285,7 @@ async fn test_which_address_an_outbound_connection_dials() -> anyhow::Result<()>
     {
         let peer = peer_target(plaintext_addr.clone(), None, &with_ca).await?;
 
-        assert_eq!(peer.address(), plaintext_addr.to_string());
+        assert_eq!(peer.to_address(), plaintext_addr.to_string());
         assert_eq!(peer.to_string(), format!("http://{}", plaintext_addr));
 
         assert_eq!(ping_over(&peer, &with_ca).await?, ForwardResponse::Pong);
