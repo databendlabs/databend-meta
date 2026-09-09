@@ -47,7 +47,7 @@ pub struct RaftPeerTarget {
 
     /// The settings the peer's certificate is verified with. `Some` is what
     /// makes this connection TLS, and `address` the peer's TLS address.
-    client_config: Option<ClientTlsConfig>,
+    client_tls_config: Option<ClientTlsConfig>,
 }
 
 impl fmt::Display for RaftPeerTarget {
@@ -71,18 +71,18 @@ impl RaftPeerTarget {
     /// the cluster.
     pub async fn of_node(node: &Node, config: &RaftConfig) -> Result<Self, ConnectionError> {
         let Some(tls_address) = &node.raft_tls_advertise_address else {
-            return Ok(Self::plaintext(&node.endpoint));
+            return Ok(Self::plaintext(node.endpoint.to_address()));
         };
 
         // A node with no CA has nothing to verify a peer against, so what the
         // peer published is of no use to it.
-        let Some(client_config) = Self::client_tls_config(config).await? else {
-            return Ok(Self::plaintext(&node.endpoint));
+        let Some(client_tls_config) = Self::client_tls_config(config).await? else {
+            return Ok(Self::plaintext(node.endpoint.to_address()));
         };
 
         Ok(Self {
             address: tls_address.clone(),
-            client_config: Some(client_config),
+            client_tls_config: Some(client_tls_config),
         })
     }
 
@@ -94,7 +94,7 @@ impl RaftPeerTarget {
     pub fn plaintext(addr: impl fmt::Display) -> Self {
         Self {
             address: addr.to_string(),
-            client_config: None,
+            client_tls_config: None,
         }
     }
 
@@ -104,8 +104,12 @@ impl RaftPeerTarget {
         &self.address
     }
 
+    pub fn to_uri(&self) -> String {
+        format!("{}://{}", self.scheme(), self.address)
+    }
+
     fn scheme(&self) -> &'static str {
-        if self.client_config.is_some() {
+        if self.client_tls_config.is_some() {
             "https"
         } else {
             "http"
@@ -152,7 +156,7 @@ impl RaftPeerTarget {
     /// A TLS connection is never retried in plaintext. Falling back would hand
     /// anyone who can drop a packet the power to turn the encryption off.
     pub(crate) async fn connect(&self) -> Result<Channel, ConnectionError> {
-        match &self.client_config {
+        match &self.client_tls_config {
             Some(client_config) => self.connect_tls(client_config).await,
             None => self.connect_plaintext().await,
         }
@@ -166,15 +170,15 @@ impl RaftPeerTarget {
     /// plaintext and reports nothing.
     async fn connect_tls(
         &self,
-        client_config: &ClientTlsConfig,
+        client_tls_config: &ClientTlsConfig,
     ) -> Result<Channel, ConnectionError> {
-        let uri = self.to_string();
+        let uri = self.to_uri();
 
         let endpoint =
             Channel::from_shared(uri.clone()).map_err(|e| ConnectionError::new(e, uri.clone()))?;
 
         let endpoint = endpoint
-            .tls_config(client_config.clone())
+            .tls_config(client_tls_config.clone())
             .map_err(|e| ConnectionError::new(e, uri.clone()))?;
 
         endpoint
@@ -185,7 +189,7 @@ impl RaftPeerTarget {
 
     /// Connect to the address the peer is reached at when TLS is not in play.
     async fn connect_plaintext(&self) -> Result<Channel, ConnectionError> {
-        let uri = self.to_string();
+        let uri = self.to_uri();
 
         let endpoint =
             Channel::from_shared(uri.clone()).map_err(|e| ConnectionError::new(e, uri.clone()))?;
