@@ -16,6 +16,7 @@ backon = { workspace = true }
 base2histogram = { workspace = true }
 chrono = { workspace = true }
 databend-base = { workspace = true }
+databend-meta-base = { workspace = true }
 databend-meta-client = { workspace = true }
 databend-meta-kvapi = { workspace = true }
 databend-meta-leveled-store = { workspace = true }

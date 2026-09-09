@@ -22,6 +22,7 @@
 use std::fmt;
 
 use anyerror::AnyError;
+use databend_meta_base::Endpoint;
 use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_types::ConnectionError;
 use databend_meta_types::MetaNetworkError;
@@ -43,7 +44,7 @@ use tonic::transport::ServerTlsConfig;
 #[derive(Clone, Default)]
 pub struct RaftPeerTarget {
     /// The `host:port` the connection is dialed at.
-    address: String,
+    endpoint: Endpoint,
 
     /// The settings the peer's certificate is verified with. `Some` is what
     /// makes this connection TLS, and `address` the peer's TLS address.
@@ -52,7 +53,7 @@ pub struct RaftPeerTarget {
 
 impl fmt::Display for RaftPeerTarget {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}://{}", self.scheme(), self.address)
+        write!(f, "{}://{}", self.scheme(), self.endpoint)
     }
 }
 
@@ -71,17 +72,18 @@ impl RaftPeerTarget {
     /// the cluster.
     pub async fn of_node(node: &Node, config: &RaftConfig) -> Result<Self, ConnectionError> {
         let Some(tls_address) = &node.raft_tls_advertise_address else {
-            return Ok(Self::plaintext(node.endpoint.to_address()));
+            return Ok(Self::plaintext(node.endpoint.clone()));
         };
 
         // A node with no CA has nothing to verify a peer against, so what the
         // peer published is of no use to it.
         let Some(client_tls_config) = Self::client_tls_config(config).await? else {
-            return Ok(Self::plaintext(node.endpoint.to_address()));
+            return Ok(Self::plaintext(node.endpoint.clone()));
         };
 
         Ok(Self {
-            address: tls_address.clone(),
+            endpoint: Endpoint::parse(tls_address)
+                .map_err(|ae| ConnectionError::new(ae, "fail to parse tls_address"))?,
             client_tls_config: Some(client_tls_config),
         })
     }
@@ -91,21 +93,21 @@ impl RaftPeerTarget {
     ///
     /// Such a caller has no peer record to read a published TLS address out of,
     /// so it dials plaintext.
-    pub fn plaintext(addr: impl fmt::Display) -> Self {
+    pub fn plaintext(endpoint: Endpoint) -> Self {
         Self {
-            address: addr.to_string(),
+            endpoint,
             client_tls_config: None,
         }
     }
 
     /// The `host:port` this target is dialed at, which is what a log line, an
     /// error context or a metric label has to name.
-    pub fn address(&self) -> &str {
-        &self.address
+    pub fn to_address(&self) -> String {
+        self.endpoint.to_address()
     }
 
     pub fn to_uri(&self) -> String {
-        format!("{}://{}", self.scheme(), self.address)
+        format!("{}://{}", self.scheme(), self.endpoint.to_address())
     }
 
     fn scheme(&self) -> &'static str {
