@@ -254,7 +254,7 @@ impl<SP: SpawnApi> Network<SP> {
         let n = 3;
         for _i in 0..n {
             self.peer = self
-                .resolve_target()
+                .lookup_peer()
                 .log_elapsed_debug(format!(
                     "Raft NetworkConnection take_client lookup_target_address: target: {}",
                     self.target
@@ -297,7 +297,7 @@ impl<SP: SpawnApi> Network<SP> {
 
     /// Read the target's own record, which is where both the address to dial
     /// and the transport to dial it over come from.
-    async fn resolve_target(&self) -> Result<RaftPeerTarget, MetaNetworkError> {
+    async fn lookup_peer(&self) -> Result<RaftPeerTarget, MetaNetworkError> {
         debug!(
             "Raft NetworkConnection lookup target address: start: target={}",
             self.target

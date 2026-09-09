@@ -54,6 +54,11 @@ impl Endpoint {
         })?;
         Ok(Self::new(x[0], port))
     }
+
+    /// Return the address in the format of `ip:port`.
+    pub fn to_address(&self) -> String {
+        format!("{}:{}", self.addr, self.port)
+    }
 }
 
 impl fmt::Display for Endpoint {
