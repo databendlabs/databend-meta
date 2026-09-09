@@ -15,7 +15,6 @@
 //! The raft service listeners a node serves, and their lifecycle: binding a
 //! port, serving the service on it, and stopping when the node stops.
 
-use std::net::Ipv4Addr;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -108,18 +107,11 @@ async fn resolve_listen_addr<SP: SpawnApi>(
     let host = endpoint.addr();
     let port = endpoint.port();
 
-    let ipv4_addr = host.parse::<Ipv4Addr>();
-    let ip_port = match ipv4_addr {
-        Ok(addr) => format!("{}:{}", addr, port),
-        Err(_) => {
-            let ip_addrs = SP::resolve(host).await.map_err(|e| {
-                MetaNetworkError::GetNodeAddrError(format!("resolve addr {} error: {}", host, e))
-            })?;
-            format!("{}:{}", ip_addrs[0], port)
-        }
-    };
-
-    let socket_addr = ip_port.parse::<SocketAddr>()?;
+    let ip_addrs = SP::resolve(host).await.map_err(|e| {
+        MetaNetworkError::GetNodeAddrError(format!("resolve addr {} error: {}", host, e))
+    })?;
+    let ip_addr = ip_addrs[0];
+    let socket_addr = SocketAddr::new(ip_addr, port);
 
     Ok(socket_addr)
 }
@@ -220,4 +212,27 @@ async fn spawn_raft_listener<SP: SpawnApi>(meta_node: &Arc<MetaNode<SP>>, listen
 
     let mut jh = meta_node.join_handles.lock().await;
     jh.push(h);
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::IpAddr;
+    use std::net::Ipv6Addr;
+    use std::net::SocketAddr;
+
+    use databend_meta_runtime_api::TokioRuntime;
+    use databend_meta_types::Endpoint;
+
+    use super::resolve_listen_addr;
+
+    #[tokio::test]
+    async fn test_resolve_listen_addr_ipv6_literal() {
+        let endpoint = Endpoint::new("::1", 10191);
+        let actual = resolve_listen_addr::<TokioRuntime>(&endpoint)
+            .await
+            .unwrap();
+        let expected = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 10191);
+
+        assert_eq!(actual, expected);
+    }
 }

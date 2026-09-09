@@ -563,7 +563,13 @@ impl<SP: SpawnApi> MetaNode<SP> {
         for addr in addrs {
             info!("leave cluster via {}...", addr);
 
-            let conn_res = connect_raft_service(&RaftPeerTarget::plaintext(addr), conf).await;
+            let endpoint = Endpoint::parse(addr).map_err(|ae| {
+                MetaManagementError::Leave(
+                    ae.add_context(|| format!("leave {} via: {}", leave_id, addr.clone())),
+                )
+            })?;
+
+            let conn_res = connect_raft_service(&RaftPeerTarget::plaintext(endpoint), conf).await;
             let mut raft_client = match conn_res {
                 Ok(c) => c,
                 Err(e) => {

@@ -523,6 +523,15 @@ fn test_raft_tls_advertise_host_string() {
         "built from raft_advertise_host, not from the listen host"
     );
 
+    let ipv6 = RaftConfig {
+        raft_advertise_host: "::1".to_string(),
+        ..complete.clone()
+    };
+    assert_eq!(
+        Some("[::1]:10191".to_string()),
+        ipv6.raft_tls_advertise_host_string()
+    );
+
     let no_key = RaftConfig {
         raft_tls_server_key: None,
         ..complete.clone()
