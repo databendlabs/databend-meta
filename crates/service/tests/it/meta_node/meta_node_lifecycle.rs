@@ -23,7 +23,6 @@ use databend_meta::message::LeaveRequest;
 use databend_meta::meta_service::MetaNode;
 use databend_meta_kvapi::kvapi::KvApiExt;
 use databend_meta_runtime_api::TokioRuntime;
-use databend_meta_sled_store::openraft::LogIdOptionExt;
 use databend_meta_sled_store::openraft::RaftLogReader;
 use databend_meta_sled_store::openraft::ServerState;
 use databend_meta_sled_store::openraft::async_runtime::WatchReceiver;
@@ -932,8 +931,6 @@ async fn assert_upsert_kv_synced(
     let leader_id = meta_nodes[0].get_leader().await?.unwrap();
     let leader = meta_nodes[leader_id as usize].clone();
 
-    let last_applied = leader.raft.metrics().borrow_watched().last_applied;
-    info!("leader: last_applied={:?}", last_applied);
     {
         leader
             .assume_leader()
@@ -945,16 +942,22 @@ async fn assert_upsert_kv_synced(
             .await?;
     }
 
+    let state_machine = leader.raft_store.get_sm_v003();
+    let sys_data = state_machine.sys_data();
+    let last_applied = *sys_data.last_applied_ref();
+    let log_id = last_applied.expect("the KV write must be applied");
+    let applied_index = log_id.index;
+    info!("leader: last_applied={:?}", last_applied);
+
     // Assert applied index on every node
     for mn in meta_nodes.iter() {
         mn.raft
             .wait(timeout())
-            .applied_index(
-                Some(last_applied.next_index()),
+            .applied_index_at_least(
+                Some(applied_index),
                 format!(
                     "check upsert-kv has applied index at {} for node-{}",
-                    last_applied.next_index(),
-                    mn.raft_store.id
+                    applied_index, mn.raft_store.id
                 ),
             )
             .await?;
