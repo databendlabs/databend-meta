@@ -40,7 +40,8 @@ message Node {
   //
   // A peer that predates this field drops it while decoding and keeps dialing
   // the plaintext `addr`:`port`, which is what makes the field safe to send
-  // into a mixed-version cluster.  Tag 2 is retired; do not reuse it.
+  // into a mixed-version cluster.
+  reserved 2;
   optional string raft_tls_advertise_address = 6;
 }
 

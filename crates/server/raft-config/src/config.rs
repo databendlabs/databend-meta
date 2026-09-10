@@ -403,8 +403,9 @@ impl RaftConfig {
         }
 
         let port = self.raft_tls_port?;
+        let endpoint = Endpoint::new(&self.raft_advertise_host, port);
 
-        Some(format!("{}:{}", self.raft_advertise_host, port))
+        Some(endpoint.to_address())
     }
 
     pub fn raft_api_listen_host_endpoint(&self) -> Endpoint {
