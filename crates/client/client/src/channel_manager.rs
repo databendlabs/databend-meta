@@ -20,7 +20,7 @@ use anyerror::AnyError;
 use databend_meta_runtime_api::ChannelError;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TlsConfig;
-use log::info;
+use log::debug;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use tonic::async_trait;
@@ -103,7 +103,7 @@ impl<R: SpawnApi> MetaChannelManager<R> {
 
         let (mut real_client, once) = self.new_real_client(chan);
 
-        info!(
+        debug!(
             "MetaChannelManager done building RealClient to {}, start handshake",
             addr
         );
@@ -117,7 +117,7 @@ impl<R: SpawnApi> MetaChannelManager<R> {
         )
         .await;
 
-        info!(
+        debug!(
             "MetaChannelManager done handshake to {}, result.err(): {:?}",
             addr,
             handshake_res.as_ref().err()
@@ -169,7 +169,7 @@ impl<R: SpawnApi> MetaChannelManager<R> {
 
     #[async_backtrace::framed]
     async fn build_channel(&self, addr: &String) -> Result<Channel, MetaNetworkError> {
-        info!("MetaChannelManager::build_channel to {}", addr);
+        debug!("MetaChannelManager::build_channel to {}", addr);
 
         let ch = R::connect(addr.clone(), self.timeout, self.tls_config.clone())
             .await
@@ -216,7 +216,7 @@ impl<R: SpawnApi> ItemManager for MetaChannelManager<R> {
         // This prevents h2 stream reset accumulation that can lead to
         // `too_many_internal_resets` errors (ENHANCE_YOUR_CALM).
         if ch.is_expired(self.connection_ttl) {
-            info!(
+            debug!(
                 "Connection {} has exceeded TTL ({:?}), will create a new one",
                 ch, self.connection_ttl
             );

@@ -124,7 +124,7 @@ where
             if let Ok(itm) = check_res {
                 return Ok(itm);
             } else {
-                warn!("Pool check reused item failed: {:?}", key);
+                debug!("Pool check reused item failed: {:?}", key);
                 // mark broken conn as deleted
                 *guard = None;
             }
