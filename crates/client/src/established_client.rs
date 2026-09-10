@@ -171,7 +171,7 @@ impl EstablishedClient {
             created_instant,
         };
 
-        info!("Created: {client}");
+        debug!("Created: {client}");
         client
     }
 
