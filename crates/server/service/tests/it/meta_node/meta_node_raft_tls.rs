@@ -44,7 +44,9 @@ use databend_meta_types::node::Node;
 use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
 use databend_meta_types::raft_types::NodeId;
 use log::info;
+use maplit::btreeset;
 use openraft::ServerState;
+use openraft::async_runtime::WatchReceiver;
 use test_harness::test;
 use tokio::time::sleep;
 use tonic::Code;
@@ -422,6 +424,136 @@ async fn test_a_tls_cluster_replicates_in_both_directions() -> anyhow::Result<()
     Ok(())
 }
 
+/// A cluster may contain a plaintext node, a TLS-listening node, and a node
+/// that both listens on TLS and dials it. The three forms must agree on data
+/// through log replication, snapshot installation, and a leader transfer.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_a_mixed_tls_cluster_replicates_and_installs_snapshot() -> anyhow::Result<()> {
+    let mut tc0 = tls_node(0);
+    tc0.config.raft_config = with_root_ca(&tc0.config.raft_config);
+    tc0.config.raft_config.max_applied_log_to_keep = 0;
+    tc0.config.raft_config.install_snapshot_timeout = REPLICATION_TIMEOUT.as_millis() as u64;
+
+    let leader = MetaNode::<TokioRuntime>::boot(&tc0.config).await?;
+    tc0.meta_node = Some(leader.clone());
+
+    leader
+        .raft
+        .wait(timeout())
+        .state(ServerState::Leader, "leader started")
+        .await?;
+
+    info!("--- add a plaintext node");
+    let mut tc1 = MetaSrvTestContext::<TokioRuntime>::new(1);
+    let plaintext_node = open_node(&mut tc1).await?;
+    leader.add_node(1, tc1.config.get_node()).await?;
+
+    write_kv(&leader, "written-before-snapshot").await?;
+
+    info!("--- snapshot and purge before the third node joins");
+    let metrics = leader.raft.metrics().borrow_watched().clone();
+    let snapshot_floor = metrics.last_applied.expect("the write was applied");
+
+    leader.raft.trigger().snapshot().await?;
+    leader
+        .raft
+        .wait(timeout())
+        .metrics(
+            |metrics| {
+                metrics
+                    .snapshot
+                    .is_some_and(|snapshot| snapshot.index >= snapshot_floor.index)
+            },
+            "leader built snapshot",
+        )
+        .await?;
+
+    let metrics = leader.raft.metrics().borrow_watched().clone();
+    let snapshot_log_id = metrics.snapshot.expect("the snapshot was built");
+
+    leader
+        .raft
+        .trigger()
+        .purge_log(snapshot_log_id.index)
+        .await?;
+    leader
+        .raft
+        .wait(timeout())
+        .purged(Some(snapshot_log_id), "leader purged snapshot logs")
+        .await?;
+
+    info!("--- add a TLS-listening node after the logs it needs are gone");
+    let mut tc2 = tls_node(2);
+    let tls_listener = open_node(&mut tc2).await?;
+    leader.add_node(2, reachable_only_over_tls(&tc2)).await?;
+
+    tls_listener
+        .raft
+        .wait(timeout())
+        .snapshot(snapshot_log_id, "new node installed snapshot")
+        .await?;
+
+    let snapshot_value = read_replicated(&tls_listener, "written-before-snapshot").await?;
+    assert_eq!(snapshot_value, Some(b"written-before-snapshot".to_vec()));
+
+    info!("--- the TLS-capable leader replicates over both transports");
+    write_kv(&leader, "written-on-tls-leader").await?;
+    write_kv(&plaintext_node, "written-on-plaintext-follower").await?;
+    write_kv(&tls_listener, "written-on-tls-listener").await?;
+
+    let restore_node = Cmd::AddNode {
+        node_id: 2,
+        node: tc2.config.get_node(),
+        overriding: true,
+    };
+    let restore_entry = LogEntry::new(restore_node);
+    leader.write(restore_entry).await?;
+
+    write_kv(&leader, "node-address-restored").await?;
+    let first_keys = [
+        "written-before-snapshot",
+        "written-on-tls-leader",
+        "written-on-plaintext-follower",
+        "written-on-tls-listener",
+        "node-address-restored",
+    ];
+    let nodes = [&leader, &plaintext_node, &tls_listener];
+    assert_replicated(&nodes, &first_keys).await?;
+
+    info!("--- elect the plaintext node and write through every node");
+    leader
+        .raft
+        .change_membership(btreeset! {0, 1, 2}, true)
+        .await?;
+    leader.raft.trigger().transfer_leader(1).await?;
+    plaintext_node
+        .raft
+        .wait(timeout())
+        .state(ServerState::Leader, "plaintext node became leader")
+        .await?;
+
+    for node in nodes {
+        node.raft
+            .wait(timeout())
+            .current_leader(1, "cluster accepted the new leader")
+            .await?;
+    }
+
+    write_kv(&plaintext_node, "written-after-election").await?;
+    write_kv(&leader, "forwarded-by-tls-client").await?;
+    write_kv(&tls_listener, "forwarded-by-plaintext-client").await?;
+
+    let final_keys = [
+        "written-after-election",
+        "forwarded-by-tls-client",
+        "forwarded-by-plaintext-client",
+    ];
+    assert_replicated(&nodes, &final_keys).await?;
+
+    Ok(())
+}
+
 /// A node that joins an existing cluster publishes its TLS address, exactly as
 /// a node that boots a cluster of its own does.
 ///
@@ -488,6 +620,15 @@ fn with_root_ca(config: &RaftConfig) -> RaftConfig {
     }
 }
 
+/// Open a node and retain it in its test context for cleanup.
+async fn open_node(
+    tc: &mut MetaSrvTestContext<TokioRuntime>,
+) -> anyhow::Result<Arc<MetaNode<TokioRuntime>>> {
+    let node = MetaNode::<TokioRuntime>::open(&tc.config.raft_config).await?;
+    tc.meta_node = Some(node.clone());
+    Ok(node)
+}
+
 /// The record `tc` publishes, with its plaintext address replaced by one
 /// nothing answers on.
 ///
@@ -530,6 +671,24 @@ async fn read_replicated(
 
         sleep(Duration::from_millis(50)).await;
     }
+}
+
+async fn assert_replicated(
+    nodes: &[&Arc<MetaNode<TokioRuntime>>],
+    keys: &[&str],
+) -> anyhow::Result<()> {
+    for node in nodes {
+        for key in keys {
+            let actual = read_replicated(node, key).await?;
+            let expected = Some(key.as_bytes().to_vec());
+            assert_eq!(
+                actual, expected,
+                "node-{} is missing {}",
+                node.raft_store.id, key
+            );
+        }
+    }
+    Ok(())
 }
 
 /// A node that cannot start every listener it was configured for starts none
