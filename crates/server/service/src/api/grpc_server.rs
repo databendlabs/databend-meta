@@ -155,7 +155,11 @@ impl<SP: SpawnApi> GrpcServer<SP> {
 
         info!("start gRPC listening: {}", addr);
 
-        let grpc_impl = MetaServiceImpl::create(self.version, Arc::downgrade(&meta_handle));
+        let grpc_impl = MetaServiceImpl::create(
+            self.version,
+            Arc::downgrade(&meta_handle),
+            &self.config.grpc,
+        );
         let max_msg_size = self.config.grpc.max_message_size();
         let grpc_srv = MetaServiceServer::new(grpc_impl)
             .max_decoding_message_size(max_msg_size)

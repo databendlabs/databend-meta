@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod grpc_auth_config;
 mod inner;
 
+pub use grpc_auth_config::GrpcAuthConfig;
+pub use grpc_auth_config::GrpcCredential;
 pub use inner::AdminConfig;
 pub use inner::GrpcConfig;
 pub use inner::MetaServiceConfig;
