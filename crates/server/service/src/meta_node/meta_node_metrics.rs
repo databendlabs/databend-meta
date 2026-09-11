@@ -125,6 +125,10 @@ pub struct MetaNetworkMetrics {
     pub req_inflights: i64,
     pub req_success: u64,
     pub req_failed: u64,
+    /// Authenticated handshakes, keyed by configured username.
+    pub authenticated: BTreeMap<String, u64>,
+    /// Handshakes accepted in permissive mode, keyed by password failure reason.
+    pub unauthenticated_passed: BTreeMap<String, u64>,
     pub watch_initialization: u64,
     pub watch_change: u64,
     pub stream_get_item_sent: u64,
@@ -290,6 +294,11 @@ impl MetaMetrics {
                 req_inflights: gauge(&fams, "metasrv_meta_network_req_inflights"),
                 req_success: counter(&fams, "metasrv_meta_network_req_success"),
                 req_failed: counter(&fams, "metasrv_meta_network_req_failed"),
+                authenticated: labeled_counter(&fams, "metasrv_meta_network_authenticated"),
+                unauthenticated_passed: labeled_counter(
+                    &fams,
+                    "metasrv_meta_network_unauthenticated_passed",
+                ),
                 watch_initialization: counter(&fams, "metasrv_meta_network_watch_initialization"),
                 watch_change: counter(&fams, "metasrv_meta_network_watch_change"),
                 stream_get_item_sent: counter(&fams, "metasrv_meta_network_stream_get_item_sent"),
@@ -560,6 +569,10 @@ mod tests {
         sent.labels = vec![label("to", "2")];
         let mut sent2 = point(counter_point(200));
         sent2.labels = vec![label("to", "3")];
+        let mut auth_passed = point(counter_point(4));
+        auth_passed.labels = vec![label("reason", "missing")];
+        let mut authenticated = point(counter_point(5));
+        authenticated.labels = vec![label("username", "meta-next")];
 
         let set = om::MetricSet {
             metric_families: vec![
@@ -569,6 +582,10 @@ mod tests {
                     3,
                 ))]),
                 family("metasrv_raft_network_sent_bytes", vec![sent, sent2]),
+                family("metasrv_meta_network_authenticated", vec![authenticated]),
+                family("metasrv_meta_network_unauthenticated_passed", vec![
+                    auth_passed,
+                ]),
                 family(
                     "metasrv_meta_network_rpc_delay_ms",
                     // 10 observations: 5 in <=1.0, 4 in <=2.0, 1 in the +Inf catch-all.
@@ -590,6 +607,12 @@ mod tests {
 
         assert_eq!(m.raft_network.sent_bytes.get("to=2"), Some(&100));
         assert_eq!(m.raft_network.sent_bytes.get("to=3"), Some(&200));
+        let authenticated = m.meta_network.authenticated.get("username=meta-next");
+        assert_eq!(authenticated, Some(&5));
+        assert_eq!(
+            m.meta_network.unauthenticated_passed.get("reason=missing"),
+            Some(&4)
+        );
 
         let h = &m.meta_network.rpc_delay_ms;
         assert_eq!(h.count, 10);
@@ -748,6 +771,7 @@ mod tests {
             "metasrv_raft_storage_snapshot_building",
             "metasrv_raft_storage_snapshot_written_entries",
             // network_metrics
+            "metasrv_meta_network_authenticated",
             "metasrv_meta_network_recv_bytes",
             "metasrv_meta_network_req_failed",
             "metasrv_meta_network_req_inflights",
@@ -759,6 +783,7 @@ mod tests {
             "metasrv_meta_network_stream_get_item_sent",
             "metasrv_meta_network_stream_list_item_sent",
             "metasrv_meta_network_stream_mget_item_sent",
+            "metasrv_meta_network_unauthenticated_passed",
             "metasrv_meta_network_watch_change",
             "metasrv_meta_network_watch_initialization",
         ]

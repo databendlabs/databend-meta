@@ -17,11 +17,15 @@
 
 use std::time::Duration;
 
+use databend_meta::configs::GrpcAuthConfig;
+use databend_meta::configs::GrpcCredential;
 use databend_meta::version::MIN_CLIENT_VERSION;
 use databend_meta_client::MetaChannelManager;
 use databend_meta_client::handshake;
+use databend_meta_raft_config::Secret;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TokioRuntime;
+use databend_meta_test_harness::MetaSrvTestContext;
 use databend_meta_version::Version;
 use databend_meta_version::version;
 use log::debug;
@@ -30,6 +34,91 @@ use test_harness::test;
 
 use crate::testing::meta_service_test_harness;
 use crate::tests::start_metasrv;
+use crate::tests::start_metasrv_with_context;
+
+const CURRENT_USERNAME: &str = "meta-current";
+const CURRENT_PASSWORD: &str = "current-password";
+const NEXT_USERNAME: &str = "meta-next";
+const NEXT_PASSWORD: &str = "next-password";
+
+async fn try_handshake(addr: &str, username: &str, password: &str) -> anyhow::Result<()> {
+    let timeout = Some(Duration::from_millis(1000));
+    let channel = TokioRuntime::connect(addr.to_string(), timeout, None).await?;
+    let (mut client, _once) =
+        MetaChannelManager::<TokioRuntime>::new_real_client_for_testing(channel);
+    handshake(&mut client, version(), &Version::min(), username, password).await?;
+    Ok(())
+}
+
+async fn start_auth_server(
+    strict: bool,
+) -> anyhow::Result<(MetaSrvTestContext<TokioRuntime>, String)> {
+    let mut context = MetaSrvTestContext::<TokioRuntime>::new(0);
+    context.config.grpc.auth = Some(GrpcAuthConfig {
+        credentials: vec![
+            GrpcCredential {
+                username: CURRENT_USERNAME.to_string(),
+                password: Secret::new(CURRENT_PASSWORD),
+            },
+            GrpcCredential {
+                username: NEXT_USERNAME.to_string(),
+                password: Secret::new(NEXT_PASSWORD),
+            },
+        ],
+        strict,
+    });
+    start_metasrv_with_context(&mut context).await?;
+    let address = context.config.grpc.api_address().unwrap();
+    Ok((context, address))
+}
+
+fn assert_unauthenticated(result: anyhow::Result<()>, expected: &str) {
+    let error = result.unwrap_err();
+    let message = error.to_string();
+    let has_authentication_error = message.contains("valid authentication credentials");
+    assert!(has_authentication_error, "{message}");
+
+    let has_expected_error = message.contains(expected);
+    assert!(has_expected_error, "{message}");
+}
+
+fn scraped_counter(metric: &str, label: &str, value: &str) -> u64 {
+    let scraped = databend_meta::metrics::meta_metrics_to_prometheus_string();
+    let prefix = format!("{metric}_total{{{label}=\"{value}\"}} ");
+    let counter_value = scraped
+        .lines()
+        .find_map(|line| line.strip_prefix(&prefix))
+        .unwrap_or("0");
+    counter_value.parse().unwrap()
+}
+
+async fn assert_permissive_counted(
+    address: &str,
+    password: &str,
+    reason: &str,
+) -> anyhow::Result<()> {
+    let metric = "metasrv_meta_network_unauthenticated_passed";
+    let before = scraped_counter(metric, "reason", reason);
+    try_handshake(address, CURRENT_USERNAME, password).await?;
+    let after = scraped_counter(metric, "reason", reason);
+    let expected = before + 1;
+    assert_eq!(after, expected, "{reason} password was not counted");
+    Ok(())
+}
+
+async fn assert_authenticated_counted(
+    address: &str,
+    username: &str,
+    password: &str,
+) -> anyhow::Result<()> {
+    let metric = "metasrv_meta_network_authenticated";
+    let before = scraped_counter(metric, "username", username);
+    try_handshake(address, username, password).await?;
+    let after = scraped_counter(metric, "username", username);
+    let expected = before + 1;
+    assert_eq!(after, expected, "{username} was not counted");
+    Ok(())
+}
 
 /// - Test client version < serverside min-compatible-client-ver.
 /// - Test metasrv version < client min-compatible-metasrv-ver.
@@ -106,5 +195,40 @@ async fn test_metasrv_handshake() -> anyhow::Result<()> {
         assert!(res.is_ok());
     }
 
+    Ok(())
+}
+
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+async fn test_unconfigured_server_accepts_old_client() -> anyhow::Result<()> {
+    let (_server, address) = start_metasrv::<TokioRuntime>().await?;
+
+    try_handshake(&address, "root", "").await
+}
+
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+async fn test_permissive_grpc_password_auth() -> anyhow::Result<()> {
+    let (_server, address) = start_auth_server(false).await?;
+
+    assert_authenticated_counted(&address, CURRENT_USERNAME, CURRENT_PASSWORD).await?;
+    assert_authenticated_counted(&address, NEXT_USERNAME, NEXT_PASSWORD).await?;
+    assert_permissive_counted(&address, "", "missing").await?;
+    assert_permissive_counted(&address, "wrong-password", "incorrect").await?;
+    let unknown = try_handshake(&address, "unknown", CURRENT_PASSWORD).await;
+    assert_unauthenticated(unknown, "Unknown user");
+    Ok(())
+}
+
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+async fn test_strict_grpc_password_auth() -> anyhow::Result<()> {
+    let (_server, address) = start_auth_server(true).await?;
+
+    try_handshake(&address, CURRENT_USERNAME, CURRENT_PASSWORD).await?;
+    try_handshake(&address, NEXT_USERNAME, NEXT_PASSWORD).await?;
+    let missing = try_handshake(&address, CURRENT_USERNAME, "").await;
+    assert_unauthenticated(missing, "Invalid password");
+    let wrong = try_handshake(&address, CURRENT_USERNAME, NEXT_PASSWORD).await;
+    assert_unauthenticated(wrong, "Invalid password");
+    let unknown = try_handshake(&address, "unknown", CURRENT_PASSWORD).await;
+    assert_unauthenticated(unknown, "Unknown user");
     Ok(())
 }
