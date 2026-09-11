@@ -46,6 +46,8 @@ impl<RT: RuntimeApi> MetaWorker<RT> {
         config: MetaServiceConfig,
         runtime: Arc<RT>,
     ) -> Result<MetaHandle<RT>, MetaStartupError> {
+        config.validate()?;
+
         let rt_for_handle = runtime.clone();
 
         let (ret_tx, ret_rx) = oneshot::channel();

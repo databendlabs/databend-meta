@@ -18,6 +18,8 @@ use databend_meta_raft_config::MetaStartupError;
 use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_types::node::Node;
 
+use super::GrpcAuthConfig;
+
 /// TLS configuration for server endpoints.
 ///
 /// This struct holds the paths to TLS certificate and private key files
@@ -60,6 +62,9 @@ pub struct GrpcConfig {
     /// address other nodes use to connect to this server.
     pub advertise_host: Option<String>,
 
+    /// Optional authentication policy for the gRPC handshake.
+    pub auth: Option<GrpcAuthConfig>,
+
     /// TLS configuration for the gRPC server.
     pub tls: TlsConfig,
 
@@ -76,6 +81,7 @@ impl Default for GrpcConfig {
             listen_host: "127.0.0.1".to_string(),
             listen_port: Some(9191),
             advertise_host: None,
+            auth: None,
             tls: TlsConfig::default(),
             max_message_size: None,
         }
@@ -102,6 +108,7 @@ impl GrpcConfig {
             listen_host: host.clone(),
             listen_port: None,
             advertise_host: Some(host),
+            auth: None,
             tls: TlsConfig::default(),
             max_message_size: None,
         }
@@ -120,6 +127,13 @@ impl GrpcConfig {
         self.advertise_host
             .as_ref()
             .map(|h| format!("{}:{}", h, port))
+    }
+
+    fn validate_auth(&self) -> Result<(), MetaStartupError> {
+        let Some(auth) = &self.auth else {
+            return Ok(());
+        };
+        auth.validate()
     }
 }
 
@@ -149,6 +163,8 @@ pub struct MetaServiceConfig {
 
 impl MetaServiceConfig {
     pub fn validate(&self) -> Result<(), MetaStartupError> {
+        self.grpc.validate_auth()?;
+
         // For production, port should be set.
         // For tests, port can be None (will use do_start_with_incoming).
         if let Some(addr) = self.grpc.api_address() {
@@ -167,5 +183,110 @@ impl MetaServiceConfig {
         )
         .with_grpc_advertise_address(self.grpc.advertise_address())
         .with_raft_tls_advertise_address(self.raft_config.raft_tls_advertise_host_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use databend_meta_raft_config::Secret;
+
+    use super::GrpcConfig;
+    use super::MetaServiceConfig;
+    use crate::configs::GrpcAuthConfig;
+    use crate::configs::GrpcCredential;
+
+    const PASSWORD: &str = "correct-password";
+    const NEXT_PASSWORD: &str = "next-password";
+
+    fn credential(username: &str, password: &str) -> GrpcCredential {
+        GrpcCredential {
+            username: username.to_string(),
+            password: Secret::new(password),
+        }
+    }
+
+    fn config_with(credentials: Vec<GrpcCredential>) -> MetaServiceConfig {
+        let mut config = MetaServiceConfig::default();
+        config.grpc.auth = Some(GrpcAuthConfig {
+            credentials,
+            strict: false,
+        });
+        config
+    }
+
+    #[test]
+    fn test_grpc_auth_requires_credentials() {
+        let config = config_with(vec![]);
+
+        let error = config.validate().unwrap_err();
+        let message = error.to_string();
+        let has_expected_error = message.contains("must contain at least one credential");
+
+        assert!(has_expected_error);
+    }
+
+    #[test]
+    fn test_grpc_auth_rejects_duplicate_usernames() {
+        let credentials = vec![
+            credential("meta", PASSWORD),
+            credential("meta", NEXT_PASSWORD),
+        ];
+        let config = config_with(credentials);
+
+        let error = config.validate().unwrap_err();
+        let message = error.to_string();
+        let has_expected_error = message.contains("usernames must be unique");
+
+        assert!(has_expected_error);
+    }
+
+    #[test]
+    fn test_grpc_auth_rejects_empty_username() {
+        let config = config_with(vec![credential("", PASSWORD)]);
+
+        let error = config.validate().unwrap_err();
+        let message = error.to_string();
+        let has_expected_error = message.contains("username must not be empty");
+
+        assert!(has_expected_error);
+    }
+
+    #[test]
+    fn test_grpc_auth_rejects_empty_password() {
+        let config = config_with(vec![credential("meta", "")]);
+
+        let error = config.validate().unwrap_err();
+        let message = error.to_string();
+        let has_expected_error = message.contains("password must not be empty");
+
+        assert!(has_expected_error);
+    }
+
+    #[test]
+    fn test_grpc_auth_config_redacts_password() -> anyhow::Result<()> {
+        let config = GrpcConfig {
+            auth: Some(GrpcAuthConfig {
+                credentials: vec![
+                    credential("meta-current", PASSWORD),
+                    credential("meta-next", NEXT_PASSWORD),
+                ],
+                strict: true,
+            }),
+            ..Default::default()
+        };
+
+        let debug = format!("{:?}", config);
+        let serialized = serde_json::to_string(&config)?;
+
+        for password in [PASSWORD, NEXT_PASSWORD] {
+            let debug_contains_password = debug.contains(password);
+            assert!(!debug_contains_password);
+
+            let serialized_contains_password = serialized.contains(password);
+            assert!(!serialized_contains_password);
+        }
+        let contains_redaction = serialized.contains("***");
+        assert!(contains_redaction);
+        Ok(())
     }
 }
