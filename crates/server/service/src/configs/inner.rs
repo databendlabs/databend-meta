@@ -15,8 +15,13 @@
 use std::net::SocketAddr;
 
 use databend_meta_raft_config::MetaStartupError;
+use databend_meta_raft_config::Secret;
 use databend_meta_raft_config::config::RaftConfig;
 use databend_meta_types::node::Node;
+
+const SHA256_HEX_LENGTH: usize = 64;
+const EMPTY_PASSWORD_HASH: &str =
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 /// TLS configuration for server endpoints.
 ///
@@ -60,6 +65,18 @@ pub struct GrpcConfig {
     /// address other nodes use to connect to this server.
     pub advertise_host: Option<String>,
 
+    /// Username accepted by the gRPC handshake.
+    /// Must be configured together with `auth_password_hash`.
+    pub auth_username: Option<String>,
+
+    /// Lowercase hexadecimal SHA-256 hash of the gRPC handshake password.
+    /// Must be configured together with `auth_username`.
+    pub auth_password_hash: Option<Secret>,
+
+    /// Whether to reject a missing or incorrect gRPC handshake password.
+    /// Default: false.
+    pub auth_strict: Option<bool>,
+
     /// TLS configuration for the gRPC server.
     pub tls: TlsConfig,
 
@@ -76,6 +93,9 @@ impl Default for GrpcConfig {
             listen_host: "127.0.0.1".to_string(),
             listen_port: Some(9191),
             advertise_host: None,
+            auth_username: None,
+            auth_password_hash: None,
+            auth_strict: None,
             tls: TlsConfig::default(),
             max_message_size: None,
         }
@@ -102,6 +122,9 @@ impl GrpcConfig {
             listen_host: host.clone(),
             listen_port: None,
             advertise_host: Some(host),
+            auth_username: None,
+            auth_password_hash: None,
+            auth_strict: None,
             tls: TlsConfig::default(),
             max_message_size: None,
         }
@@ -121,6 +144,63 @@ impl GrpcConfig {
             .as_ref()
             .map(|h| format!("{}:{}", h, port))
     }
+
+    /// Returns whether invalid gRPC passwords are rejected.
+    pub fn auth_strict(&self) -> bool {
+        self.auth_strict.unwrap_or(false)
+    }
+
+    fn validate_auth(&self) -> Result<(), MetaStartupError> {
+        let has_username = self.auth_username.is_some();
+        let has_password_hash = self.auth_password_hash.is_some();
+        if has_username != has_password_hash {
+            return Err(invalid_config(
+                "`grpc_auth_username` and `grpc_auth_password_hash` must be set together",
+            ));
+        }
+
+        if self.auth_username.as_deref() == Some("") {
+            return Err(invalid_config("`grpc_auth_username` must not be empty"));
+        }
+
+        if let Some(hash) = &self.auth_password_hash {
+            validate_password_hash(hash)?;
+        }
+
+        if self.auth_strict() && !has_username {
+            return Err(invalid_config(
+                "`grpc_auth_strict` is enabled but gRPC credentials are not configured",
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+fn invalid_config(message: &str) -> MetaStartupError {
+    MetaStartupError::InvalidConfig(message.to_string())
+}
+
+fn validate_password_hash(hash: &Secret) -> Result<(), MetaStartupError> {
+    let hash = hash.expose();
+    let has_valid_length = hash.len() == SHA256_HEX_LENGTH;
+    let is_lowercase_hex = hash.bytes().all(|byte| {
+        let is_lowercase_letter = (b'a'..=b'f').contains(&byte);
+        byte.is_ascii_digit() || is_lowercase_letter
+    });
+    if !has_valid_length || !is_lowercase_hex {
+        return Err(invalid_config(
+            "`grpc_auth_password_hash` must be a lowercase hexadecimal SHA-256 hash",
+        ));
+    }
+
+    if hash == EMPTY_PASSWORD_HASH {
+        return Err(invalid_config(
+            "`grpc_auth_password_hash` must not represent an empty password",
+        ));
+    }
+
+    Ok(())
 }
 
 /// Configuration for the Admin HTTP API server.
@@ -149,6 +229,8 @@ pub struct MetaServiceConfig {
 
 impl MetaServiceConfig {
     pub fn validate(&self) -> Result<(), MetaStartupError> {
+        self.grpc.validate_auth()?;
+
         // For production, port should be set.
         // For tests, port can be None (will use do_start_with_incoming).
         if let Some(addr) = self.grpc.api_address() {
@@ -167,5 +249,74 @@ impl MetaServiceConfig {
         )
         .with_grpc_advertise_address(self.grpc.advertise_address())
         .with_raft_tls_advertise_address(self.raft_config.raft_tls_advertise_host_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use databend_meta_raft_config::Secret;
+
+    use super::GrpcConfig;
+    use super::MetaServiceConfig;
+
+    const PASSWORD_HASH: &str = "9246aa9be8de7b40d64eb664986430793b6cc13a19d2a456981e44f28303f9cf";
+
+    #[test]
+    fn test_grpc_auth_credentials_must_be_configured_together() {
+        let mut config = MetaServiceConfig::default();
+        config.grpc.auth_username = Some("meta".to_string());
+
+        let error = config.validate().unwrap_err();
+
+        assert!(error.to_string().contains("must be set together"));
+    }
+
+    #[test]
+    fn test_grpc_auth_strict_requires_credentials() {
+        let mut config = MetaServiceConfig::default();
+        config.grpc.auth_strict = Some(true);
+
+        let error = config.validate().unwrap_err();
+
+        assert!(error.to_string().contains("credentials are not configured"));
+    }
+
+    #[test]
+    fn test_grpc_auth_rejects_invalid_password_hash() {
+        let mut config = MetaServiceConfig::default();
+        config.grpc.auth_username = Some("meta".to_string());
+        config.grpc.auth_password_hash = Some(Secret::new("not-a-sha256-hash"));
+
+        let error = config.validate().unwrap_err();
+
+        assert!(error.to_string().contains("lowercase hexadecimal SHA-256"));
+    }
+
+    #[test]
+    fn test_grpc_auth_rejects_empty_password_hash() {
+        let mut config = MetaServiceConfig::default();
+        config.grpc.auth_username = Some("meta".to_string());
+        config.grpc.auth_password_hash = Some(Secret::new(super::EMPTY_PASSWORD_HASH));
+
+        let error = config.validate().unwrap_err();
+
+        assert!(error.to_string().contains("empty password"));
+    }
+
+    #[test]
+    fn test_grpc_auth_config_redacts_password_hash() -> anyhow::Result<()> {
+        let config = GrpcConfig {
+            auth_username: Some("meta".to_string()),
+            auth_password_hash: Some(Secret::new(PASSWORD_HASH)),
+            ..Default::default()
+        };
+
+        let debug = format!("{:?}", config);
+        let serialized = serde_json::to_string(&config)?;
+
+        assert!(!debug.contains(PASSWORD_HASH));
+        assert!(!serialized.contains(PASSWORD_HASH));
+        assert!(serialized.contains("***"));
+        Ok(())
     }
 }

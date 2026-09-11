@@ -20,8 +20,10 @@ use std::time::Duration;
 use databend_meta::version::MIN_CLIENT_VERSION;
 use databend_meta_client::MetaChannelManager;
 use databend_meta_client::handshake;
+use databend_meta_raft_config::Secret;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TokioRuntime;
+use databend_meta_test_harness::MetaSrvTestContext;
 use databend_meta_version::Version;
 use databend_meta_version::version;
 use log::debug;
@@ -30,6 +32,65 @@ use test_harness::test;
 
 use crate::testing::meta_service_test_harness;
 use crate::tests::start_metasrv;
+use crate::tests::start_metasrv_with_context;
+
+const PASSWORD_HASH: &str = "9246aa9be8de7b40d64eb664986430793b6cc13a19d2a456981e44f28303f9cf";
+
+async fn try_handshake(addr: &str, username: &str, password: &str) -> anyhow::Result<()> {
+    let timeout = Some(Duration::from_millis(1000));
+    let channel = TokioRuntime::connect(addr.to_string(), timeout, None).await?;
+    let (mut client, _once) =
+        MetaChannelManager::<TokioRuntime>::new_real_client_for_testing(channel);
+    handshake(&mut client, version(), &Version::min(), username, password).await?;
+    Ok(())
+}
+
+async fn start_auth_server(
+    strict: bool,
+) -> anyhow::Result<(MetaSrvTestContext<TokioRuntime>, String)> {
+    let mut context = MetaSrvTestContext::<TokioRuntime>::new(0);
+    context.config.grpc.auth_username = Some("meta".to_string());
+    context.config.grpc.auth_password_hash = Some(Secret::new(PASSWORD_HASH));
+    context.config.grpc.auth_strict = Some(strict);
+    start_metasrv_with_context(&mut context).await?;
+    let address = context.config.grpc.api_address().unwrap();
+    Ok((context, address))
+}
+
+fn assert_unauthenticated(result: anyhow::Result<()>, expected: &str) {
+    let error = result.unwrap_err();
+    let message = error.to_string();
+    assert!(
+        message.contains("valid authentication credentials"),
+        "{message}"
+    );
+    assert!(message.contains(expected), "{message}");
+}
+
+fn scraped_counter(reason: &str) -> u64 {
+    let scraped = databend_meta::metrics::meta_metrics_to_prometheus_string();
+    let prefix = format!(
+        "metasrv_meta_network_unauthenticated_passed_total{{reason=\"{}\"}} ",
+        reason
+    );
+    let value = scraped
+        .lines()
+        .find_map(|line| line.strip_prefix(&prefix))
+        .unwrap_or("0");
+    value.parse().unwrap()
+}
+
+async fn assert_permissive_counted(
+    address: &str,
+    password: &str,
+    reason: &str,
+) -> anyhow::Result<()> {
+    let before = scraped_counter(reason);
+    try_handshake(address, "meta", password).await?;
+    let after = scraped_counter(reason);
+    assert_eq!(after, before + 1, "{reason} password was not counted");
+    Ok(())
+}
 
 /// - Test client version < serverside min-compatible-client-ver.
 /// - Test metasrv version < client min-compatible-metasrv-ver.
@@ -106,5 +167,40 @@ async fn test_metasrv_handshake() -> anyhow::Result<()> {
         assert!(res.is_ok());
     }
 
+    Ok(())
+}
+
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+async fn test_unconfigured_server_accepts_old_client() -> anyhow::Result<()> {
+    let (_server, address) = start_metasrv::<TokioRuntime>().await?;
+
+    try_handshake(&address, "root", "").await
+}
+
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+async fn test_permissive_grpc_password_auth() -> anyhow::Result<()> {
+    let (_server, address) = start_auth_server(false).await?;
+
+    try_handshake(&address, "meta", "correct-password").await?;
+    assert_permissive_counted(&address, "", "missing").await?;
+    assert_permissive_counted(&address, "wrong-password", "incorrect").await?;
+    let unknown = try_handshake(&address, "unknown", "correct-password").await;
+    assert_unauthenticated(unknown, "Unknown user");
+    Ok(())
+}
+
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+async fn test_strict_grpc_password_auth() -> anyhow::Result<()> {
+    let (_server, address) = start_auth_server(true).await?;
+
+    try_handshake(&address, "meta", "correct-password").await?;
+    assert_unauthenticated(
+        try_handshake(&address, "meta", "").await,
+        "Invalid password",
+    );
+    let wrong = try_handshake(&address, "meta", "wrong-password").await;
+    assert_unauthenticated(wrong, "Invalid password");
+    let unknown = try_handshake(&address, "unknown", "correct-password").await;
+    assert_unauthenticated(unknown, "Unknown user");
     Ok(())
 }

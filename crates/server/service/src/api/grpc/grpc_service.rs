@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::io;
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Weak;
@@ -27,6 +28,7 @@ use databend_base::grpc_token::GrpcClaim;
 use databend_base::grpc_token::GrpcToken;
 use databend_meta_client::MetaGrpcReadReq;
 use databend_meta_client::MetaGrpcReq;
+use databend_meta_raft_config::Secret;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TrackingData;
 use databend_meta_types::Endpoint;
@@ -61,7 +63,11 @@ use futures::TryStreamExt;
 use futures::stream::TryChunksError;
 use log::debug;
 use log::info;
+use log::warn;
 use prost::Message;
+use sha2::Digest;
+use sha2::Sha256;
+use subtle::ConstantTimeEq;
 use tokio_stream;
 use tokio_stream::Stream;
 use tonic::Request;
@@ -73,6 +79,7 @@ use tonic::metadata::MetadataMap;
 use tonic::server::NamedService;
 use watcher::watch_stream::WatchStreamSender;
 
+use crate::configs::GrpcConfig;
 use crate::meta_node::meta_handle::MetaHandle;
 use crate::meta_service::watcher::DispatcherHandle;
 use crate::meta_service::watcher::WatchTypes;
@@ -161,6 +168,9 @@ impl Drop for ThroughputLogger {
 pub struct MetaServiceImpl<SP: SpawnApi> {
     token: GrpcToken,
     version: Version,
+    auth_username: String,
+    auth_password_hash: Option<Secret>,
+    auth_strict: bool,
     /// MetaServiceImpl is not dropped if there is an alive connection.
     ///
     /// Thus make the reference to [`MetaNode`] a Weak reference so that it does not prevent [`MetaNode`] to be dropped
@@ -178,12 +188,63 @@ impl<SP: SpawnApi> Drop for MetaServiceImpl<SP> {
 }
 
 impl<SP: SpawnApi> MetaServiceImpl<SP> {
-    pub fn create(version: Version, meta_handle: Weak<MetaHandle<SP>>) -> Self {
+    pub fn create(
+        version: Version,
+        meta_handle: Weak<MetaHandle<SP>>,
+        grpc_config: &GrpcConfig,
+    ) -> Self {
+        let configured_username = grpc_config.auth_username.clone();
+        let auth_username = configured_username.unwrap_or_else(|| "root".to_string());
+
         Self {
             token: GrpcToken::create(),
             version,
+            auth_username,
+            auth_password_hash: grpc_config.auth_password_hash.clone(),
+            auth_strict: grpc_config.auth_strict(),
             meta_handle,
         }
+    }
+
+    fn authenticate(&self, auth: &BasicAuth) -> Result<Option<&'static str>, Status> {
+        self.authenticate_username(&auth.username)?;
+        self.authenticate_password(&auth.password)
+    }
+
+    fn authenticate_username(&self, username: &str) -> Result<(), Status> {
+        if username != self.auth_username {
+            return Err(Status::unauthenticated(format!("Unknown user: {username}")));
+        }
+
+        Ok(())
+    }
+
+    fn authenticate_password(&self, password: &str) -> Result<Option<&'static str>, Status> {
+        let Some(hash) = &self.auth_password_hash else {
+            if self.auth_strict {
+                return self.invalid_password("missing");
+            }
+            return Ok(None);
+        };
+
+        if password_matches(password, hash) {
+            return Ok(None);
+        }
+
+        let reason = if password.is_empty() {
+            "missing"
+        } else {
+            "incorrect"
+        };
+        self.invalid_password(reason)
+    }
+
+    fn invalid_password(&self, reason: &'static str) -> Result<Option<&'static str>, Status> {
+        if self.auth_strict {
+            return Err(Status::unauthenticated("Invalid password"));
+        }
+
+        Ok(Some(reason))
     }
 
     pub fn try_get_meta_handle(&self) -> Result<Arc<MetaHandle<SP>>, Status> {
@@ -341,6 +402,7 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
         &self,
         request: Request<Streaming<HandshakeRequest>>,
     ) -> Result<Response<Self::HandshakeStream>, Status> {
+        let remote_addr = request.remote_addr();
         let req = request
             .into_inner()
             .next()
@@ -367,30 +429,27 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
 
         let auth = BasicAuth::decode(&*payload).map_err(|e| Status::internal(e.to_string()))?;
 
-        let user = "root";
-        if auth.username == user {
-            let claim = GrpcClaim {
-                username: user.to_string(),
-            };
-            let token = self
-                .token
-                .try_create_token(claim)
-                .map_err(|e| Status::internal(e.to_string()))?;
-
-            let resp = HandshakeResponse {
-                protocol_version: self.version.to_digit(),
-                payload: token.into_bytes(),
-            };
-            let output = futures::stream::once(async { Ok(resp) });
-
-            debug!("handshake OK");
-            Ok(Response::new(Box::pin(output)))
-        } else {
-            Err(Status::unauthenticated(format!(
-                "Unknown user: {}",
-                auth.username
-            )))
+        if let Some(reason) = self.authenticate(&auth)? {
+            network_metrics::incr_unauthenticated_passed(reason);
+            warn_permissive_auth(reason, remote_addr);
         }
+
+        let claim = GrpcClaim {
+            username: self.auth_username.clone(),
+        };
+        let token = self
+            .token
+            .try_create_token(claim)
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let resp = HandshakeResponse {
+            protocol_version: self.version.to_digit(),
+            payload: token.into_bytes(),
+        };
+        let output = futures::stream::once(async { Ok(resp) });
+
+        debug!("handshake OK");
+        Ok(Response::new(Box::pin(output)))
     }
 
     async fn kv_api(&self, request: Request<RaftRequest>) -> Result<Response<RaftReply>, Status> {
@@ -781,6 +840,24 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
         }
         Err(Status::unavailable("can not get client ip address"))
     }
+}
+
+fn password_matches(password: &str, expected_hash: &Secret) -> bool {
+    let digest = Sha256::digest(password.as_bytes());
+    let actual_hash = format!("{digest:x}");
+    let expected_hash = expected_hash.expose().as_bytes();
+    bool::from(actual_hash.as_bytes().ct_eq(expected_hash))
+}
+
+fn warn_permissive_auth(reason: &str, remote_addr: Option<SocketAddr>) {
+    let peer = match remote_addr {
+        Some(addr) => addr.to_string(),
+        None => "unknown address".to_string(),
+    };
+    warn!(
+        "gRPC password is {}: from:{}: accepted because `grpc_auth_strict` is off",
+        reason, peer
+    );
 }
 
 fn get_query_id<T>(req: &Request<T>) -> Option<String> {
