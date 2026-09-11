@@ -1,23 +1,27 @@
 # Network Exposure
 
-A `databend-meta` node listens on three ports. They differ in what they check,
-and none of them is safe to reach from outside the cluster's trusted network.
+A `databend-meta` node listens on three ports and, when configured, a second
+Raft port for TLS. They differ in what they check, and none of them is safe to
+reach from outside the cluster's trusted network.
 
-| Port  | Config key          | Serves                                | Checks the caller           |
-|-------|---------------------|---------------------------------------|-----------------------------|
-| raft  | `raft_api_port`     | replication between nodes             | the shared secret, if configured |
-| gRPC  | `grpc_api_address`  | the key-value API, watch, export      | a handshake token -- see below |
-| admin | `admin_api_address` | health, config, metrics, control      | nothing                     |
+| Port     | Config key          | Serves                                | Checks the caller           |
+|----------|---------------------|---------------------------------------|-----------------------------|
+| raft     | `raft_api_port`     | replication between nodes             | the shared secret, if configured |
+| raft TLS | `raft_tls_port`     | the same replication service, over TLS | the same shared secret, if configured |
+| gRPC     | `grpc_api_address`  | the key-value API, watch, export      | a handshake token -- see below |
+| admin    | `admin_api_address` | health, config, metrics, control      | nothing                     |
 
-## The raft port
+## The raft ports
 
-Raft RPCs carry a shared secret once the cluster is configured for one. See
-[raft-secret-rollout.md](raft-secret-rollout.md) for what that secret covers,
-how to roll it out without downtime, and why it does not replace a trusted
-network: raft connects over cleartext `http://`, so an adversary who can read
-the wire takes the secret out of any RPC and replays it.
+The plaintext and TLS listeners serve the same Raft RPCs and apply the same
+shared-secret check. TLS changes only the transport; it does not replace caller
+authentication.
 
-This port has no TLS option at all.
+See [raft-secret-rollout.md](raft-secret-rollout.md) for how to configure the
+secret. The plaintext listener uses cleartext `http://`, so an adversary who
+can read the wire takes the secret out of any RPC and replays it. See
+[raft-tls-rollout.md](raft-tls-rollout.md) for how to add the TLS listener
+without downtime.
 
 ## The gRPC port
 
@@ -62,7 +66,7 @@ reading the wire, and does not narrow who may connect.
 
 Nothing the meta service writes is encrypted. That covers the raft log and
 state machine on disk, the snapshot files (including the ones shipped to a
-joining node over the cleartext raft port), and the JSON that
+joining node), and the JSON that
 `databend-metactl export` produces, which contains every key and value
 verbatim.
 
