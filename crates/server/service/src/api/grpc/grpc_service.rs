@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::io;
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Weak;
@@ -61,6 +62,7 @@ use futures::TryStreamExt;
 use futures::stream::TryChunksError;
 use log::debug;
 use log::info;
+use log::warn;
 use prost::Message;
 use tokio_stream;
 use tokio_stream::Stream;
@@ -73,6 +75,9 @@ use tonic::metadata::MetadataMap;
 use tonic::server::NamedService;
 use watcher::watch_stream::WatchStreamSender;
 
+use super::grpc_authenticator::GrpcAuthenticator;
+use super::grpc_authenticator::unknown_user;
+use crate::configs::GrpcConfig;
 use crate::meta_node::meta_handle::MetaHandle;
 use crate::meta_service::watcher::DispatcherHandle;
 use crate::meta_service::watcher::WatchTypes;
@@ -158,9 +163,12 @@ impl Drop for ThroughputLogger {
     }
 }
 
+const LEGACY_USERNAME: &str = "root";
+
 pub struct MetaServiceImpl<SP: SpawnApi> {
     token: GrpcToken,
     version: Version,
+    auth: Option<GrpcAuthenticator>,
     /// MetaServiceImpl is not dropped if there is an alive connection.
     ///
     /// Thus make the reference to [`MetaNode`] a Weak reference so that it does not prevent [`MetaNode`] to be dropped
@@ -178,12 +186,31 @@ impl<SP: SpawnApi> Drop for MetaServiceImpl<SP> {
 }
 
 impl<SP: SpawnApi> MetaServiceImpl<SP> {
-    pub fn create(version: Version, meta_handle: Weak<MetaHandle<SP>>) -> Self {
+    pub fn create(
+        version: Version,
+        meta_handle: Weak<MetaHandle<SP>>,
+        grpc_config: &GrpcConfig,
+    ) -> Self {
+        let auth = grpc_config.auth.as_ref();
+        let auth = auth.map(GrpcAuthenticator::from_config);
+
         Self {
             token: GrpcToken::create(),
             version,
+            auth,
             meta_handle,
         }
+    }
+
+    fn authenticate(&self, auth: &BasicAuth) -> Result<Option<&'static str>, Status> {
+        let Some(authenticator) = &self.auth else {
+            if auth.username != LEGACY_USERNAME {
+                return Err(unknown_user(&auth.username));
+            }
+            return Ok(None);
+        };
+
+        authenticator.authenticate(auth)
     }
 
     pub fn try_get_meta_handle(&self) -> Result<Arc<MetaHandle<SP>>, Status> {
@@ -341,6 +368,7 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
         &self,
         request: Request<Streaming<HandshakeRequest>>,
     ) -> Result<Response<Self::HandshakeStream>, Status> {
+        let remote_addr = request.remote_addr();
         let req = request
             .into_inner()
             .next()
@@ -367,30 +395,30 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
 
         let auth = BasicAuth::decode(&*payload).map_err(|e| Status::internal(e.to_string()))?;
 
-        let user = "root";
-        if auth.username == user {
-            let claim = GrpcClaim {
-                username: user.to_string(),
-            };
-            let token = self
-                .token
-                .try_create_token(claim)
-                .map_err(|e| Status::internal(e.to_string()))?;
-
-            let resp = HandshakeResponse {
-                protocol_version: self.version.to_digit(),
-                payload: token.into_bytes(),
-            };
-            let output = futures::stream::once(async { Ok(resp) });
-
-            debug!("handshake OK");
-            Ok(Response::new(Box::pin(output)))
-        } else {
-            Err(Status::unauthenticated(format!(
-                "Unknown user: {}",
-                auth.username
-            )))
+        let permissive_reason = self.authenticate(&auth)?;
+        if let Some(reason) = permissive_reason {
+            network_metrics::incr_unauthenticated_passed(reason);
+            warn_permissive_auth(reason, remote_addr);
+        } else if self.auth.is_some() {
+            network_metrics::incr_authenticated(&auth.username);
         }
+
+        let claim = GrpcClaim {
+            username: auth.username,
+        };
+        let token = self
+            .token
+            .try_create_token(claim)
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let resp = HandshakeResponse {
+            protocol_version: self.version.to_digit(),
+            payload: token.into_bytes(),
+        };
+        let output = futures::stream::once(async { Ok(resp) });
+
+        debug!("handshake OK");
+        Ok(Response::new(Box::pin(output)))
     }
 
     async fn kv_api(&self, request: Request<RaftRequest>) -> Result<Response<RaftReply>, Status> {
@@ -781,6 +809,17 @@ impl<SP: SpawnApi> MetaService for MetaServiceImpl<SP> {
         }
         Err(Status::unavailable("can not get client ip address"))
     }
+}
+
+fn warn_permissive_auth(reason: &str, remote_addr: Option<SocketAddr>) {
+    let peer = match remote_addr {
+        Some(addr) => addr.to_string(),
+        None => "unknown address".to_string(),
+    };
+    warn!(
+        "gRPC password is {}: from:{}: accepted because `grpc_auth.strict` is off",
+        reason, peer
+    );
 }
 
 fn get_query_id<T>(req: &Request<T>) -> Option<String> {

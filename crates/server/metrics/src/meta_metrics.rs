@@ -860,7 +860,9 @@ pub mod network_metrics {
 
     use databend_meta_types::protobuf::WatchResponse;
     use log::error;
+    use prometheus_client::encoding::EncodeLabelSet;
     use prometheus_client::metrics::counter::Counter;
+    use prometheus_client::metrics::family::Family;
     use prometheus_client::metrics::gauge::Gauge;
     use prometheus_client::metrics::histogram::Histogram;
 
@@ -870,6 +872,16 @@ pub mod network_metrics {
         ($key: literal) => {
             concat!("metasrv_meta_network_", $key)
         };
+    }
+
+    #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+    struct ReasonLabels {
+        reason: String,
+    }
+
+    #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+    struct UsernameLabels {
+        username: String,
     }
 
     #[derive(Debug)]
@@ -882,6 +894,8 @@ pub mod network_metrics {
         req_inflights: Gauge,
         req_success: Counter,
         req_failed: Counter,
+        authenticated: Family<UsernameLabels, Counter>,
+        unauthenticated_passed: Family<ReasonLabels, Counter>,
 
         /// Number of items sent during watch stream initialization.
         watch_initialization_item_sent: Counter,
@@ -918,6 +932,8 @@ pub mod network_metrics {
                 req_inflights: Gauge::default(),
                 req_success: Counter::default(),
                 req_failed: Counter::default(),
+                authenticated: Family::default(),
+                unauthenticated_passed: Family::default(),
 
                 watch_initialization_item_sent: Counter::default(),
                 watch_change_item_sent: Counter::default(),
@@ -956,6 +972,16 @@ pub mod network_metrics {
                 metrics.req_success.clone(),
             );
             registry.register(key!("req_failed"), "req failed", metrics.req_failed.clone());
+            registry.register(
+                key!("authenticated"),
+                "handshakes authenticated with configured credentials",
+                metrics.authenticated.clone(),
+            );
+            registry.register(
+                key!("unauthenticated_passed"),
+                "handshakes passed without a valid password",
+                metrics.unauthenticated_passed.clone(),
+            );
 
             registry.register(
                 key!("watch_initialization"),
@@ -1020,6 +1046,25 @@ pub mod network_metrics {
         } else {
             NETWORK_METRICS.req_failed.inc();
         }
+    }
+
+    /// Increment authenticated handshakes for one configured username.
+    pub fn incr_authenticated(username: &str) {
+        let labels = UsernameLabels {
+            username: username.to_string(),
+        };
+        NETWORK_METRICS.authenticated.get_or_create(&labels).inc();
+    }
+
+    /// Increment permissive handshakes for one password failure reason.
+    pub fn incr_unauthenticated_passed(reason: &str) {
+        let labels = ReasonLabels {
+            reason: reason.to_string(),
+        };
+        NETWORK_METRICS
+            .unauthenticated_passed
+            .get_or_create(&labels)
+            .inc();
     }
 
     /// Increment the number of items sent in a watch response.
