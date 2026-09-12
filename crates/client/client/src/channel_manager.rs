@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyerror::AnyError;
+use databend_meta_raft_config::Secret;
 use databend_meta_runtime_api::ChannelError;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TlsConfig;
@@ -51,7 +52,7 @@ pub const DEFAULT_CONNECTION_TTL: Duration = Duration::from_secs(20);
 #[derive(Debug)]
 pub struct MetaChannelManager<R> {
     username: String,
-    password: String,
+    password: Secret,
     timeout: Option<Duration>,
     tls_config: Option<TlsConfig>,
 
@@ -84,7 +85,7 @@ impl<R: SpawnApi> MetaChannelManager<R> {
     ) -> Self {
         Self {
             username: username.to_string(),
-            password: password.to_string(),
+            password: Secret::new(password.to_string()),
             timeout,
             tls_config,
             endpoints,
@@ -108,12 +109,13 @@ impl<R: SpawnApi> MetaChannelManager<R> {
             addr
         );
 
+        let password = self.password.expose();
         let handshake_res = handshake(
             &mut real_client,
             databend_meta_version::version(),
             &databend_meta_version::MIN_SERVER_VERSION,
             &self.username,
-            &self.password,
+            password,
         )
         .await;
 
@@ -228,5 +230,41 @@ impl<R: SpawnApi> ItemManager for MetaChannelManager<R> {
         }
 
         Ok(ch)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use databend_meta_runtime_api::TokioRuntime;
+    use parking_lot::Mutex;
+
+    use super::DEFAULT_GRPC_MESSAGE_SIZE;
+    use super::MetaChannelManager;
+    use crate::endpoints::Endpoints;
+
+    const PASSWORD: &str = "correct-password";
+
+    #[test]
+    fn test_meta_channel_manager_debug_redacts_password() {
+        let endpoints = Endpoints::new(["127.0.0.1:9191"]);
+        let endpoints = Arc::new(Mutex::new(endpoints));
+        let manager = MetaChannelManager::<TokioRuntime>::new(
+            "root",
+            PASSWORD,
+            None,
+            None,
+            endpoints,
+            None,
+            DEFAULT_GRPC_MESSAGE_SIZE,
+        );
+
+        let debug = format!("{manager:?}");
+        let contains_password = debug.contains(PASSWORD);
+        assert!(!contains_password);
+
+        let contains_redaction = debug.contains("***");
+        assert!(contains_redaction);
     }
 }
