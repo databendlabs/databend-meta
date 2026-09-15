@@ -516,6 +516,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "block-buffer"
+version = "0.10.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
+dependencies = [
+ "generic-array",
+]
+
+[[package]]
 name = "block2"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -634,7 +643,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f8d983286843e49675a4b7a2d174efe136dc93a18d69130dd18198a6c167601"
 dependencies = [
  "cfg-if",
- "cpufeatures",
+ "cpufeatures 0.3.0",
  "rand_core 0.10.1",
 ]
 
@@ -823,6 +832,15 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "cpufeatures"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "cpufeatures"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b2a41393f66f16b0823bb79094d54ac5fbd34ab292ddafb9a0456ac9f87d201"
@@ -870,6 +888,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
+name = "crypto-common"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
+dependencies = [
+ "generic-array",
+ "typenum",
+]
+
+[[package]]
 name = "ctrlc"
 version = "3.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -912,7 +940,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "anyerror",
  "anyhow",
@@ -957,6 +985,7 @@ dependencies = [
  "seq-marked",
  "serde",
  "serde_json",
+ "sha2",
  "state-machine-api",
  "subtle",
  "thiserror 1.0.69",
@@ -969,7 +998,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-base"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "anyerror",
  "deepsize",
@@ -984,7 +1013,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-client"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "anyerror",
  "arrow-flight",
@@ -995,6 +1024,7 @@ dependencies = [
  "databend-meta-client-types",
  "databend-meta-kvapi",
  "databend-meta-kvapi-test-suite",
+ "databend-meta-raft-config",
  "databend-meta-runtime-api",
  "databend-meta-version",
  "derive_more 2.1.1",
@@ -1017,7 +1047,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-client-types"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "anyerror",
  "databend-meta-proto",
@@ -1054,7 +1084,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-kvapi"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "async-trait",
  "databend-meta-client-types",
@@ -1067,7 +1097,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-kvapi-test-suite"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "anyhow",
  "databend-meta-client-types",
@@ -1082,7 +1112,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-leveled-store"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1107,7 +1137,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-metrics"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "databend-base",
  "databend-meta-raft-log",
@@ -1118,7 +1148,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-proto"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "anyerror",
  "databend-meta-base",
@@ -1141,7 +1171,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-raft-config"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "anyerror",
  "databend-meta-runtime-api",
@@ -1162,7 +1192,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-raft-log"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "anyerror",
  "databend-meta-types",
@@ -1181,7 +1211,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-runtime-api"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "env_logger",
  "log",
@@ -1192,7 +1222,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-sled-store"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "anyerror",
  "byteorder",
@@ -1209,7 +1239,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-snapshot-db"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "bincode",
  "databend-meta-types",
@@ -1225,7 +1255,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-snapshot-store"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "databend-meta-leveled-store",
  "databend-meta-raft-config",
@@ -1244,7 +1274,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-state-machine"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "async-trait",
  "databend-base",
@@ -1272,7 +1302,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-store-compat"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "anyerror",
  "anyhow",
@@ -1302,7 +1332,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-types"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "anyerror",
  "databend-meta-base",
@@ -1324,7 +1354,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-version"
-version = "260629.6.0"
+version = "260629.7.0"
 dependencies = [
  "semver",
 ]
@@ -1392,6 +1422,16 @@ dependencies = [
  "rustc_version",
  "syn 2.0.117",
  "unicode-xid",
+]
+
+[[package]]
+name = "digest"
+version = "0.10.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
+dependencies = [
+ "block-buffer",
+ "crypto-common",
 ]
 
 [[package]]
@@ -1729,6 +1769,16 @@ dependencies = [
  "log",
  "rustversion",
  "windows",
+]
+
+[[package]]
+name = "generic-array"
+version = "0.14.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
+dependencies = [
+ "typenum",
+ "version_check",
 ]
 
 [[package]]
@@ -3545,6 +3595,17 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "sha2"
+version = "0.10.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.2.17",
+ "digest",
 ]
 
 [[package]]
