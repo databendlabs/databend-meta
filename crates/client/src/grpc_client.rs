@@ -145,10 +145,11 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
     /// The worker is a singleton and the returned handle is cheap to clone.
     /// When all handles are dropped the worker will quit, then the runtime will be destroyed.
     pub fn try_new(conf: &RpcClientConf) -> Result<Arc<ClientHandle<RT>>, CreationError> {
+        let password = conf.password.expose();
         Self::try_create(
             conf.get_endpoints(),
             &conf.username,
-            &conf.password,
+            password,
             conf.timeout,
             conf.auto_sync_interval,
             conf.tls_conf.clone(),

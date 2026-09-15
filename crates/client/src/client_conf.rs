@@ -15,6 +15,7 @@
 use std::time::Duration;
 
 use crate::channel_manager::DEFAULT_GRPC_MESSAGE_SIZE;
+use crate::secret::Secret;
 
 #[derive(Clone, Debug, Default)]
 pub struct RpcClientTlsConfig {
@@ -33,7 +34,7 @@ pub struct RpcClientConf {
     pub embedded_dir: Option<String>,
     pub endpoints: Vec<String>,
     pub username: String,
-    pub password: String,
+    pub password: Secret,
     pub tls_conf: Option<RpcClientTlsConfig>,
 
     /// Timeout for an RPC
@@ -68,12 +69,33 @@ impl RpcClientConf {
             embedded_dir: None,
             endpoints: vec![],
             username: "".to_string(),
-            password: "".to_string(),
+            password: Secret::new(""),
             tls_conf: None,
             timeout: None,
             auto_sync_interval: None,
             unhealthy_endpoint_evict_time: Default::default(),
             grpc_max_message_size: DEFAULT_GRPC_MESSAGE_SIZE,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RpcClientConf;
+    use crate::Secret;
+
+    const PASSWORD: &str = "correct-password";
+
+    #[test]
+    fn test_rpc_client_conf_debug_redacts_password() {
+        let mut config = RpcClientConf::empty();
+        config.password = Secret::new(PASSWORD);
+
+        let debug = format!("{config:?}");
+        let contains_password = debug.contains(PASSWORD);
+        assert!(!contains_password);
+
+        let contains_redaction = debug.contains("***");
+        assert!(contains_redaction);
     }
 }

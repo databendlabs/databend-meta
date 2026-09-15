@@ -35,6 +35,7 @@ mod grpc_client;
 mod message;
 mod pool;
 pub(crate) mod rpc_handler;
+mod secret;
 
 pub use channel_manager::DEFAULT_GRPC_MESSAGE_SIZE;
 pub use channel_manager::MetaChannelManager;
@@ -51,3 +52,4 @@ pub use grpc_action::RequestFor;
 pub use grpc_client::MetaGrpcClient;
 pub use grpc_client::handshake;
 pub use message::Streamed;
+pub use secret::Secret;
