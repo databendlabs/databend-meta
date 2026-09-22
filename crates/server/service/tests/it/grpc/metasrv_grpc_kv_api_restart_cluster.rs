@@ -42,7 +42,7 @@ use crate::tests::start_metasrv_with_context;
 async fn test_kv_api_restart_cluster_write_read() -> anyhow::Result<()> {
     fn make_key(tc: &MetaSrvTestContext<TokioRuntime>, k: impl std::fmt::Display) -> String {
         let x = &tc.config.raft_config;
-        format!("t-restart-cluster-{}-{}-{}", x.config_id, x.id, k)
+        format!("t-restart-cluster-{}-{}", x.id, k)
     }
 
     async fn test_write_read_on_every_node(
@@ -138,7 +138,7 @@ async fn test_kv_api_restart_cluster_write_read() -> anyhow::Result<()> {
 async fn test_kv_api_restart_cluster_token_expired() -> anyhow::Result<()> {
     fn make_key(tc: &MetaSrvTestContext<TokioRuntime>, k: impl std::fmt::Display) -> String {
         let x = &tc.config.raft_config;
-        format!("t-restart-cluster-{}-{}-{}", x.config_id, x.id, k)
+        format!("t-restart-cluster-{}-{}", x.id, k)
     }
 
     async fn test_write_read_on_every_node(
