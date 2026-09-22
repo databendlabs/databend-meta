@@ -84,12 +84,6 @@ impl SnapshotConfig {
         (self.snapshot_dir(), temp_snapshot_id)
     }
 
-    // TODO: remove this
-    pub fn snapshot_temp_path(&self) -> String {
-        let temp_snapshot_id = self.temp_snapshot_id();
-        format!("{}/{}", self.snapshot_dir(), temp_snapshot_id)
-    }
-
     pub fn temp_snapshot_id(&self) -> String {
         // Sleep to avoid timestamp collision when this function is called twice in a short time.
         std::thread::sleep(std::time::Duration::from_millis(2));
@@ -161,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    fn test_temp_path_no_dup() -> anyhow::Result<()> {
+    fn test_temp_name_no_dup() -> anyhow::Result<()> {
         let temp = tempfile::tempdir()?;
         let p = temp.path();
         let raft_config = RaftConfig {
@@ -173,9 +167,11 @@ mod tests {
 
         let mut prev = None;
         for _i in 0..10 {
-            let path = store.snapshot_temp_path();
-            assert_ne!(prev, Some(path.clone()), "dup: {}", path);
-            prev = Some(path);
+            let (_, name) = store.snapshot_temp_dir_fn();
+            let previous_name = prev.as_deref();
+            let current_name = Some(name.as_str());
+            assert_ne!(previous_name, current_name, "dup: {name}");
+            prev = Some(name);
         }
 
         Ok(())
@@ -206,13 +202,6 @@ mod tests {
         let (dir, temp_fn) = c.snapshot_temp_dir_fn();
         assert_eq!(dir, snapshot_dir);
         assert!(temp_fn.starts_with("0.snap-"), "temp fn: {}", temp_fn);
-
-        let temp_path = c.snapshot_temp_path();
-        assert!(
-            temp_path.starts_with(&format!("{}/0.snap-", snapshot_dir)),
-            "temp path: {}",
-            temp_path
-        );
     }
 
     #[test]
@@ -257,7 +246,8 @@ mod tests {
         let c = snapshot_config(temp.path().to_str().unwrap());
         let dir = c.ensure_snapshot_dir()?;
 
-        let temp_path = c.snapshot_temp_path();
+        let (temp_dir, temp_fn) = c.snapshot_temp_dir_fn();
+        let temp_path = format!("{temp_dir}/{temp_fn}");
         fs::write(&temp_path, b"snapshot-data")?;
 
         let got = c.move_to_final_path(&temp_path, "1-2-3-4".to_string())?;
