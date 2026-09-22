@@ -19,7 +19,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use databend_base::testutil::next_port;
-use databend_base::uniq_id::GlobalUniq;
 use databend_meta::api::GrpcServer;
 use databend_meta::configs;
 use databend_meta::message::ForwardRequest;
@@ -136,17 +135,12 @@ impl<R: RuntimeApi> MetaSrvTestContext<R> {
     pub fn new(id: u64) -> MetaSrvTestContext<R> {
         let temp_dir = tempfile::tempdir().unwrap();
 
-        let config_id = GlobalUniq::unique();
-
         let mut config = configs::MetaServiceConfig::default();
 
         config.raft_config.id = id;
 
-        config.raft_config.config_id = config_id.clone();
-
         // Use a unique dir for each test case.
-        config.raft_config.raft_dir =
-            format!("{}/{}/raft_dir", temp_dir.path().display(), config_id);
+        config.raft_config.raft_dir = format!("{}/raft_dir", temp_dir.path().display());
 
         // By default, create a meta node instead of open an existent one.
         config.raft_config.single = true;

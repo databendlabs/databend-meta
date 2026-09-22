@@ -118,7 +118,6 @@ fn test_raft_config() -> anyhow::Result<()> {
 #[test]
 fn test_default_config() {
     assert_eq!(RaftConfig::default(), RaftConfig {
-        config_id: "".to_string(),
         raft_listen_host: "127.0.0.1".to_string(),
         raft_advertise_host: get_default_raft_advertise_host(),
         raft_api_port: 28004,

@@ -39,10 +39,6 @@ const GB: u64 = 1024 * MB;
 /// like heartbeat intervals and snapshot thresholds.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct RaftConfig {
-    /// Identify a config.
-    /// This is only meant to make debugging easier with more than one Config involved.
-    pub config_id: String,
-
     /// The local listening host for metadata communication.
     /// This config does not need to be stored in raft-store,
     /// only used when metasrv startup and listen to.
@@ -258,7 +254,6 @@ pub fn get_default_raft_advertise_host() -> String {
 impl Default for RaftConfig {
     fn default() -> Self {
         Self {
-            config_id: "".to_string(),
             raft_listen_host: "127.0.0.1".to_string(),
             raft_advertise_host: get_default_raft_advertise_host(),
             raft_api_port: 28004,
