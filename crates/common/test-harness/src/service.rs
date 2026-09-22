@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt;
-use std::fs;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -29,7 +27,6 @@ use databend_meta_runtime_api::RuntimeApi;
 use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
 use databend_meta_types::raft_types::NodeId;
 use log::info;
-use log::warn;
 use tonic::transport::server::TcpIncoming;
 
 /// Start one random service and get the session manager.
@@ -124,12 +121,6 @@ pub struct MetaSrvTestContext<R: RuntimeApi> {
     pub grpc_srv: Option<Box<GrpcServer<R>>>,
 }
 
-impl<R: RuntimeApi> Drop for MetaSrvTestContext<R> {
-    fn drop(&mut self) {
-        self.rm_raft_dir("Drop MetaSrvTestContext");
-    }
-}
-
 impl<R: RuntimeApi> MetaSrvTestContext<R> {
     /// Create a new Config for test, with unique port assigned
     pub fn new(id: u64) -> MetaSrvTestContext<R> {
@@ -170,29 +161,12 @@ impl<R: RuntimeApi> MetaSrvTestContext<R> {
 
         info!("new test context config: {:?}", config);
 
-        let c = MetaSrvTestContext {
+        MetaSrvTestContext {
             config,
             admin,
             meta_node: None,
             grpc_srv: None,
             _temp_dir: temp_dir,
-        };
-
-        c.rm_raft_dir("new MetaSrvTestContext");
-
-        c
-    }
-
-    pub fn rm_raft_dir(&self, msg: impl fmt::Display + Copy) {
-        let raft_dir = &self.config.raft_config.raft_dir;
-
-        info!("{}: about to remove raft_dir: {:?}", msg, raft_dir);
-
-        let res = fs::remove_dir_all(raft_dir);
-        if let Err(e) = res {
-            warn!("{}: can not remove raft_dir {:?}, {:?}", msg, raft_dir, e);
-        } else {
-            info!("{}: OK removed raft_dir {:?}", msg, raft_dir)
         }
     }
 
