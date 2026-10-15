@@ -14,11 +14,8 @@
 
 use std::fmt;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 /// Sequence number that is used in SledTree
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct SeqNum(pub u64);
 
 impl std::ops::Add<u64> for SeqNum {
