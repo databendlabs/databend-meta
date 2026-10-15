@@ -29,7 +29,7 @@ use crate::time::Interval;
 /// When an `upsert` cmd is applied, this instance is evaluated and a `KVMeta` is built.
 ///
 /// [`KVMeta`]: state_machine_api::KVMeta
-#[derive(serde::Serialize, serde::Deserialize, Debug, Default, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct MetaSpec {
     /// Expiration time in **seconds or milliseconds** since Unix epoch (1970-01-01).
     ///
@@ -46,9 +46,6 @@ pub struct MetaSpec {
     /// `expire_at` may already be expired when it is applied to state machine.
     ///
     /// If it is not None, once applied, the `expire_at` field will be replaced with the calculated absolute expiration time.
-    ///
-    /// For backward compatibility, this field is not serialized if it `None`, as if it does not exist.
-    #[serde(skip_serializing_if = "Option::is_none")]
     ttl: Option<Interval>,
 }
 
@@ -116,21 +113,8 @@ impl MetaSpec {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use super::MetaSpec;
     use crate::time::Interval;
-
-    #[test]
-    fn test_serde() {
-        let meta = MetaSpec::new_expire(1723102819);
-        let s = serde_json::to_string(&meta).unwrap();
-        assert_eq!(r#"{"expire_at":1723102819}"#, s);
-
-        let meta = MetaSpec::new_ttl(Duration::from_millis(100));
-        let s = serde_json::to_string(&meta).unwrap();
-        assert_eq!(r#"{"expire_at":null,"ttl":{"millis":100}}"#, s);
-    }
 
     #[test]
     fn test_accessors() {

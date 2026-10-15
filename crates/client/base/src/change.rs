@@ -16,8 +16,6 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-use serde::Deserialize;
-use serde::Serialize;
 use state_machine_api::SeqV;
 use state_machine_api::SeqValue;
 
@@ -28,7 +26,7 @@ use crate::normalize_meta::NormalizeMeta;
 /// Note that a success add-operation has a None `prev`, and a maybe-Some `result`.
 /// Because the inserted value may have already expired and will be deleted at once,
 /// the `result` could also be possible to be None.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, derive_more::From)]
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::From)]
 pub struct Change<T, ID = u64>
 where ID: Clone + PartialEq
 {
