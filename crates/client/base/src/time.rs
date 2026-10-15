@@ -18,22 +18,8 @@ use std::time::Duration;
 
 /// A interval of time.
 ///
-/// As a replacement of [`Duration`], which is not `serde`-able.
-///
 /// `Interval` implements: `Interval +- Interval`.
-#[derive(
-    serde::Serialize,
-    serde::Deserialize,
-    Debug,
-    Default,
-    Clone,
-    Copy,
-    Hash,
-    Eq,
-    PartialEq,
-    PartialOrd,
-    Ord,
-)]
+#[derive(Debug, Default, Clone, Copy, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Interval {
     pub(crate) millis: u64,
 }
@@ -88,21 +74,8 @@ impl Sub for Interval {
 
 /// A time point since 1970-01-01.
 ///
-/// As a replacement of [`Instant`](std::time::Instant), which is not `serde`-able.
 /// `Time` implements: `Time +- Interval = Time` and `Time - Time = Interval`.
-#[derive(
-    serde::Serialize,
-    serde::Deserialize,
-    Debug,
-    Default,
-    Clone,
-    Copy,
-    Hash,
-    Eq,
-    PartialEq,
-    PartialOrd,
-    Ord,
-)]
+#[derive(Debug, Default, Clone, Copy, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Time {
     pub(crate) time: Interval,
 }
