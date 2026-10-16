@@ -877,6 +877,47 @@ async fn test_execute_delete_by_prefix() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn test_execute_delete_by_prefix_one_event_per_key() -> anyhow::Result<()> {
+    let sm = StateMachine::default();
+
+    let mut a = sm.new_applier().await;
+    let put_a = Cmd::UpsertKV(UpsertKV::update("pfx/a", b"1"));
+    a.apply(&normal_entry(1, 1_000, put_a)).await?;
+    let put_b = Cmd::UpsertKV(UpsertKV::update("pfx/b", b"2"));
+    a.apply(&normal_entry(2, 1_000, put_b)).await?;
+    a.commit().await?;
+
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    sm.set_on_change_applied(Box::new({
+        let seen = seen.clone();
+        move |change| seen.lock().unwrap().push(change)
+    }));
+
+    let delete_by_prefix = Operation::delete_by_prefix("pfx/");
+    let branch = kv_transaction::Branch::else_().then([delete_by_prefix]);
+    let txn = kv_transaction::Transaction {
+        branches: vec![branch],
+    };
+    let delete_cmd = Cmd::KvTransaction(txn);
+
+    let mut a = sm.new_applier().await;
+    a.apply(&normal_entry(3, 2_000, delete_cmd)).await?;
+    a.commit().await?;
+
+    let meta = Some(KVMeta::new(None, Some(1_000)));
+    let deleted_a = SeqV::new_with_meta(1, meta.clone(), b("1"));
+    let deleted_b = SeqV::new_with_meta(2, meta, b("2"));
+    let want = vec![
+        ("pfx/a".to_string(), Some(deleted_a), None),
+        ("pfx/b".to_string(), Some(deleted_b), None),
+    ];
+    let got = seen.lock().unwrap().clone();
+    assert_eq!(got, want);
+
+    Ok(())
+}
+
 // === execute_op: FetchIncreaseU64 ===
 
 #[tokio::test]
