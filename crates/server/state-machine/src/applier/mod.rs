@@ -519,8 +519,7 @@ where SM: StateMachineApi<SysData> + 'static
 
         let mut count = 0;
         while let Some((key, _seq_v)) = strm.try_next().await? {
-            let (prev, res) = self.upsert_kv(&UpsertKV::delete(&key)).await?;
-            self.push_change(key, prev, res);
+            self.upsert_kv(&UpsertKV::delete(&key)).await?;
             count += 1;
         }
 
