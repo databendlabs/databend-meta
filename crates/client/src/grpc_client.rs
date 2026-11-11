@@ -109,6 +109,8 @@ pub struct MetaGrpcClient<RT: RuntimeApi> {
     endpoints: Arc<Mutex<Endpoints>>,
     endpoints_str: Vec<String>,
     auto_sync_interval: Option<Duration>,
+    /// Total budget for establishing a read response, including retries.
+    read_response_timeout: Duration,
 
     _phantom: PhantomData<RT>,
 }
@@ -245,6 +247,7 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
             endpoints,
             endpoints_str,
             auto_sync_interval,
+            read_response_timeout: timeout.unwrap_or(Duration::from_secs(30)),
             _phantom: PhantomData,
         });
 
@@ -691,10 +694,26 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
         &self,
         grpc_req: MetaGrpcReadReq,
     ) -> Result<BoxStream<pb::StreamItem>, MetaError> {
+        tokio::time::timeout(
+            self.read_response_timeout,
+            self.kv_read_v1_with_retries(grpc_req),
+        )
+        .await
+        .map_err(|_| {
+            MetaError::from(Status::deadline_exceeded(
+                "meta read response retry budget exhausted",
+            ))
+        })?
+    }
+
+    async fn kv_read_v1_with_retries(
+        &self,
+        grpc_req: MetaGrpcReadReq,
+    ) -> Result<BoxStream<pb::StreamItem>, MetaError> {
         debug!("{}::kv_read_v1 request: {:?}", self, grpc_req);
 
         let raft_req: RaftRequest = grpc_req.clone().into();
-        let mut rpc_handler = RpcHandler::new(self);
+        let mut rpc_handler = RpcHandler::new_read(self);
 
         for _i in 0..RPC_RETRIES {
             let req = RT::prepare_request(Request::new(raft_req.clone()));
@@ -702,6 +721,7 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
             let established = rpc_handler.new_established_client().await?;
 
             debug!("{}::kv_read_v1 established client: {:?}", self, established);
+            let connection = established.clone();
 
             let result = established
                 .kv_read_v1(req)
@@ -719,8 +739,13 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
                 }
             };
 
-            let strm = response.into_inner();
-            return Ok(strm.boxed());
+            // Once messages can escape to a caller, replaying would duplicate
+            // a prefix or mix revisions. Surface stream failures without replay,
+            // but retire a failed connection for subsequent requests.
+            return Ok(crate::rpc_handler::observe_read_stream(
+                response.into_inner(),
+                connection,
+            ));
         }
 
         let net_err = rpc_handler.create_network_error();
@@ -912,3 +937,6 @@ where T: Debug {
         );
     }
 }
+
+#[cfg(test)]
+mod tests;

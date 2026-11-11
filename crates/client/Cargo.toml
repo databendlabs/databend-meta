@@ -24,6 +24,7 @@ derive_more = { workspace = true }
 display-more = { workspace = true }
 fastrace = { workspace = true }
 futures = { workspace = true }
+h2 = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
 logcall = { workspace = true }
@@ -38,7 +39,9 @@ tonic = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+bytes = "1"
 databend-meta-version = { workspace = true }
+http = "1"
 rand = { workspace = true }
 toml = { workspace = true }
 
