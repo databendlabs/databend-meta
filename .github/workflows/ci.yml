@@ -23,7 +23,7 @@ jobs:
             crates/tests/raft-protocol-compat/bin-current
             crates/tests/raft-protocol-compat/bin-v1.2.873
             crates/tests/raft-protocol-compat/bin-v260205.4.0
-      - run: sudo apt-get update && sudo apt-get install -y mold protobuf-compiler
+      - uses: ./.github/actions/install-build-deps
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: make raft-protocol-compat-lint
@@ -40,7 +40,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
-      - run: sudo apt-get update && sudo apt-get install -y mold protobuf-compiler
+      - uses: ./.github/actions/install-build-deps
       - run: cargo nextest run --no-fail-fast --workspace
 
   raft-protocol-compat:
@@ -61,7 +61,7 @@ jobs:
             crates/tests/raft-protocol-compat/bin-current
             crates/tests/raft-protocol-compat/bin-v1.2.873
             crates/tests/raft-protocol-compat/bin-v260205.4.0
-      - run: sudo apt-get update && sudo apt-get install -y mold protobuf-compiler
+      - uses: ./.github/actions/install-build-deps
       - run: make test-raft-protocol-compat
 
   typos:

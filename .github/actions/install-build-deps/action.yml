@@ -1,0 +1,18 @@
+name: Install build dependencies
+description: Install build tools using Ubuntu mirrors with retries
+runs:
+  using: composite
+  steps:
+    - name: Configure Ubuntu mirrors and install build tools
+      shell: bash
+      run: |
+        # Keep the runner's signed Ubuntu sources, but replace its mirror list.
+        # Prefer an independent mirror over the failing Azure archive hostname.
+        # APT randomizes mirrors without explicit priorities (lowest wins).
+        printf '%s\tpriority:%s\n' \
+          'https://mirrors.edge.kernel.org/ubuntu/' 1 \
+          'https://archive.ubuntu.com/ubuntu/' 2 \
+          'https://security.ubuntu.com/ubuntu/' 3 \
+          | sudo tee /etc/apt/apt-mirrors.txt
+        sudo apt-get -o Acquire::Retries=3 -o APT::Update::Error-Mode=any update
+        sudo apt-get -o Acquire::Retries=3 install -y mold protobuf-compiler
