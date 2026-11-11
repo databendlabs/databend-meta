@@ -38,7 +38,10 @@ pub struct RpcClientConf {
     pub password: Secret,
     pub tls_conf: Option<RpcClientTlsConfig>,
 
-    /// Timeout for an RPC
+    /// Timeout for an RPC. Read response establishment shares this budget
+    /// across connection acquisition, backoff and all retry attempts. When
+    /// unset, that read-response budget defaults to 30 seconds. It does not
+    /// bound consumption after a response stream has been returned.
     pub timeout: Option<Duration>,
     /// AutoSyncInterval is the interval to update endpoints with its latest members.
     /// None disables auto-sync.
