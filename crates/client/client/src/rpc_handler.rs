@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
 use std::time::Duration;
@@ -20,6 +21,10 @@ use std::time::Instant;
 use anyerror::AnyError;
 use databend_base::futures::ElapsedFutureExt;
 use databend_meta_runtime_api::RuntimeApi;
+use futures::Stream;
+use futures::StreamExt;
+use futures::TryStreamExt;
+use futures::stream::BoxStream;
 use log::debug;
 use log::info;
 use log::warn;
@@ -69,6 +74,9 @@ pub(crate) struct RpcHandler<'a, RT: RuntimeApi> {
     /// Currently established connection and its start time.
     /// The client and start time are paired together to ensure consistent timing tracking.
     pub(crate) established_client: Option<(EstablishedClient, Instant)>,
+
+    /// Only reads may additionally retry a locally generated h2 GOAWAY.
+    read_only: bool,
 }
 
 impl<'a, RT: RuntimeApi> RpcHandler<'a, RT> {
@@ -78,6 +86,14 @@ impl<'a, RT: RuntimeApi> RpcHandler<'a, RT> {
             client,
             rpc_failures: Vec::new(),
             established_client: None,
+            read_only: false,
+        }
+    }
+
+    pub(crate) fn new_read(client: &'a MetaGrpcClient<RT>) -> Self {
+        Self {
+            read_only: true,
+            ..Self::new(client)
         }
     }
 
@@ -99,6 +115,12 @@ impl<'a, RT: RuntimeApi> RpcHandler<'a, RT> {
     pub(crate) async fn new_established_client(
         &mut self,
     ) -> Result<&mut EstablishedClient, MetaClientError> {
+        if self.read_only && !self.rpc_failures.is_empty() {
+            // The caller bounds both attempt count and total elapsed time.
+            let attempt = self.rpc_failures.len().min(4) as u32;
+            tokio::time::sleep(Duration::from_millis(10 * (1 << (attempt - 1)))).await;
+        }
+
         let client = self
             .client
             .get_established_client()
@@ -170,7 +192,8 @@ impl<'a, RT: RuntimeApi> RpcHandler<'a, RT> {
             }
         };
 
-        if is_status_retryable(&status) {
+        if is_status_retryable(&status) || (self.read_only && is_local_h2_goaway(&status)) {
+            established_client.set_error(status.clone());
             let client_display = established_client.to_string();
 
             warn!(
@@ -224,6 +247,38 @@ fn create_timing_logger<T>(msg: impl Display) -> impl Fn(&T, Duration, Duration)
     move |_output, total, busy| {
         info!("{} spent: total: {:?}, busy: {:?}", msg, total, busy);
     }
+}
+
+/// Retire failed connections without replaying values already visible to callers.
+pub(crate) fn observe_read_stream(
+    stream: impl Stream<Item = Result<crate::types::pb::StreamItem, Status>> + Send + 'static,
+    connection: EstablishedClient,
+) -> BoxStream<'static, Result<crate::types::pb::StreamItem, Status>> {
+    stream
+        .inspect_err(move |status| {
+            if is_local_h2_goaway(status) {
+                connection.set_error(status.clone());
+            }
+        })
+        .boxed()
+}
+
+/// Recognize connection failure, not an application's resource-limit status.
+/// Do not match error text: only a locally generated h2 GOAWAY qualifies.
+pub(crate) fn is_local_h2_goaway(status: &Status) -> bool {
+    if status.code() != Code::ResourceExhausted {
+        return false;
+    }
+    let mut source = status.source();
+    while let Some(error) = source {
+        if let Some(error) = error.downcast_ref::<h2::Error>() {
+            return error.is_library()
+                && error.is_go_away()
+                && error.reason() == Some(h2::Reason::ENHANCE_YOUR_CALM);
+        }
+        source = error.source();
+    }
+    false
 }
 
 /// Determines if a gRPC status code indicates a retryable error.
