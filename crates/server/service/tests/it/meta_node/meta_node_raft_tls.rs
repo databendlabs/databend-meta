@@ -540,6 +540,20 @@ async fn test_a_mixed_tls_cluster_replicates_and_installs_snapshot() -> anyhow::
             .await?;
     }
 
+    // Leader metrics precede lease establishment and the first term commit.
+    plaintext_node
+        .raft
+        .wait(timeout())
+        .metrics(
+            |m| {
+                m.last_quorum_acked.is_some()
+                    && m.last_applied
+                        .is_some_and(|id| id.leader_id.term == m.current_term)
+            },
+            "new leader has a quorum and committed its term",
+        )
+        .await?;
+
     write_kv(&plaintext_node, "written-after-election").await?;
     write_kv(&leader, "forwarded-by-tls-client").await?;
     write_kv(&tls_listener, "forwarded-by-plaintext-client").await?;

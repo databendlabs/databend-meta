@@ -12,6 +12,7 @@ databend-meta-proto = { workspace = true }
 log = { workspace = true }
 map-api = { workspace = true }
 openraft = { workspace = true }
+openraft-legacy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 state-machine-api = { workspace = true }
