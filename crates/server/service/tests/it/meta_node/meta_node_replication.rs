@@ -22,16 +22,21 @@ use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_snapshot_store::MetaSnapshotId;
 use databend_meta_snapshot_store::SnapshotStore;
 use databend_meta_types::Cmd;
+use databend_meta_types::GrpcHelper;
 use databend_meta_types::LogEntry;
 use databend_meta_types::SeqV;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::protobuf as pb;
 use databend_meta_types::protobuf::SnapshotChunkRequestV003;
+use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
+use databend_meta_types::raft_types::AppendEntriesRequest;
+use databend_meta_types::raft_types::AppendEntriesResponse;
 use databend_meta_types::raft_types::SnapshotMeta;
 use databend_meta_types::raft_types::SnapshotResponse;
 use databend_meta_types::raft_types::StoredMembership;
 use databend_meta_types::raft_types::TypeConfig;
 use databend_meta_types::raft_types::Vote;
+use databend_meta_types::raft_types::new_log_id;
 use databend_meta_types::sys_data::SysData;
 use futures::StreamExt;
 use futures::TryStreamExt;
@@ -43,6 +48,7 @@ use openraft::LogIdOptionExt;
 use openraft::ServerState;
 use openraft::testing::log_id;
 use test_harness::test;
+use tonic::transport::Channel;
 
 use crate::testing::meta_service_test_harness;
 use crate::tests::meta_node::start_meta_node_cluster;
@@ -154,6 +160,16 @@ async fn test_meta_node_snapshot_replication() -> anyhow::Result<()> {
                 assert_eq!(data, b"v");
             }
         }
+    }
+
+    info!("--- the non-voter keeps the snapshot id the leader built");
+    {
+        // Openraft 0.10 no longer carries the id in SnapshotMeta.
+        let leader_db = mn.raft_store.get_state_machine().leveled_map().persisted();
+        let non_voter_db = mn1.raft_store.get_state_machine().leveled_map().persisted();
+        let leader_id = leader_db.unwrap().snapshot_id;
+        assert!(!leader_id.is_empty());
+        assert_eq!(non_voter_db.unwrap().snapshot_id, leader_id);
     }
 
     Ok(())
@@ -379,6 +395,8 @@ async fn test_raft_service_install_snapshot_v004() -> anyhow::Result<()> {
     let sm = meta_node.raft_store.get_state_machine();
     let got = sm.get_maybe_expired_kv("a").await?;
     assert_eq!(got, Some(SeqV::new(1, b"foo".to_vec())));
+    let db = sm.leveled_map().persisted().unwrap();
+    assert_eq!(db.snapshot_id, snapshot_id.to_string());
 
     // Incomplete
 
@@ -837,6 +855,149 @@ async fn test_raft_service_append_v002_transaction() -> anyhow::Result<()> {
     let got = sm.get_maybe_expired_kv(key).await?;
     let seq_v = got.unwrap_or_else(|| panic!("expected key {} after apply", key));
     assert_eq!(seq_v.data, value);
+
+    Ok(())
+}
+
+/// Send one AppendV002 request and expect it to be accepted.
+async fn append_v002_ok(
+    client: &mut RaftServiceClient<Channel>,
+    req: pb::AppendRequest,
+) -> anyhow::Result<()> {
+    let resp = client.append_v002(stream::iter(vec![req])).await?;
+    let first = resp.into_inner().next().await.unwrap()?;
+    assert!(
+        first.rejected_by.is_none() && first.conflict_log_id.is_none(),
+        "{:?}",
+        first
+    );
+    Ok(())
+}
+
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_raft_service_vote_v001_leadership_transfer() -> anyhow::Result<()> {
+    // While the leader lease holds, a voter rejects an ordinary candidate but
+    // grants one whose request names that leader in `leadership_transfer_from`.
+    // This checks that VoteV001 delivers the field to openraft.
+
+    let (_nlog, mut tcs) = start_meta_node_cluster(btreeset![0], btreeset![]).await?;
+    let tc0 = tcs.remove(0);
+    let mut client0 = tc0.raft_client().await?;
+
+    // A heartbeat from node-1 at term 2 makes node-0 follow it and starts the
+    // lease; node-0 holds logs up to index 3.
+    let leader_vote = pb::Vote {
+        term: 2,
+        node_id: 1,
+        committed: true,
+    };
+    let last_log_id = pb::LogId {
+        term: 1,
+        node_id: 0,
+        index: 3,
+    };
+    let heartbeat = pb::AppendRequest {
+        vote: Some(leader_vote),
+        prev_log_id: Some(last_log_id),
+        entries: vec![],
+        leader_commit: Some(last_log_id),
+    };
+
+    let candidate_vote = pb::Vote {
+        term: 3,
+        node_id: 2,
+        committed: false,
+    };
+    let vote_request = |leadership_transfer_from| pb::VoteRequest {
+        vote: Some(candidate_vote),
+        last_log_id: Some(last_log_id),
+        leadership_transfer_from,
+    };
+
+    info!("--- an ordinary candidate is rejected while the lease holds");
+    {
+        append_v002_ok(&mut client0, heartbeat.clone()).await?;
+        let resp = client0.vote_v001(vote_request(None)).await?.into_inner();
+        assert!(!resp.vote_granted);
+        assert_eq!(resp.vote, Some(leader_vote));
+    }
+
+    info!("--- a candidate authorized by the leader is granted within the lease");
+    {
+        append_v002_ok(&mut client0, heartbeat).await?;
+        let resp = client0
+            .vote_v001(vote_request(Some(leader_vote)))
+            .await?
+            .into_inner();
+        assert!(resp.vote_granted);
+        assert_eq!(resp.vote, Some(candidate_vote));
+    }
+
+    Ok(())
+}
+
+/// Send a unary AppendEntries request and decode the reply.
+async fn append_entries_unary(
+    client: &mut RaftServiceClient<Channel>,
+    req: AppendEntriesRequest,
+) -> anyhow::Result<AppendEntriesResponse> {
+    let reply = client
+        .append_entries(GrpcHelper::encode_raft_request(&req)?)
+        .await?;
+    let resp = GrpcHelper::parse_raft_reply::<_, openraft::error::Infallible>(reply)??;
+    Ok(resp)
+}
+
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_raft_service_append_entries_unary() -> anyhow::Result<()> {
+    // Peers without AppendV002 use the unary RPC. Openraft 0.10 returns an
+    // AppendResult, which the service still encodes as AppendEntriesResponse.
+
+    let (_nlog, mut tcs) = start_meta_node_cluster(btreeset![0], btreeset![]).await?;
+    let tc0 = tcs.remove(0);
+    let mut client0 = tc0.raft_client().await?;
+
+    // node-1 at term 2 acts as leader; node-0 holds logs up to index 3.
+    let leader_vote = Vote::new_committed(2, 1);
+    let last_log_id = new_log_id(1, 0, 3);
+
+    info!("--- heartbeat: success");
+    {
+        let req = AppendEntriesRequest {
+            vote: leader_vote,
+            prev_log_id: Some(last_log_id),
+            entries: vec![],
+            leader_commit: Some(last_log_id),
+        };
+        let resp = append_entries_unary(&mut client0, req).await?;
+        assert_eq!(resp, AppendEntriesResponse::Success);
+    }
+
+    info!("--- missing prev_log_id: conflict");
+    {
+        let req = AppendEntriesRequest {
+            vote: leader_vote,
+            prev_log_id: Some(new_log_id(2, 1, 10)),
+            entries: vec![],
+            leader_commit: Some(last_log_id),
+        };
+        let resp = append_entries_unary(&mut client0, req).await?;
+        assert_eq!(resp, AppendEntriesResponse::Conflict);
+    }
+
+    info!("--- stale vote: rejected with the higher vote");
+    {
+        let req = AppendEntriesRequest {
+            vote: Vote::new(1, 0),
+            prev_log_id: None,
+            entries: vec![],
+            leader_commit: None,
+        };
+        let resp = append_entries_unary(&mut client0, req).await?;
+        assert_eq!(resp, AppendEntriesResponse::HigherVote(leader_vote));
+    }
 
     Ok(())
 }

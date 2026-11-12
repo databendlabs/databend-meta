@@ -1029,3 +1029,20 @@ fn test_context_nodes(
 ) -> Vec<Arc<MetaNode<TokioRuntime>>> {
     tcs.iter().map(|tc| tc.meta_node()).collect::<Vec<_>>()
 }
+
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_meta_node_status_lists_learners_as_non_voters() -> anyhow::Result<()> {
+    // Openraft 0.10 replaced `learner_ids()` with `non_write_voter_ids()`.
+
+    let (_nlog, tcs) = start_meta_node_cluster(btreeset! {0}, btreeset! {1}).await?;
+
+    for tc in &tcs {
+        let status = tc.meta_node().get_status("test").await;
+        let names = |nodes: &[Node]| nodes.iter().map(|n| n.name.clone()).collect::<Vec<_>>();
+        assert_eq!(names(&status.voters), vec!["0".to_string()]);
+        assert_eq!(names(&status.non_voters), vec!["1".to_string()]);
+    }
+
+    Ok(())
+}
