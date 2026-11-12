@@ -30,6 +30,7 @@ use databend_meta_types::UpsertKV;
 use databend_meta_types::node::Node;
 use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
 use databend_meta_types::raft_types::NodeId;
+use databend_meta_types::raft_types::Vote;
 use databend_meta_types::raft_types::new_log_id;
 use itertools::Itertools;
 use log::info;
@@ -495,8 +496,8 @@ async fn test_meta_node_join_with_state() -> anyhow::Result<()> {
     let res = n1.join_cluster(&tc1.config).await?;
     assert_eq!(Ok(()), res);
 
-    // Two membership logs, one add-node log;
-    log_index += 3;
+    // Intersecting quorums need one membership log, plus one add-node log.
+    log_index += 2;
     n1.raft
         .wait(timeout())
         .applied_index(Some(log_index), "node-1 join cluster")
@@ -517,8 +518,8 @@ async fn test_meta_node_join_with_state() -> anyhow::Result<()> {
         let res = n2.join_cluster(&tc2.config).await?;
         assert_eq!(Ok(()), res);
 
-        // Two membership logs, one add-node log;
-        log_index += 3;
+        // Intersecting quorums need one membership log, plus one add-node log.
+        log_index += 2;
 
         // Add this barrier to ensure all the logs are applied before quit.
         // Otherwise, the next time node-2 starts it can not see the applied
@@ -578,8 +579,8 @@ async fn test_meta_node_leave() -> anyhow::Result<()> {
         };
 
         leader.handle_forwardable_request(req).await?;
-        // Change membership
-        log_index += 2;
+        // The old and new quorums intersect, so one membership log suffices.
+        log_index += 1;
         // Remove node
         log_index += 1;
 
@@ -861,8 +862,8 @@ async fn test_meta_node_restart_single_node() -> anyhow::Result<()> {
 
     let mut log_index: u64 = 0;
     let (_id, mut tc) = start_meta_node_leader().await?;
-    // initial membership, leader blank, add node
-    log_index += 2;
+    // Initial membership at 0, leader blank, node record, membership node metadata.
+    log_index += 3;
 
     let want_hs;
     {
@@ -910,7 +911,12 @@ async fn test_meta_node_restart_single_node() -> anyhow::Result<()> {
     info!("--- check hard state");
     {
         let hs = leader.raft_store.log().clone().read_vote().await?;
-        assert_eq!(want_hs, hs);
+        // Stable 0.10 re-elects a restarted leader instead of reusing its term.
+        let previous_vote = want_hs.unwrap();
+        assert_eq!(
+            Some(Vote::new_committed(previous_vote.leader_id.term + 1, 0)),
+            hs
+        );
     }
 
     info!("--- check logs");

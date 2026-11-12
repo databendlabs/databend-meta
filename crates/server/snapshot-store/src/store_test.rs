@@ -132,14 +132,19 @@ async fn test_write_receive_and_reopen_a_multi_chunk_snapshot() -> anyhow::Resul
     for chunk in blob.chunks(CHUNK_SIZE) {
         tx.send(data_chunk(chunk)).await?;
     }
-    tx.send(finish_chunk("rotbl::v001", db.snapshot_meta().clone())?)
-        .await?;
+    tx.send(finish_chunk(
+        "rotbl::v001",
+        db.snapshot_meta().clone(),
+        &db.snapshot_id,
+    )?)
+    .await?;
 
     let received = join_handle.await???;
 
     assert_eq!(received.format, "rotbl::v001");
     assert_eq!(received.vote, test_vote());
     assert_eq!(&received.snapshot_meta, db.snapshot_meta());
+    assert_eq!(received.snapshot_id, db.snapshot_id);
     assert_eq!(received.remote_addr, REMOTE_ADDR);
     assert_eq!(
         received.n_received,
@@ -173,6 +178,7 @@ async fn test_write_receive_and_reopen_a_multi_chunk_snapshot() -> anyhow::Resul
 
     assert_eq!(reopened.sys_data(), &test_sys_data());
     assert_eq!(reopened.snapshot_meta(), db.snapshot_meta());
+    assert_eq!(reopened.snapshot_id, db.snapshot_id);
     assert_eq!(db_entries(&reopened).await?, entries);
 
     Ok(())
@@ -230,7 +236,11 @@ fn test_receive_rejects_an_unsupported_format() -> anyhow::Result<()> {
     let mut receiver = new_receiver(&temp_dir)?;
 
     let err = receiver
-        .receive(finish_chunk("rotbl::v002", test_snapshot_meta())?)
+        .receive(finish_chunk(
+            "rotbl::v002",
+            test_snapshot_meta(),
+            "1-2-3-4",
+        )?)
         .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(
@@ -251,7 +261,11 @@ fn test_receive_rejects_a_chunk_after_completion() -> anyhow::Result<()> {
     let mut receiver = new_receiver(&temp_dir)?;
 
     let received = receiver
-        .receive(finish_chunk("rotbl::v001", test_snapshot_meta())?)?
+        .receive(finish_chunk(
+            "rotbl::v001",
+            test_snapshot_meta(),
+            "1-2-3-4",
+        )?)?
         .unwrap();
     assert_eq!(received.n_received, 1);
     assert_eq!(received.size_received, 0);
@@ -350,7 +364,11 @@ fn data_chunk(chunk: &[u8]) -> SnapshotChunkRequestV003 {
 fn finish_chunk(
     format: &str,
     snapshot_meta: SnapshotMeta,
+    snapshot_id: &str,
 ) -> anyhow::Result<SnapshotChunkRequestV003> {
+    // Construct the pre-upgrade wire layout independently of the sender helper.
+    let mut snapshot_meta = serde_json::to_value(snapshot_meta)?;
+    snapshot_meta["snapshot_id"] = snapshot_id.into();
     let rpc_meta = serde_json::to_string(&(format.to_string(), test_vote(), snapshot_meta))?;
     Ok(SnapshotChunkRequestV003 {
         rpc_meta: Some(rpc_meta),
@@ -364,7 +382,6 @@ fn test_vote() -> Vote {
 
 fn test_snapshot_meta() -> SnapshotMeta {
     SnapshotMeta {
-        snapshot_id: "1-2-3-4".to_string(),
         last_log_id: Some(log_id::<TypeConfig>(1, 2, 3)),
         last_membership: StoredMembership::new(
             Some(log_id::<TypeConfig>(1, 2, 3)),

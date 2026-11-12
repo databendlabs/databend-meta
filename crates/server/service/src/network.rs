@@ -37,6 +37,7 @@ use databend_meta_types::protobuf::InstallEntryV004;
 use databend_meta_types::protobuf::RaftReply;
 use databend_meta_types::raft_types::AppendEntriesRequest;
 use databend_meta_types::raft_types::AppendEntriesResponse;
+use databend_meta_types::raft_types::AppendResult;
 use databend_meta_types::raft_types::MembershipNode;
 use databend_meta_types::raft_types::NetworkError;
 use databend_meta_types::raft_types::NodeId;
@@ -44,7 +45,6 @@ use databend_meta_types::raft_types::RPCError;
 use databend_meta_types::raft_types::RaftError;
 use databend_meta_types::raft_types::SnapshotResponse;
 use databend_meta_types::raft_types::StorageError;
-use databend_meta_types::raft_types::StreamAppendResult;
 use databend_meta_types::raft_types::StreamingError;
 use databend_meta_types::raft_types::TransferLeaderRequest;
 use databend_meta_types::raft_types::TransferLeaderResponse;
@@ -554,7 +554,7 @@ impl<SP: SpawnApi> Network<SP> {
         let pb_vote = pb::Vote::from(vote);
 
         let commit = pb::Commit {
-            snapshot_id: snapshot_meta.snapshot_id.to_string(),
+            snapshot_id: db.snapshot_id.clone(),
             sys_data: sys_data_json,
             vote: Some(pb_vote),
         };
@@ -676,7 +676,7 @@ impl<SP: SpawnApi> NetAppend<TypeConfig> for Network<SP> {
         &mut self,
         rpc: AppendEntriesRequest,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse, RPCError> {
+    ) -> Result<AppendResult, RPCError> {
         debug!(
             id = self.id,
             target = self.target,
@@ -684,7 +684,6 @@ impl<SP: SpawnApi> NetAppend<TypeConfig> for Network<SP> {
             "send_append_entries",
         );
 
-        let total = rpc.entries.len();
         let mut entries_to_send = rpc.entries.len();
 
         loop {
@@ -731,13 +730,11 @@ impl<SP: SpawnApi> NetAppend<TypeConfig> for Network<SP> {
                 Ok(_) => {
                     self.client.lock().await.replace(client);
 
-                    // If we sent partial entries, return PartialSuccess
-                    if entries_to_send < total {
-                        let last_log_id = partial_rpc.entries.last().map(|e| e.log_id);
-                        return Ok(AppendEntriesResponse::PartialSuccess(last_log_id));
-                    }
-
-                    return self.parse_grpc_resp::<_, openraft::error::Infallible>(grpc_res);
+                    let response: AppendEntriesResponse =
+                        self.parse_grpc_resp::<_, openraft::error::Infallible>(grpc_res)?;
+                    // Use the actual sent prefix, but never turn a rejection into success.
+                    return Ok(response
+                        .into_append_result(partial_rpc.prev_log_id, partial_rpc.last_log_id()));
                 }
                 Err(status) if status.code() == tonic::Code::ResourceExhausted => {
                     match self.try_reduce_entries(entries_to_send, "ResourceExhausted") {
@@ -753,7 +750,16 @@ impl<SP: SpawnApi> NetAppend<TypeConfig> for Network<SP> {
                 }
                 Err(e) => {
                     warn!(target = self.target, rpc = partial_rpc.summary(); "append_entries failed: {}", e);
-                    return self.parse_grpc_resp::<_, openraft::error::Infallible>(grpc_res);
+                    return self
+                        .parse_grpc_resp::<AppendEntriesResponse, openraft::error::Infallible>(
+                            grpc_res,
+                        )
+                        .map(|response| {
+                            response.into_append_result(
+                                partial_rpc.prev_log_id,
+                                partial_rpc.last_log_id(),
+                            )
+                        });
                 }
             }
         }
@@ -770,7 +776,7 @@ impl<SP: SpawnApi> NetStreamAppend<TypeConfig> for Network<SP> {
         &'s mut self,
         input: S,
         option: RPCOption,
-    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult, RPCError>>, RPCError>>
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult, RPCError>>, RPCError>>
     where
         S: Stream<Item = AppendEntriesRequest> + Send + Unpin + 'static,
     {
@@ -824,13 +830,13 @@ impl<SP: SpawnApi> NetStreamAppend<TypeConfig> for Network<SP> {
             );
 
             let response_stream = response.into_inner().map(move |resp| match resp {
-                Ok(pb_resp) => Ok(pb_resp.into_stream_result()),
+                Ok(pb_resp) => Ok(pb_resp.into_stream_result().map_err(Into::into)),
                 Err(status) => Err(RPCError::Unreachable(Self::status_to_unreachable_at(
                     target, &self.peer, status,
                 ))),
             });
 
-            Ok(Box::pin(response_stream) as BoxStream<'s, Result<StreamAppendResult, RPCError>>)
+            Ok(Box::pin(response_stream) as BoxStream<'s, Result<AppendResult, RPCError>>)
         })
     }
 }

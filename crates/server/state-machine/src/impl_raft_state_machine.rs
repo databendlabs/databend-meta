@@ -72,15 +72,6 @@ impl<SP: SpawnApi> RaftStateMachine<TypeConfig> for RaftStateMachineStore<SP> {
         self.clone()
     }
 
-    // This method is not used
-    #[allow(clippy::diverging_sub_expression)]
-    #[fastrace::trace]
-    async fn begin_receiving_snapshot(&mut self) -> Result<DB, io::Error> {
-        unreachable!(
-            "begin_receiving_snapshot is only required when using OpenRaft Chunked snapshot transmit"
-        );
-    }
-
     #[fastrace::trace]
     async fn install_snapshot(
         &mut self,
@@ -88,6 +79,7 @@ impl<SP: SpawnApi> RaftStateMachine<TypeConfig> for RaftStateMachineStore<SP> {
         snapshot: DB,
     ) -> Result<(), io::Error> {
         let data_size = snapshot.file_size();
+        let snapshot_id = snapshot.snapshot_id.clone();
 
         info!(
             id = self.id,
@@ -98,12 +90,12 @@ impl<SP: SpawnApi> RaftStateMachine<TypeConfig> for RaftStateMachineStore<SP> {
         let ss_store: SnapshotStore<SP> = SnapshotStore::new(self.config.as_ref().clone());
         let (storage_path, rel_path) = ss_store
             .snapshot_config()
-            .move_to_final_path(&snapshot.path(), meta.snapshot_id.clone())?;
+            .move_to_final_path(&snapshot.path(), snapshot_id.clone())?;
 
         let db = DB::open_snapshot(
             storage_path,
             rel_path,
-            meta.snapshot_id.clone(),
+            snapshot_id,
             self.config.to_rotbl_config(),
         )?;
 

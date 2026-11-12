@@ -178,7 +178,6 @@ impl<SP: SpawnApi> RaftStateMachineStore<SP> {
         let last_membership = sys_data.last_membership_ref().clone();
         let snapshot_id = MetaSnapshotId::new_with_epoch(last_applied);
         let snapshot_meta = SnapshotMeta {
-            snapshot_id: snapshot_id.to_string(),
             last_log_id: last_applied,
             last_membership,
         };
