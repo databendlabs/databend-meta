@@ -277,6 +277,25 @@ mod test_meta_api_errors {
     }
 
     #[test]
+    fn test_membership_errors_are_classified_in_both_data_arms() {
+        use databend_meta_types::raft_types::ChangeMembershipError;
+        use openraft::error::EmptyMembership;
+        use openraft::error::InProgress;
+
+        let permanent = ChangeMembershipError::EmptyMembership(EmptyMembership {});
+        let in_progress = ChangeMembershipError::InProgress(InProgress {
+            committed: None,
+            membership_log_id: None,
+        });
+        for wrap in [MetaAPIError::DataError, MetaAPIError::RemoteError] {
+            let error = wrap(MetaDataError::ChangeMembershipError(permanent.clone()));
+            assert!(!error.is_retryable(), "{error}");
+            let error = wrap(MetaDataError::ChangeMembershipError(in_progress.clone()));
+            assert!(error.is_retryable(), "{error}");
+        }
+    }
+
+    #[test]
     fn test_discarded_or_preconditioned_writes_are_not_retried() {
         use databend_meta_types::raft_types::ClientWriteError;
         use openraft::error::PreconditionFailed;
