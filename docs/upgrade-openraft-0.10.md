@@ -40,6 +40,9 @@ this way, read the current state to see whether it was applied.
 - `MetaDataError` has a new variant, `WriteRequestError`, for a write that was
   rejected or whose outcome is unknown. Handle it in exhaustive matches, and do
   not retry it.
+- `pb::VoteRequest` has a new field `leadership_transfer_from`, and
+  `pb::AppendResponse` has `conflict_hint`. Set them, for example to `None`,
+  where these messages are built with struct literals.
 - `SnapshotChunkRequestV003::new_end_chunk()` takes the snapshot ID as a third
   argument, because `SnapshotMeta` no longer carries it. Read it from
   `DB::snapshot_id`.

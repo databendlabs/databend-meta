@@ -539,9 +539,7 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
         let output = raft.stream_append(input_stream);
 
         let output_stream = output.map(|result| match result {
-            Ok(stream_result) => Ok(pb::AppendResponse::from_stream_result(
-                stream_result.map_err(Into::into),
-            )),
+            Ok(append_result) => Ok(pb::AppendResponse::from_append_result(append_result)),
             Err(fatal) => Err(Status::internal(fatal.to_string())),
         });
 
