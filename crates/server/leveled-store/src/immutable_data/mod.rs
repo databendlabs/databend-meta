@@ -241,6 +241,7 @@ mod tests {
         let db = DB {
             storage_path: tmp_dir.path().to_string_lossy().to_string(),
             rel_path: path.to_string(),
+            snapshot_id: "test-snapshot".to_string(),
             meta: Default::default(),
             sys_data,
             rotbl: Arc::new(rotbl),

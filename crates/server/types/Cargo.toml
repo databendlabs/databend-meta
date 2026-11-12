@@ -27,6 +27,7 @@ tonic = { workspace = true }
 [dev-dependencies]
 anyhow = { workspace = true }
 pretty_assertions = { workspace = true }
+prost = { workspace = true }
 
 [lints]
 workspace = true

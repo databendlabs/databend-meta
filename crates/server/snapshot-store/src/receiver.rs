@@ -32,6 +32,14 @@ use tokio::sync::mpsc;
 
 use crate::received::Received;
 
+// Extract the file identity before Openraft discards its reserved wire slot.
+#[derive(serde::Deserialize)]
+struct SnapshotMetaWithId {
+    snapshot_id: String,
+    #[serde(flatten)]
+    meta: SnapshotMeta,
+}
+
 pub struct SnapshotReceiver<SP: SpawnApi> {
     remote_addr: String,
 
@@ -173,9 +181,13 @@ impl<SP: SpawnApi> SnapshotReceiver<SP> {
                 .load_finish_chunk(&chunk)
                 .map_err(|e| ctx(invalid_input(e), "loading last chunk rpc_meta"))?;
 
-            let Some((format, vote, snapshot_meta)) = end else {
+            let Some((format, vote, wire_meta)) = end else {
                 return Ok(None);
             };
+            let SnapshotMetaWithId {
+                snapshot_id,
+                meta: snapshot_meta,
+            } = wire_meta;
 
             info!(
                 "snapshot from {} is completely received, format: {}, vote: {:?}, meta: {:?}, size: {}; path: {}/{}",
@@ -219,6 +231,7 @@ impl<SP: SpawnApi> SnapshotReceiver<SP> {
                 format,
                 vote,
                 snapshot_meta,
+                snapshot_id,
                 storage_path: self.storage_path.clone(),
                 temp_rel_path: self.temp_rel_path.clone(),
                 remote_addr: self.remote_addr.clone(),
@@ -257,12 +270,12 @@ impl<SP: SpawnApi> SnapshotReceiver<SP> {
     fn load_finish_chunk(
         &self,
         chunk: &SnapshotChunkRequestV003,
-    ) -> Result<Option<(String, Vote, SnapshotMeta)>, serde_json::Error> {
+    ) -> Result<Option<(String, Vote, SnapshotMetaWithId)>, serde_json::Error> {
         let Some(meta) = &chunk.rpc_meta else {
             return Ok(None);
         };
 
-        let (format, vote, snapshot_meta): (String, Vote, SnapshotMeta) =
+        let (format, vote, snapshot_meta): (String, Vote, SnapshotMetaWithId) =
             serde_json::from_str(meta)?;
 
         Ok(Some((format, vote, snapshot_meta)))

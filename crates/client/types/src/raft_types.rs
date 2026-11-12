@@ -114,7 +114,10 @@ impl RaftTypeConfig for TypeConfig {
     type Term = Term;
     type LeaderId = LeaderId;
     type Vote = openraft::Vote<LeaderId>;
-    type Entry = openraft::Entry<CommittedLeaderId, ClientLogEntry, NodeId, MembershipNode>;
+    type Membership = Membership;
+    type MembershipEdit = openraft::ChangeMembers<NodeId, MembershipNode>;
+    type Payload = EntryPayload;
+    type Entry = Entry;
     type AsyncRuntime = TokioRuntime;
     type Responder<T>
         = OneshotResponder<Self, T>
@@ -131,14 +134,13 @@ pub type LogId = openraft::LogId<CommittedLeaderId>;
 pub type Vote = openraft::Vote<LeaderId>;
 
 pub type Membership = openraft::Membership<NodeId, MembershipNode>;
-pub type StoredMembership = openraft::StoredMembership<CommittedLeaderId, NodeId, MembershipNode>;
+pub type StoredMembership = openraft::StoredMembership<CommittedLeaderId, Membership>;
 
-pub type EntryPayload = openraft::EntryPayload<ClientLogEntry, NodeId, MembershipNode>;
-pub type Entry = openraft::Entry<CommittedLeaderId, ClientLogEntry, NodeId, MembershipNode>;
+pub type EntryPayload = openraft::EntryPayload<ClientLogEntry, Membership>;
+pub type Entry = openraft::Entry<CommittedLeaderId, EntryPayload>;
 
-pub type SnapshotMeta = openraft::SnapshotMeta<CommittedLeaderId, NodeId, MembershipNode>;
-pub type Snapshot =
-    openraft::Snapshot<CommittedLeaderId, NodeId, MembershipNode, ClientSnapshotData>;
+pub type SnapshotMeta = openraft::SnapshotMeta<CommittedLeaderId, Membership>;
+pub type Snapshot = openraft::Snapshot<CommittedLeaderId, Membership, ClientSnapshotData>;
 
 pub type RaftMetrics = openraft::RaftMetrics<TypeConfig>;
 pub type WatchReceiver<T> = openraft::type_config::alias::WatchReceiverOf<TypeConfig, T>;
@@ -163,13 +165,7 @@ pub type Unreachable = openraft::error::Unreachable<TypeConfig>;
 
 pub type AppendEntriesRequest = openraft::raft::AppendEntriesRequest<TypeConfig>;
 pub type AppendEntriesResponse = openraft::raft::AppendEntriesResponse<TypeConfig>;
-pub type StreamAppendResult = openraft::raft::StreamAppendResult<TypeConfig>;
-pub type StreamAppendError = openraft::raft::StreamAppendError<TypeConfig>;
-pub type InstallSnapshotRequest = openraft::raft::InstallSnapshotRequest<TypeConfig>;
-pub type InstallSnapshotResponse = openraft::raft::InstallSnapshotResponse<TypeConfig>;
 pub type SnapshotResponse = openraft::raft::SnapshotResponse<TypeConfig>;
-pub type InstallSnapshotError = openraft::error::InstallSnapshotError;
-pub type SnapshotMismatch = openraft::error::SnapshotMismatch;
 pub type VoteRequest = openraft::raft::VoteRequest<TypeConfig>;
 pub type VoteResponse = openraft::raft::VoteResponse<TypeConfig>;
 pub type TransferLeaderRequest = openraft::raft::TransferLeaderRequest<TypeConfig>;

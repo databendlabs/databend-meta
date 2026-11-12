@@ -331,6 +331,35 @@ async fn test_actual_read_loop_exhausts_attempts_without_retrying_quota() {
 }
 
 #[tokio::test]
+async fn test_transaction_loops_do_not_replay_unknown_write_outcomes() {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        for (code, expected) in [
+            (Code::Unknown, 1),
+            (Code::FailedPrecondition, 1),
+            (Code::Internal, RPC_RETRIES),
+        ] {
+            let (address, requests, _server) = failing_peer(code).await;
+            let client = worker(&address, Duration::from_secs(2));
+            let error = client
+                .transaction(crate::types::TxnRequest::default())
+                .await
+                .unwrap_err();
+            assert_eq!(requests.load(Ordering::SeqCst), expected, "{error}");
+
+            let (address, requests, _server) = failing_peer(code).await;
+            let client = worker(&address, Duration::from_secs(2));
+            let error = client
+                .transaction_v2(crate::types::pb::KvTransactionRequest::default())
+                .await
+                .unwrap_err();
+            assert_eq!(requests.load(Ordering::SeqCst), expected, "{error}");
+        }
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
 async fn test_total_deadline_includes_reconnect_and_backoff() {
     tokio::time::timeout(Duration::from_secs(5), async {
         let (address, requests, _server) = failing_peer(Code::Unavailable).await;

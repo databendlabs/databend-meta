@@ -142,7 +142,7 @@ async fn test_cluster_state() -> anyhow::Result<()> {
                     mn.raft.trigger().snapshot().await?;
                     mn.raft
                         .wait(Some(Duration::from_secs(1)))
-                        .snapshot(new_log_id(1, 0, 11), "trigger build snapshot")
+                        .snapshot(new_log_id(1, 0, 10), "trigger build snapshot")
                         .await?;
                     Ok::<_, anyhow::Error>(())
                 })
@@ -163,7 +163,7 @@ async fn test_cluster_state() -> anyhow::Result<()> {
     assert_eq!(status.state, "Leader");
     assert!(status.is_leader);
     assert_eq!(status.current_term, 1);
-    assert_eq!(status.last_log_index, 11);
+    assert_eq!(status.last_log_index, 10);
     assert_eq!(status.snapshot_key_count, 6);
     assert_eq!(
         status.snapshot_key_space_stat,
@@ -172,7 +172,7 @@ async fn test_cluster_state() -> anyhow::Result<()> {
     assert_eq!(status.last_seq, 5);
 
     // Verify last_applied structure
-    assert_eq!(status.last_applied, new_log_id(1, 0, 11));
+    assert_eq!(status.last_applied, new_log_id(1, 0, 10));
 
     // Verify leader information
     assert!(status.leader.is_some());

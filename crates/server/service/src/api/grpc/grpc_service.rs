@@ -79,6 +79,7 @@ use super::grpc_authenticator::GrpcAuthenticator;
 use super::grpc_authenticator::unknown_user;
 use crate::configs::GrpcConfig;
 use crate::meta_node::meta_handle::MetaHandle;
+use crate::meta_node::request_handler_error::ForwardRequestError;
 use crate::meta_service::watcher::DispatcherHandle;
 use crate::meta_service::watcher::WatchTypes;
 use crate::metrics::InFlightRead;
@@ -256,7 +257,7 @@ impl<SP: SpawnApi> MetaServiceImpl<SP> {
                 );
                 let res = res?;
                 network_metrics::incr_request_result(res.is_ok());
-                let upsert_reply = res.map_err(GrpcHelper::internal_err)?;
+                let upsert_reply = res.map_err(ForwardRequestError::into_status)?;
                 RaftReply::new(&upsert_reply)
             }
         };

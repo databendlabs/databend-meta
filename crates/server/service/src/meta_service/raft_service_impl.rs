@@ -102,6 +102,7 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
         let Received {
             vote: req_vote,
             snapshot_meta,
+            snapshot_id,
             storage_path,
             temp_rel_path,
             ..
@@ -112,7 +113,7 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
         let db = DB::open_snapshot(
             &storage_path,
             &temp_rel_path,
-            snapshot_meta.snapshot_id.clone(),
+            snapshot_id,
             raft_config.to_rotbl_config(),
         )
         .map_err(|e| {
@@ -230,7 +231,6 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
         let snapshot_meta = SnapshotMeta {
             last_log_id: *sys_data.last_applied_ref(),
             last_membership: sys_data.last_membership_ref().clone(),
-            snapshot_id: snapshot_id.to_string(),
         };
 
         let snapshot = Snapshot {
@@ -410,7 +410,9 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
                 req_summary
             );
 
-            GrpcHelper::ok_response(&resp)
+            // Keep the existing unary wire response; AppendResult itself is not a wire type.
+            let response = databend_meta_types::raft_types::AppendEntriesResponse::from(resp);
+            GrpcHelper::ok_response(&response)
         })
         .await
     }
@@ -537,7 +539,7 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
         let output = raft.stream_append(input_stream);
 
         let output_stream = output.map(|result| match result {
-            Ok(stream_result) => Ok(pb::AppendResponse::from_stream_result(stream_result)),
+            Ok(append_result) => Ok(pb::AppendResponse::from_append_result(append_result)),
             Err(fatal) => Err(Status::internal(fatal.to_string())),
         });
 

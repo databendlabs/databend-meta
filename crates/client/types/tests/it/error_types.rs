@@ -238,10 +238,7 @@ mod test_meta_api_errors {
 
     #[test]
     fn test_name_variants() {
-        let ftl = MetaAPIError::ForwardToLeader(ForwardToLeader {
-            leader_id: None,
-            leader_node: None,
-        });
+        let ftl = MetaAPIError::ForwardToLeader(ForwardToLeader::empty());
         assert_eq!(ftl.name(), "ForwardToLeader");
 
         let cnf = MetaAPIError::CanNotForward(AnyError::error("no leader"));
@@ -261,10 +258,7 @@ mod test_meta_api_errors {
 
     #[test]
     fn test_is_retryable() {
-        let ftl = MetaAPIError::ForwardToLeader(ForwardToLeader {
-            leader_id: None,
-            leader_node: None,
-        });
+        let ftl = MetaAPIError::ForwardToLeader(ForwardToLeader::empty());
         assert!(ftl.is_retryable());
 
         let cnf = MetaAPIError::CanNotForward(AnyError::error("x"));
@@ -280,6 +274,49 @@ mod test_meta_api_errors {
         let read_err2 = MetaDataReadError::new("r", "m", &io::Error::other("e"));
         let remote_read = MetaAPIError::RemoteError(MetaDataError::ReadError(read_err2));
         assert!(!remote_read.is_retryable());
+    }
+
+    #[test]
+    fn test_membership_errors_are_classified_in_both_data_arms() {
+        use databend_meta_client_types::raft_types::ChangeMembershipError;
+        use openraft::error::EmptyMembership;
+        use openraft::error::InProgress;
+
+        let permanent = ChangeMembershipError::EmptyMembership(EmptyMembership {});
+        let in_progress = ChangeMembershipError::InProgress(InProgress {
+            committed: None,
+            membership_log_id: None,
+        });
+        for wrap in [MetaAPIError::DataError, MetaAPIError::RemoteError] {
+            let error = wrap(MetaDataError::ChangeMembershipError(permanent.clone()));
+            assert!(!error.is_retryable(), "{error}");
+            let error = wrap(MetaDataError::ChangeMembershipError(in_progress.clone()));
+            assert!(error.is_retryable(), "{error}");
+        }
+    }
+
+    #[test]
+    fn test_discarded_or_preconditioned_writes_are_not_retried() {
+        use databend_meta_client_types::raft_types::ClientWriteError;
+        use openraft::error::PreconditionFailed;
+
+        let errors = [
+            ClientWriteError::LogEntryDiscarded(ForwardToLeader::empty()),
+            ClientWriteError::PreconditionFailed(PreconditionFailed::LastLogIdMismatch {
+                expected: None,
+                actual: None,
+            }),
+        ];
+        for error in errors {
+            for wrap in [MetaAPIError::DataError, MetaAPIError::RemoteError] {
+                let error = wrap(MetaDataError::WriteRequestError(error.clone()));
+                assert!(!error.is_retryable());
+                let wire = serde_json::to_string(&error).unwrap();
+                let decoded: MetaAPIError = serde_json::from_str(&wire).unwrap();
+                assert_eq!(decoded, error);
+                assert!(!decoded.is_retryable());
+            }
+        }
     }
 
     #[test]
@@ -300,10 +337,7 @@ mod test_meta_api_errors {
 
     #[test]
     fn test_meta_api_error_into_io_error() {
-        let ftl = MetaAPIError::ForwardToLeader(ForwardToLeader {
-            leader_id: None,
-            leader_node: None,
-        });
+        let ftl = MetaAPIError::ForwardToLeader(ForwardToLeader::empty());
         let io_err: io::Error = ftl.into();
         assert_eq!(io_err.kind(), io::ErrorKind::Interrupted);
 

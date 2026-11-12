@@ -33,6 +33,9 @@ pub enum MetaOperationError {
     WriteError(#[from] Fatal),
 
     #[error(transparent)]
+    WriteRequestError(ClientWriteError),
+
+    #[error(transparent)]
     ChangeMembershipError(#[from] ChangeMembershipError),
 
     #[error(transparent)]
@@ -47,6 +50,7 @@ impl Peel for MetaOperationError {
         match self {
             Self::ForwardToLeader(ftl) => Err(ftl),
             Self::WriteError(e) => Ok(MetaDataError::WriteError(e)),
+            Self::WriteRequestError(e) => Ok(MetaDataError::WriteRequestError(e)),
             Self::ChangeMembershipError(e) => Ok(MetaDataError::ChangeMembershipError(e)),
             Self::ReadError(e) => Ok(MetaDataError::ReadError(e)),
         }
@@ -58,6 +62,7 @@ impl From<MetaOperationError> for MetaAPIError {
         match e {
             MetaOperationError::ForwardToLeader(e) => e.into(),
             MetaOperationError::WriteError(e) => MetaDataError::WriteError(e).into(),
+            MetaOperationError::WriteRequestError(e) => MetaDataError::WriteRequestError(e).into(),
             MetaOperationError::ChangeMembershipError(e) => {
                 MetaDataError::ChangeMembershipError(e).into()
             }
@@ -74,6 +79,8 @@ impl From<RaftChangeMembershipError> for MetaOperationError {
         match e {
             RaftChangeMembershipError::ForwardToLeader(to_leader) => to_leader.into(),
             RaftChangeMembershipError::ChangeMembershipError(c) => Self::ChangeMembershipError(c),
+            e @ (RaftChangeMembershipError::LogEntryDiscarded(_)
+            | RaftChangeMembershipError::PreconditionFailed(_)) => Self::WriteRequestError(e),
         }
     }
 }
@@ -106,10 +113,7 @@ mod tests {
 
     #[test]
     fn test_from_meta_operation_error() {
-        let ftl = ForwardToLeader {
-            leader_id: None,
-            leader_node: None,
-        };
+        let ftl = ForwardToLeader::empty();
         let op_err = MetaOperationError::ForwardToLeader(ftl);
         let api_err: MetaAPIError = op_err.into();
         assert_eq!(api_err.name(), "ForwardToLeader");
@@ -132,7 +136,7 @@ mod tests {
     fn test_raft_change_membership_forward_to_leader() {
         let ftl = ForwardToLeader {
             leader_id: Some(3),
-            leader_node: None,
+            ..ForwardToLeader::empty()
         };
         let cwe = ClientWriteError::ForwardToLeader(ftl);
         let op_err: MetaOperationError = cwe.into();
@@ -159,11 +163,21 @@ mod tests {
     }
 
     #[test]
+    fn discarded_write_keeps_unknown_commit_status_without_forwarding() {
+        let discarded = ClientWriteError::LogEntryDiscarded(ForwardToLeader::empty());
+        let operation = MetaOperationError::from(discarded.clone());
+        assert_eq!(
+            operation.clone().peel(),
+            Ok(MetaDataError::WriteRequestError(discarded))
+        );
+        let error: MetaAPIError = operation.into();
+        assert!(!error.is_retryable());
+        assert!(error.to_string().contains("commit status unknown"));
+    }
+
+    #[test]
     fn test_raft_error_api_forward_into_meta_operation_error() {
-        let ftl = ForwardToLeader {
-            leader_id: None,
-            leader_node: None,
-        };
+        let ftl = ForwardToLeader::empty();
         let cwe = ClientWriteError::ForwardToLeader(ftl);
         let raft_err: RaftError<ClientWriteError> = RaftError::APIError(cwe);
         let op_err: MetaOperationError = raft_err.into();
@@ -174,7 +188,7 @@ mod tests {
     fn test_split_forward_to_leader() {
         let ftl = ForwardToLeader {
             leader_id: Some(5),
-            leader_node: None,
+            ..ForwardToLeader::empty()
         };
         let op_err = MetaOperationError::ForwardToLeader(ftl.clone());
         assert_eq!(op_err.peel(), Err(ftl));

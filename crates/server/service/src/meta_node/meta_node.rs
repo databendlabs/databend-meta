@@ -113,6 +113,7 @@ use crate::meta_node::meta_node_metrics::MetaMetrics;
 use crate::meta_node::meta_node_status::MetaNodeStatus;
 use crate::meta_node::request_handler_error::CanNotForwardError;
 use crate::meta_node::request_handler_error::ForwardRequestError;
+use crate::meta_node::request_handler_error::write_request_status;
 use crate::meta_service::MetaForwarder;
 use crate::meta_service::errors::channel_error_to_network_err;
 use crate::meta_service::forward_rpc_error::ForwardRPCError;
@@ -864,6 +865,9 @@ impl<SP: SpawnApi> MetaNode<SP> {
                     InitializeError::NotInMembers(e) => {
                         return Err(MetaStartupError::InvalidConfig(e.to_string()));
                     }
+                    InitializeError::InvalidMembership(e) => {
+                        return Err(MetaStartupError::InvalidConfig(e.to_string()));
+                    }
                 },
                 RaftError::Fatal(fatal) => {
                     return Err(MetaStartupError::MetaServiceError(fatal.to_string()));
@@ -959,7 +963,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
 
         let learners = self
             .raft_store
-            .get_nodes(|ms| ms.learner_ids().collect::<Vec<_>>())
+            .get_nodes(|ms| ms.non_write_voter_ids().collect::<Vec<_>>())
             .await;
 
         let endpoint = self
@@ -1139,10 +1143,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
     pub async fn assume_leader(&self) -> Result<MetaLeader<'_, SP>, ForwardToLeader> {
         let leader_id = self.get_leader().await.map_err(|e| {
             error!("raft metrics rx closed: {}", e);
-            ForwardToLeader {
-                leader_id: None,
-                leader_node: None,
-            }
+            ForwardToLeader::empty()
         })?;
 
         debug!("curr_leader_id: {:?}", leader_id);
@@ -1153,7 +1154,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
 
         Err(ForwardToLeader {
             leader_id,
-            leader_node: None,
+            ..ForwardToLeader::empty()
         })
     }
 
@@ -1457,6 +1458,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 let endpoint = self.get_leader_endpoint(forward.leader_id).await;
                 return Err(GrpcHelper::status_forward_to_leader(endpoint.as_ref()));
             }
+            Err(RaftError::APIError(e)) => return Err(write_request_status(e)),
             Err(e) => return Err(Status::internal(e.to_string())),
         };
 
