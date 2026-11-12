@@ -23,10 +23,14 @@ type Term = u64;
 type LeaderId = openraft::impls::leader_id_adv::LeaderId<Term, NodeId>;
 type CommittedLeaderId = openraft::vote::leader_id_adv::CommittedLeaderId<Term, NodeId>;
 type Vote = openraft::Vote<LeaderId>;
-type SnapshotMeta = openraft::SnapshotMeta<CommittedLeaderId, NodeId, MembershipNode>;
+type Membership = openraft::Membership<NodeId, MembershipNode>;
+type SnapshotMeta = openraft::SnapshotMeta<CommittedLeaderId, Membership>;
 
 impl SnapshotChunkRequestV003 {
-    pub fn new_end_chunk(vote: Vote, snapshot_meta: SnapshotMeta) -> Self {
+    pub fn new_end_chunk(vote: Vote, snapshot_meta: SnapshotMeta, snapshot_id: String) -> Self {
+        // Openraft reserves this wire slot as empty; Databend still needs its file ID.
+        let mut snapshot_meta = serde_json::to_value(snapshot_meta).unwrap();
+        snapshot_meta["snapshot_id"] = snapshot_id.into();
         let meta = ("rotbl::v001".to_string(), vote, snapshot_meta);
         let rpc_meta = serde_json::to_string(&meta).unwrap();
 
@@ -55,5 +59,28 @@ impl SnapshotResponseV003 {
         serde_json::from_str(&self.vote).map_err(|e| {
             AnyError::new(&e).add_context(|| "when decoding vote from SnapshotResponseV003")
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn end_chunk_preserves_pre_upgrade_snapshot_identity() {
+        // Literal metadata from the alpha.29 wire layout, not serialized by 0.10.
+        let old_meta = r#"{"last_log_id":{"leader_id":{"term":1,"node_id":2},"index":3},"last_membership":{"log_id":null,"membership":{"configs":[],"nodes":{}}},"snapshot_id":"1-2-3-4"}"#;
+        let meta: SnapshotMeta = serde_json::from_str(old_meta).unwrap();
+        let chunk =
+            SnapshotChunkRequestV003::new_end_chunk(Vote::new(5, 6), meta, "1-2-3-4".to_string());
+        let (format, vote, meta): (String, Vote, serde_json::Value) =
+            serde_json::from_str(chunk.rpc_meta.as_ref().unwrap()).unwrap();
+        assert_eq!(format, "rotbl::v001");
+        assert_eq!(vote, Vote::new(5, 6));
+        assert_eq!(
+            meta,
+            serde_json::from_str::<serde_json::Value>(old_meta).unwrap()
+        );
+        assert!(chunk.chunk.is_empty());
     }
 }
