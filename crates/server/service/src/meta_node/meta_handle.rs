@@ -265,7 +265,7 @@ impl<SP: SpawnApi> MetaHandle<SP> {
                         request_histogram::record(&histogram_label, total);
                     })
                     .await
-                    .map_err(GrpcHelper::internal_err)?;
+                    .map_err(ForwardRequestError::into_status)?;
 
                 let applied_state: AppliedState = forward_resp.try_into().map_err(|e| {
                     GrpcHelper::internal_err(InvalidReply::new("expect AppliedState", &e))
