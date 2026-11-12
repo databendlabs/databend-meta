@@ -147,7 +147,7 @@ mod tests {
     fn test_from_rpc_remote_forward_to_leader() {
         let ftl = ForwardToLeader {
             leader_id: Some(1),
-            leader_node: None,
+            ..ForwardToLeader::empty()
         };
         let fwd = ForwardRPCError::RemoteError(MetaAPIError::ForwardToLeader(ftl));
         let res: ForwardRequestError = fwd.into();

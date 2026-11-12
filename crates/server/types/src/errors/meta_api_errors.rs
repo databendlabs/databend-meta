@@ -20,6 +20,7 @@ use anyerror::AnyError;
 use crate::InvalidReply;
 use crate::MetaNetworkError;
 use crate::raft_types::ChangeMembershipError;
+use crate::raft_types::ClientWriteError;
 use crate::raft_types::Fatal;
 use crate::raft_types::ForwardToLeader;
 
@@ -58,14 +59,20 @@ impl MetaAPIError {
             }
             MetaAPIError::RemoteError(data_err) => match data_err {
                 MetaDataError::ChangeMembershipError(cm_err) => match cm_err {
-                    ChangeMembershipError::InProgress(_) => {
-                        // Another node is joining, wait a while and retry
+                    ChangeMembershipError::InProgress(_)
+                    | ChangeMembershipError::UncommittedLeaderLog(_) => {
+                        // Wait for an ongoing change or the new leader's first commit.
                         true
                     }
-                    ChangeMembershipError::EmptyMembership(_) => false,
-                    ChangeMembershipError::LearnerNotFound(_) => false,
+                    ChangeMembershipError::EmptyMembership(_)
+                    | ChangeMembershipError::LearnerNotFound(_)
+                    | ChangeMembershipError::UnsupportedMembershipTransition(_)
+                    | ChangeMembershipError::NodeMetadataChanged(_)
+                    | ChangeMembershipError::UnprovenReadWriteIntersection(_)
+                    | ChangeMembershipError::WriteVoterWithoutReceiveLogs(_)
+                    | ChangeMembershipError::UserDefined(_) => false,
                 },
-                MetaDataError::WriteError(_) => false,
+                MetaDataError::WriteError(_) | MetaDataError::WriteRequestError(_) => false,
                 MetaDataError::ReadError(_) => false,
             },
             MetaAPIError::ForwardToLeader(_) => {
@@ -77,7 +84,7 @@ impl MetaAPIError {
                 true
             }
             MetaAPIError::DataError(data_err) => match data_err {
-                MetaDataError::WriteError(_) => false,
+                MetaDataError::WriteError(_) | MetaDataError::WriteRequestError(_) => false,
                 MetaDataError::ChangeMembershipError(_) => true,
                 MetaDataError::ReadError(_) => false,
             },
@@ -101,6 +108,10 @@ pub enum MetaDataError {
     /// Error occurred when writing a raft log.
     #[error(transparent)]
     WriteError(#[from] Fatal),
+
+    /// A rejected or discarded proposal; commit status may be unknown. Do not replay.
+    #[error(transparent)]
+    WriteRequestError(ClientWriteError),
 
     /// Error occurred when change raft membership.
     #[error(transparent)]
