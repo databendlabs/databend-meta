@@ -239,8 +239,6 @@ pub trait PbAppendResponseExt {
     fn from_append_result(r: raft_types::AppendResult) -> pb::AppendResponse;
     /// Decode a follower's result; a peer that predates `conflict_hint` yields no hint.
     fn into_append_result(self) -> raft_types::AppendResult;
-    fn from_stream_result(r: raft_types::StreamAppendResult) -> pb::AppendResponse;
-    fn into_stream_result(self) -> raft_types::StreamAppendResult;
 }
 
 impl PbAppendResponseExt for pb::AppendResponse {
@@ -331,14 +329,6 @@ impl PbAppendResponseExt for pb::AppendResponse {
             });
         }
         Ok(self.last_log_id.map(Into::into))
-    }
-
-    fn from_stream_result(r: raft_types::StreamAppendResult) -> pb::AppendResponse {
-        Self::from_append_result(r.map_err(Into::into))
-    }
-
-    fn into_stream_result(self) -> raft_types::StreamAppendResult {
-        self.into_append_result().map_err(Into::into)
     }
 }
 
@@ -678,42 +668,6 @@ mod tests {
         assert_eq!(resp, back);
     }
 
-    #[test]
-    fn test_stream_append_result_success_with_log_id() {
-        let result: raft_types::StreamAppendResult = Ok(Some(raft_types::new_log_id(5, 1, 100)));
-        let pb_resp = pb::AppendResponse::from_stream_result(result.clone());
-        let back = pb_resp.into_stream_result();
-        assert_eq!(result, back);
-    }
-
-    #[test]
-    fn test_stream_append_result_success_none() {
-        let result: raft_types::StreamAppendResult = Ok(None);
-        let pb_resp = pb::AppendResponse::from_stream_result(result.clone());
-        let back = pb_resp.into_stream_result();
-        assert_eq!(result, back);
-    }
-
-    #[test]
-    fn test_stream_append_result_conflict() {
-        let result: raft_types::StreamAppendResult = Err(raft_types::StreamAppendError::Conflict(
-            raft_types::new_log_id(3, 2, 50),
-        ));
-        let pb_resp = pb::AppendResponse::from_stream_result(result.clone());
-        let back = pb_resp.into_stream_result();
-        assert_eq!(result, back);
-    }
-
-    #[test]
-    fn test_stream_append_result_higher_vote() {
-        let result: raft_types::StreamAppendResult = Err(
-            raft_types::StreamAppendError::HigherVote(raft_types::Vote::new_committed(10, 2)),
-        );
-        let pb_resp = pb::AppendResponse::from_stream_result(result.clone());
-        let back = pb_resp.into_stream_result();
-        assert_eq!(result, back);
-    }
-
     fn conflict(hint: Option<Vec<raft_types::LogId>>) -> raft_types::AppendResult {
         Err(raft_types::AppendError::Conflict {
             log_id: raft_types::new_log_id(3, 2, 50),
@@ -742,18 +696,6 @@ mod tests {
             let pb_resp = pb::AppendResponse::from_append_result(result.clone());
             assert_eq!(pb_resp.into_append_result(), result);
         }
-    }
-
-    #[test]
-    fn test_stream_result_drops_conflict_hint() {
-        let with_hint = conflict(Some(vec![raft_types::new_log_id(1, 0, 3)]));
-        let pb_resp = pb::AppendResponse::from_append_result(with_hint);
-        assert_eq!(
-            pb_resp.into_stream_result(),
-            Err(raft_types::StreamAppendError::Conflict(
-                raft_types::new_log_id(3, 2, 50)
-            ))
-        );
     }
 
     /// `AppendResponse` as defined before `conflict_hint` was added.
