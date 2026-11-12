@@ -25,6 +25,12 @@ Avoid adding or removing nodes until every node is upgraded. If the leader
 rejects such a change, an older node cannot decode the new membership errors
 and reports a decode error instead of the reason.
 
+## Clients
+
+After the upgrade, a write whose outcome is unknown fails with gRPC `Unknown`,
+which clients do not retry. Before retrying a non-idempotent write that failed
+this way, read the current state to see whether it was applied.
+
 ## Rust code that depends on databend-meta crates
 
 - `raft_types` in `databend-meta-client-types` no longer exports
