@@ -57,24 +57,27 @@ impl MetaAPIError {
                 // Leader is not ready, wait a while and retry
                 true
             }
-            MetaAPIError::RemoteError(data_err) => match data_err {
-                MetaDataError::ChangeMembershipError(cm_err) => match cm_err {
-                    ChangeMembershipError::InProgress(_)
-                    | ChangeMembershipError::UncommittedLeaderLog(_) => {
-                        // Wait for an ongoing change or the new leader's first commit.
-                        true
-                    }
-                    ChangeMembershipError::EmptyMembership(_)
-                    | ChangeMembershipError::LearnerNotFound(_)
-                    | ChangeMembershipError::UnsupportedMembershipTransition(_)
-                    | ChangeMembershipError::NodeMetadataChanged(_)
-                    | ChangeMembershipError::UnprovenReadWriteIntersection(_)
-                    | ChangeMembershipError::WriteVoterWithoutReceiveLogs(_)
-                    | ChangeMembershipError::UserDefined(_) => false,
-                },
-                MetaDataError::WriteError(_) | MetaDataError::WriteRequestError(_) => false,
-                MetaDataError::ReadError(_) => false,
-            },
+            // A forwarded join surfaces as DataError; classify both arms alike.
+            MetaAPIError::RemoteError(data_err) | MetaAPIError::DataError(data_err) => {
+                match data_err {
+                    MetaDataError::ChangeMembershipError(cm_err) => match cm_err {
+                        ChangeMembershipError::InProgress(_)
+                        | ChangeMembershipError::UncommittedLeaderLog(_) => {
+                            // Wait for an ongoing change or the new leader's first commit.
+                            true
+                        }
+                        ChangeMembershipError::EmptyMembership(_)
+                        | ChangeMembershipError::LearnerNotFound(_)
+                        | ChangeMembershipError::UnsupportedMembershipTransition(_)
+                        | ChangeMembershipError::NodeMetadataChanged(_)
+                        | ChangeMembershipError::UnprovenReadWriteIntersection(_)
+                        | ChangeMembershipError::WriteVoterWithoutReceiveLogs(_)
+                        | ChangeMembershipError::UserDefined(_) => false,
+                    },
+                    MetaDataError::WriteError(_) | MetaDataError::WriteRequestError(_) => false,
+                    MetaDataError::ReadError(_) => false,
+                }
+            }
             MetaAPIError::ForwardToLeader(_) => {
                 // Leader is changing, wait a while and retry
                 true
@@ -83,11 +86,6 @@ impl MetaAPIError {
                 // Network is always unstable, retry.
                 true
             }
-            MetaAPIError::DataError(data_err) => match data_err {
-                MetaDataError::WriteError(_) | MetaDataError::WriteRequestError(_) => false,
-                MetaDataError::ChangeMembershipError(_) => true,
-                MetaDataError::ReadError(_) => false,
-            },
         }
     }
 
