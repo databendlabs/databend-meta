@@ -165,8 +165,6 @@ pub type Unreachable = openraft::error::Unreachable<TypeConfig>;
 
 pub type AppendEntriesRequest = openraft::raft::AppendEntriesRequest<TypeConfig>;
 pub type AppendEntriesResponse = openraft::raft::AppendEntriesResponse<TypeConfig>;
-pub type StreamAppendResult = openraft::raft::StreamAppendResult<TypeConfig>;
-pub type StreamAppendError = openraft::raft::StreamAppendError<TypeConfig>;
 pub type SnapshotResponse = openraft::raft::SnapshotResponse<TypeConfig>;
 pub type VoteRequest = openraft::raft::VoteRequest<TypeConfig>;
 pub type VoteResponse = openraft::raft::VoteResponse<TypeConfig>;
