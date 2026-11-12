@@ -113,6 +113,7 @@ use crate::meta_node::meta_node_metrics::MetaMetrics;
 use crate::meta_node::meta_node_status::MetaNodeStatus;
 use crate::meta_node::request_handler_error::CanNotForwardError;
 use crate::meta_node::request_handler_error::ForwardRequestError;
+use crate::meta_node::request_handler_error::write_request_status;
 use crate::meta_service::MetaForwarder;
 use crate::meta_service::errors::channel_error_to_network_err;
 use crate::meta_service::forward_rpc_error::ForwardRPCError;
@@ -1457,6 +1458,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 let endpoint = self.get_leader_endpoint(forward.leader_id).await;
                 return Err(GrpcHelper::status_forward_to_leader(endpoint.as_ref()));
             }
+            Err(RaftError::APIError(e)) => return Err(write_request_status(e)),
             Err(e) => return Err(Status::internal(e.to_string())),
         };
 

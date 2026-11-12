@@ -13,10 +13,13 @@
 // limitations under the License.
 
 use anyerror::AnyError;
+use databend_meta_types::GrpcHelper;
 use databend_meta_types::InvalidReply;
 use databend_meta_types::MetaAPIError;
 use databend_meta_types::MetaDataError;
 use databend_meta_types::MetaNetworkError;
+use databend_meta_types::raft_types::ClientWriteError;
+use tonic::Status;
 
 use crate::meta_service::forward_rpc_error::ForwardRPCError;
 
@@ -54,6 +57,32 @@ impl From<ForwardRequestError> for MetaAPIError {
 impl From<InvalidReply> for ForwardRequestError {
     fn from(e: InvalidReply) -> Self {
         ForwardRequestError::NetworkError(MetaNetworkError::from(e))
+    }
+}
+
+impl ForwardRequestError {
+    /// Convert to the status returned by a client-facing write RPC.
+    pub(crate) fn into_status(self) -> Status {
+        match self {
+            ForwardRequestError::DataError(MetaDataError::WriteRequestError(e)) => {
+                write_request_status(e)
+            }
+            e => GrpcHelper::internal_err(e),
+        }
+    }
+}
+
+/// Convert a rejected write to a gRPC status.
+///
+/// Clients retry `Internal`. A discarded entry may have committed elsewhere,
+/// so these outcomes use codes that no released client retries.
+pub(crate) fn write_request_status(e: ClientWriteError) -> Status {
+    match e {
+        ClientWriteError::LogEntryDiscarded(_) => Status::unknown(e.to_string()),
+        ClientWriteError::PreconditionFailed(_) => Status::failed_precondition(e.to_string()),
+        ClientWriteError::ForwardToLeader(_) | ClientWriteError::ChangeMembershipError(_) => {
+            GrpcHelper::internal_err(e)
+        }
     }
 }
 
@@ -177,6 +206,41 @@ mod tests {
         let e = ForwardRequestError::DataError(MetaDataError::ReadError(read_err));
         let api: MetaAPIError = e.into();
         assert_eq!(api.name(), "DataError");
+    }
+
+    // -- ForwardRequestError::into_status tests --
+
+    #[test]
+    fn test_unknown_write_outcomes_use_non_retryable_status() {
+        use openraft::error::PreconditionFailed;
+        use tonic::Code;
+
+        let precondition = PreconditionFailed::LastLogIdMismatch {
+            expected: None,
+            actual: None,
+        };
+        let cases = [
+            (
+                ClientWriteError::LogEntryDiscarded(ForwardToLeader::empty()),
+                Code::Unknown,
+            ),
+            (
+                ClientWriteError::PreconditionFailed(precondition),
+                Code::FailedPrecondition,
+            ),
+        ];
+        for (write_error, code) in cases {
+            let error = ForwardRequestError::DataError(MetaDataError::WriteRequestError(
+                write_error.clone(),
+            ));
+            assert_eq!(error.into_status().code(), code);
+            assert_eq!(write_request_status(write_error).code(), code);
+        }
+
+        let forward = ClientWriteError::ForwardToLeader(ForwardToLeader::empty());
+        assert_eq!(write_request_status(forward).code(), Code::Internal);
+        let error = ForwardRequestError::CanNotForward(CanNotForwardError(AnyError::error("x")));
+        assert_eq!(error.into_status().code(), Code::Internal);
     }
 
     /// Verify that serializing `ForwardRequestError` produces JSON
