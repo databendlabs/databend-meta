@@ -235,6 +235,10 @@ impl PbAppendRequestExt for pb::AppendRequest {
 pub trait PbAppendResponseExt {
     fn from_raft_response(resp: raft_types::AppendEntriesResponse) -> pb::AppendResponse;
     fn into_raft_response(self) -> raft_types::AppendEntriesResponse;
+    /// Encode a follower's result, including the conflict hint.
+    fn from_append_result(r: raft_types::AppendResult) -> pb::AppendResponse;
+    /// Decode a follower's result; a peer that predates `conflict_hint` yields no hint.
+    fn into_append_result(self) -> raft_types::AppendResult;
     fn from_stream_result(r: raft_types::StreamAppendResult) -> pb::AppendResponse;
     fn into_stream_result(self) -> raft_types::StreamAppendResult;
 }
@@ -246,11 +250,13 @@ impl PbAppendResponseExt for pb::AppendResponse {
                 rejected_by: None,
                 conflict_log_id: None,
                 last_log_id: None,
+                conflict_hint: None,
             },
             raft_types::AppendEntriesResponse::PartialSuccess(last) => pb::AppendResponse {
                 rejected_by: None,
                 conflict_log_id: None,
                 last_log_id: last.map(pb::LogId::from),
+                conflict_hint: None,
             },
             raft_types::AppendEntriesResponse::Conflict => pb::AppendResponse {
                 rejected_by: None,
@@ -260,11 +266,13 @@ impl PbAppendResponseExt for pb::AppendResponse {
                     index: 0,
                 }),
                 last_log_id: None,
+                conflict_hint: None,
             },
             raft_types::AppendEntriesResponse::HigherVote(vote) => pb::AppendResponse {
                 rejected_by: Some(pb::Vote::from(vote)),
                 conflict_log_id: None,
                 last_log_id: None,
+                conflict_hint: None,
             },
         }
     }
@@ -284,34 +292,53 @@ impl PbAppendResponseExt for pb::AppendResponse {
         }
     }
 
-    fn from_stream_result(r: raft_types::StreamAppendResult) -> pb::AppendResponse {
+    fn from_append_result(r: raft_types::AppendResult) -> pb::AppendResponse {
         match r {
             Ok(log_id) => pb::AppendResponse {
                 rejected_by: None,
                 conflict_log_id: None,
                 last_log_id: log_id.map(pb::LogId::from),
+                conflict_hint: None,
             },
-            Err(raft_types::StreamAppendError::Conflict(log_id)) => pb::AppendResponse {
+            Err(raft_types::AppendError::Conflict { log_id, hint }) => pb::AppendResponse {
                 rejected_by: None,
                 conflict_log_id: Some(pb::LogId::from(log_id)),
                 last_log_id: None,
+                conflict_hint: hint.map(|hint| pb::ConflictHint {
+                    log_ids: hint.log_ids.into_iter().map(pb::LogId::from).collect(),
+                }),
             },
-            Err(raft_types::StreamAppendError::HigherVote(vote)) => pb::AppendResponse {
+            Err(raft_types::AppendError::HigherVote(vote)) => pb::AppendResponse {
                 rejected_by: Some(pb::Vote::from(vote)),
                 conflict_log_id: None,
                 last_log_id: None,
+                conflict_hint: None,
             },
         }
     }
 
-    fn into_stream_result(self) -> raft_types::StreamAppendResult {
+    fn into_append_result(self) -> raft_types::AppendResult {
         if let Some(vote) = self.rejected_by {
-            return Err(raft_types::StreamAppendError::HigherVote(vote.into()));
+            return Err(raft_types::AppendError::HigherVote(vote.into()));
         }
         if let Some(log_id) = self.conflict_log_id {
-            return Err(raft_types::StreamAppendError::Conflict(log_id.into()));
+            let hint = self.conflict_hint.map(|hint| {
+                raft_types::ConflictHint::new(hint.log_ids.into_iter().map(Into::into).collect())
+            });
+            return Err(raft_types::AppendError::Conflict {
+                log_id: log_id.into(),
+                hint,
+            });
         }
         Ok(self.last_log_id.map(Into::into))
+    }
+
+    fn from_stream_result(r: raft_types::StreamAppendResult) -> pb::AppendResponse {
+        Self::from_append_result(r.map_err(Into::into))
+    }
+
+    fn into_stream_result(self) -> raft_types::StreamAppendResult {
+        self.into_append_result().map_err(Into::into)
     }
 }
 
@@ -685,5 +712,82 @@ mod tests {
         let pb_resp = pb::AppendResponse::from_stream_result(result.clone());
         let back = pb_resp.into_stream_result();
         assert_eq!(result, back);
+    }
+
+    fn conflict(hint: Option<Vec<raft_types::LogId>>) -> raft_types::AppendResult {
+        Err(raft_types::AppendError::Conflict {
+            log_id: raft_types::new_log_id(3, 2, 50),
+            hint: hint.map(raft_types::ConflictHint::new),
+        })
+    }
+
+    #[test]
+    fn test_append_result_round_trip() {
+        let hint = vec![
+            raft_types::new_log_id(1, 0, 3),
+            raft_types::new_log_id(2, 1, 40),
+        ];
+        let results = [
+            Ok(None),
+            Ok(Some(raft_types::new_log_id(5, 1, 100))),
+            Err(raft_types::AppendError::HigherVote(
+                raft_types::Vote::new_committed(10, 2),
+            )),
+            conflict(None),
+            // An empty hint means the follower has no log, which differs from no hint.
+            conflict(Some(vec![])),
+            conflict(Some(hint)),
+        ];
+        for result in results {
+            let pb_resp = pb::AppendResponse::from_append_result(result.clone());
+            assert_eq!(pb_resp.into_append_result(), result);
+        }
+    }
+
+    #[test]
+    fn test_stream_result_drops_conflict_hint() {
+        let with_hint = conflict(Some(vec![raft_types::new_log_id(1, 0, 3)]));
+        let pb_resp = pb::AppendResponse::from_append_result(with_hint);
+        assert_eq!(
+            pb_resp.into_stream_result(),
+            Err(raft_types::StreamAppendError::Conflict(
+                raft_types::new_log_id(3, 2, 50)
+            ))
+        );
+    }
+
+    /// `AppendResponse` as defined before `conflict_hint` was added.
+    #[derive(Clone, PartialEq, prost::Message)]
+    struct AppendResponseBefore010 {
+        #[prost(message, optional, tag = "1")]
+        rejected_by: Option<pb::Vote>,
+        #[prost(message, optional, tag = "2")]
+        conflict_log_id: Option<pb::LogId>,
+        #[prost(message, optional, tag = "3")]
+        last_log_id: Option<pb::LogId>,
+    }
+
+    /// A conflict from a peer that predates the field carries no hint, and such
+    /// a peer still decodes a conflict with a hint from this version.
+    #[test]
+    fn test_append_response_wire_compat_with_pre_010_peers() {
+        use prost::Message;
+
+        let old = AppendResponseBefore010 {
+            rejected_by: None,
+            conflict_log_id: Some(pb::LogId::from(raft_types::new_log_id(3, 2, 50))),
+            last_log_id: None,
+        };
+        let decoded = pb::AppendResponse::decode(old.encode_to_vec().as_slice()).unwrap();
+        assert_eq!(decoded.into_append_result(), conflict(None));
+
+        let new =
+            pb::AppendResponse::from_append_result(conflict(Some(vec![raft_types::new_log_id(
+                1, 0, 3,
+            )])));
+        assert!(new.conflict_hint.is_some());
+        let decoded_by_old =
+            AppendResponseBefore010::decode(new.encode_to_vec().as_slice()).unwrap();
+        assert_eq!(decoded_by_old, old);
     }
 }

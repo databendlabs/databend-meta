@@ -421,6 +421,7 @@ async fn test_raft_service_append_v002() -> anyhow::Result<()> {
     // 1. Heartbeat (no entries) — expect success with last_log_id = prev_log_id
     // 2. Append with entries  — expect success with last_log_id = last appended
     // 3. Stale vote request   — expect rejected_by with the node's current vote
+    // 4. Missing prev_log_id   — expect conflict_log_id with a conflict hint
 
     let (_nlog, mut tcs) = start_meta_node_cluster(btreeset![0], btreeset![]).await?;
     let tc0 = tcs.remove(0);
@@ -465,6 +466,7 @@ async fn test_raft_service_append_v002() -> anyhow::Result<()> {
             rejected_by: None,
             conflict_log_id: None,
             last_log_id: Some(prev_log_id_3),
+            conflict_hint: None,
         });
 
         // Stream should end after processing the single request
@@ -509,6 +511,7 @@ async fn test_raft_service_append_v002() -> anyhow::Result<()> {
                 node_id: 1,
                 index: 4,
             }),
+            conflict_hint: None,
         });
     }
 
@@ -537,6 +540,43 @@ async fn test_raft_service_append_v002() -> anyhow::Result<()> {
             rejected_by: Some(higher_vote),
             conflict_log_id: None,
             last_log_id: None,
+            conflict_hint: None,
+        });
+    }
+
+    info!("--- missing prev_log_id: should conflict and carry the follower's log hint");
+    {
+        let missing = pb::LogId {
+            term: 2,
+            node_id: 1,
+            index: 10,
+        };
+        let conflict_req = pb::AppendRequest {
+            vote: Some(higher_vote),
+            prev_log_id: Some(missing),
+            entries: vec![],
+            leader_commit: Some(prev_log_id_3),
+        };
+
+        let resp = client0
+            .append_v002(stream::iter(vec![conflict_req]))
+            .await?;
+        let mut output = resp.into_inner();
+
+        let first = output.next().await.unwrap()?;
+
+        // The hint is the committed log id, then the tail appended above.
+        assert_eq!(first, pb::AppendResponse {
+            rejected_by: None,
+            conflict_log_id: Some(missing),
+            last_log_id: None,
+            conflict_hint: Some(pb::ConflictHint {
+                log_ids: vec![prev_log_id_3, pb::LogId {
+                    term: 2,
+                    node_id: 1,
+                    index: 4,
+                }],
+            }),
         });
     }
 
@@ -612,11 +652,13 @@ async fn test_raft_service_append_v002_multi_item_stream() -> anyhow::Result<()>
             rejected_by: None,
             conflict_log_id: None,
             last_log_id: Some(make_log_id(5)),
+            conflict_hint: None,
         },
         pb::AppendResponse {
             rejected_by: None,
             conflict_log_id: None,
             last_log_id: Some(make_log_id(8)),
+            conflict_hint: None,
         },
     ]);
 
@@ -701,6 +743,7 @@ async fn test_raft_service_append_v002_upsert_kv() -> anyhow::Result<()> {
         rejected_by: None,
         conflict_log_id: None,
         last_log_id: Some(new_log_id),
+        conflict_hint: None,
     });
 
     // The AppendV002 response only confirms the entry was stored; apply happens
@@ -781,6 +824,7 @@ async fn test_raft_service_append_v002_transaction() -> anyhow::Result<()> {
         rejected_by: None,
         conflict_log_id: None,
         last_log_id: Some(new_log_id),
+        conflict_hint: None,
     });
 
     follower

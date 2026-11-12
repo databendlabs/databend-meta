@@ -31,20 +31,45 @@ handles it cannot simply be deleted.
   receiver extracts it before Openraft discards the field. Callers of
   `new_end_chunk` now pass the snapshot file ID.
 - V004 `Commit.snapshot_id` still comes from the DB's file ID.
-- The `.proto` definitions, the file ID format and the rotbl file format are
-  unchanged.
+- The snapshot messages in `.proto`, the file ID format and the rotbl file
+  format are unchanged.
 
 ## AppendEntries boundary
 
 The stable release uses `AppendResult`, which is not a serializable wire type.
-The unary RPC still sends the existing `AppendEntriesResponse`, and the stream
-RPC still sends the existing protobuf response. The new conflict hint is not
-carried by the current protocol, but conflicts and higher votes still are.
+The unary RPC still sends the existing `AppendEntriesResponse`, which carries
+no conflict hint. The stream RPC (`AppendV002`) sends `pb::AppendResponse`,
+which now carries the conflict hint as well as conflicts and higher votes; see
+"Protobuf messages" below.
 
 When the sender transmits only a prefix of the entries because of the message
 size limit, the acknowledged range is computed from the request actually sent.
 The sender must not assume the prefix was written before it decodes the
 response; otherwise a conflict or a higher vote would be reported as success.
+
+## Protobuf messages
+
+Two raft messages gain a field to carry data that openraft 0.10.0 added. Both
+are new field numbers, so either side of a mixed-version pair decodes the
+other: an older peer ignores the field, and a message from an older peer reads
+as if the field were absent.
+
+- `VoteRequest.leadership_transfer_from` (field 3) is the vote of the Leader
+  that authorized the election as a leadership transfer. A voter that follows
+  that Leader handles the request even while the Leader's lease holds. Before
+  this field, `VoteV001` dropped the value, and a transfer relied only on the
+  `TransferLeaderRequest` broadcast releasing each voter's lease; that is still
+  what happens with an older peer.
+- `AppendResponse.conflict_hint` (field 4, message `ConflictHint`) samples the
+  follower's log after a conflict, so the leader picks the next probe instead
+  of searching for the matching index. A wrapper message keeps presence: an
+  absent hint means the follower sent none, and an empty `log_ids` means the
+  follower has no log. Without a hint, as from an older follower, the leader
+  falls back to binary search. The hint may describe entries that are not
+  flushed and acknowledges no replication.
+
+Rust code that builds `pb::VoteRequest` or `pb::AppendResponse` with a struct
+literal must set the new field, for example to `None`.
 
 ## Error compatibility and upgrade order
 

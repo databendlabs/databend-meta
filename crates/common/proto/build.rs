@@ -199,6 +199,7 @@ fn build_proto() {
         .type_attribute("VoterGroup", "#[derive(deepsize::DeepSizeOf)]")
         .type_attribute("AppendRequest", "#[derive(Eq, deepsize::DeepSizeOf)]")
         .type_attribute("AppendResponse", "#[derive(deepsize::DeepSizeOf)]")
+        .type_attribute("ConflictHint", "#[derive(deepsize::DeepSizeOf)]")
         .compile_with_config(config, &protos, &[&proto_dir])
         .unwrap();
 }

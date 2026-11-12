@@ -39,6 +39,14 @@ message LogId {
 message VoteRequest {
   Vote vote = 1;
   LogId last_log_id = 2;
+
+  // The vote of the Leader that authorized this election as a leadership
+  // transfer; absent for an ordinary election. A voter that follows this
+  // Leader handles the request even if the Leader's lease has not expired.
+  //
+  // Added for openraft 0.10.0. Older peers ignore it and never send it, so
+  // their requests read as ordinary elections.
+  optional Vote leadership_transfer_from = 3;
 }
 
 message VoteResponse {

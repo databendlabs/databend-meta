@@ -29,6 +29,7 @@ where
         pb::VoteRequest {
             vote: Some(req.vote.into()),
             last_log_id: req.last_log_id.map(pb::LogId::from),
+            leadership_transfer_from: req.leadership_transfer_from.map(Into::into),
         }
     }
 }
@@ -40,21 +41,40 @@ where
     <C::LeaderId as RaftLeaderId>::Committed: RaftLeaderId<Term = u64, NodeId = u64> + Ord,
 {
     fn from(value: pb::VoteRequest) -> Self {
-        let pb_vote = value.vote.unwrap_or_default();
-        let leader_id = C::LeaderId::new(pb_vote.term, pb_vote.node_id);
-        let vote = C::Vote::from_leader_id(leader_id, pb_vote.committed);
+        let vote = vote_from_pb::<C>(value.vote.unwrap_or_default());
         let last_log_id = value.last_log_id.map(Into::into);
-        openraft::raft::VoteRequest::new(vote, last_log_id)
+        let mut req = openraft::raft::VoteRequest::new(vote, last_log_id);
+        req.leadership_transfer_from = value.leadership_transfer_from.map(vote_from_pb::<C>);
+        req
     }
+}
+
+fn vote_from_pb<C>(pb_vote: pb::Vote) -> C::Vote
+where
+    C: RaftTypeConfig,
+    C::LeaderId: RaftLeaderId<Term = u64, NodeId = u64>,
+{
+    let leader_id = C::LeaderId::new(pb_vote.term, pb_vote.node_id);
+    C::Vote::from_leader_id(leader_id, pb_vote.committed)
 }
 
 #[cfg(test)]
 mod tests {
     use openraft::impls::leader_id_adv::LeaderId;
+    use prost::Message;
 
     use super::*;
 
     openraft::declare_raft_types!(TC:);
+
+    /// `VoteRequest` as defined before `leadership_transfer_from` was added.
+    #[derive(Clone, PartialEq, prost::Message)]
+    struct VoteRequestBefore010 {
+        #[prost(message, optional, tag = "1")]
+        vote: Option<pb::Vote>,
+        #[prost(message, optional, tag = "2")]
+        last_log_id: Option<pb::LogId>,
+    }
 
     fn new_log_id(term: u64, node_id: u64, index: u64) -> openraft::LogId<LeaderId<u64, u64>> {
         openraft::LogId::new(LeaderId::new(term, node_id), index)
@@ -68,8 +88,7 @@ mod tests {
 
         let pb_req = pb::VoteRequest::from(req.clone());
         let back: openraft::raft::VoteRequest<TC> = pb_req.into();
-        assert_eq!(back.vote, req.vote);
-        assert_eq!(back.last_log_id, req.last_log_id);
+        assert_eq!(back, req);
     }
 
     #[test]
@@ -81,7 +100,60 @@ mod tests {
         assert!(pb_req.last_log_id.is_none());
 
         let back: openraft::raft::VoteRequest<TC> = pb_req.into();
-        assert_eq!(back.vote, req.vote);
-        assert!(back.last_log_id.is_none());
+        assert_eq!(back, req);
+    }
+
+    #[test]
+    fn test_vote_request_leadership_transfer_round_trip() {
+        let vote = openraft::Vote::<LeaderId<u64, u64>>::new(6, 2);
+        let mut req = openraft::raft::VoteRequest::<TC>::new(vote, Some(new_log_id(5, 1, 10)));
+        req.leadership_transfer_from = Some(openraft::Vote::new_committed(5, 1));
+
+        let pb_req = pb::VoteRequest::from(req.clone());
+        assert_eq!(
+            pb_req.leadership_transfer_from,
+            Some(pb::Vote {
+                term: 5,
+                node_id: 1,
+                committed: true,
+            })
+        );
+
+        let back: openraft::raft::VoteRequest<TC> = pb_req.into();
+        assert_eq!(back, req);
+    }
+
+    /// A request from a peer that predates the field is an ordinary election,
+    /// and such a peer still decodes a transfer request from this version.
+    #[test]
+    fn test_vote_request_wire_compat_with_pre_010_peers() {
+        let old = VoteRequestBefore010 {
+            vote: Some(pb::Vote {
+                term: 6,
+                node_id: 2,
+                committed: false,
+            }),
+            last_log_id: Some(pb::LogId {
+                term: 5,
+                node_id: 1,
+                index: 10,
+            }),
+        };
+        let decoded = pb::VoteRequest::decode(old.encode_to_vec().as_slice()).unwrap();
+        let req: openraft::raft::VoteRequest<TC> = decoded.into();
+        assert_eq!(req.leadership_transfer_from, None);
+        assert_eq!(req.vote, openraft::Vote::new(6, 2));
+
+        let new = pb::VoteRequest {
+            vote: old.vote,
+            last_log_id: old.last_log_id,
+            leadership_transfer_from: Some(pb::Vote {
+                term: 5,
+                node_id: 1,
+                committed: true,
+            }),
+        };
+        let decoded_by_old = VoteRequestBefore010::decode(new.encode_to_vec().as_slice()).unwrap();
+        assert_eq!(decoded_by_old, old);
     }
 }

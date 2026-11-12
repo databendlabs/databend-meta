@@ -830,7 +830,7 @@ impl<SP: SpawnApi> NetStreamAppend<TypeConfig> for Network<SP> {
             );
 
             let response_stream = response.into_inner().map(move |resp| match resp {
-                Ok(pb_resp) => Ok(pb_resp.into_stream_result().map_err(Into::into)),
+                Ok(pb_resp) => Ok(pb_resp.into_append_result()),
                 Err(status) => Err(RPCError::Unreachable(Self::status_to_unreachable_at(
                     target, &self.peer, status,
                 ))),

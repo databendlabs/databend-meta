@@ -340,7 +340,7 @@ message AppendRequest {
 // AppendEntries response with typed protobuf fields.
 // Following openraft's grpc example design:
 // - rejected_by present → HigherVote(vote)
-// - conflict_log_id present → Conflict
+// - conflict_log_id present → Conflict, with conflict_hint if the follower sent one
 // - last_log_id present → last matching log_id from this batch
 message AppendResponse {
   // If present, the follower rejected due to having a higher vote.
@@ -354,6 +354,25 @@ message AppendResponse {
   // Always set on success; it is one of the log IDs present in this batch request.
   // absent + no conflict → no entries were in the request (heartbeat)
   optional LogId last_log_id = 3;
+
+  // Only valid with conflict_log_id: the follower's log after it truncated
+  // the conflicting entries, so the leader can pick the next probe without a
+  // binary search.
+  //
+  // Added for openraft 0.10.0. Older peers ignore it and never send it; the
+  // leader then falls back to binary search.
+  optional ConflictHint conflict_hint = 4;
+}
+
+// Follower log IDs that guide the leader's next AppendEntries probe after a
+// conflict. See `openraft::raft::ConflictHint`.
+//
+// A wrapper message keeps presence: an absent hint means the follower sent
+// none, while an empty `log_ids` means the follower has no log.
+message ConflictHint {
+  // Ordered by index and deduplicated; the last one is the follower's tail.
+  // These entries may not be flushed, so they acknowledge no replication.
+  repeated LogId log_ids = 1;
 }
 
 message ClusterStatus {
