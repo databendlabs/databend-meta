@@ -230,11 +230,9 @@ impl PbAppendRequestExt for pb::AppendRequest {
     }
 }
 
-// === AppendEntriesResponse ↔ pb::AppendResponse (extension traits) ===
+// === AppendResult ↔ pb::AppendResponse (extension traits) ===
 
 pub trait PbAppendResponseExt {
-    fn from_raft_response(resp: raft_types::AppendEntriesResponse) -> pb::AppendResponse;
-    fn into_raft_response(self) -> raft_types::AppendEntriesResponse;
     /// Encode a follower's result, including the conflict hint.
     fn from_append_result(r: raft_types::AppendResult) -> pb::AppendResponse;
     /// Decode a follower's result; a peer that predates `conflict_hint` yields no hint.
@@ -242,54 +240,6 @@ pub trait PbAppendResponseExt {
 }
 
 impl PbAppendResponseExt for pb::AppendResponse {
-    fn from_raft_response(resp: raft_types::AppendEntriesResponse) -> pb::AppendResponse {
-        match resp {
-            raft_types::AppendEntriesResponse::Success => pb::AppendResponse {
-                rejected_by: None,
-                conflict_log_id: None,
-                last_log_id: None,
-                conflict_hint: None,
-            },
-            raft_types::AppendEntriesResponse::PartialSuccess(last) => pb::AppendResponse {
-                rejected_by: None,
-                conflict_log_id: None,
-                last_log_id: last.map(pb::LogId::from),
-                conflict_hint: None,
-            },
-            raft_types::AppendEntriesResponse::Conflict => pb::AppendResponse {
-                rejected_by: None,
-                conflict_log_id: Some(pb::LogId {
-                    term: 0,
-                    node_id: 0,
-                    index: 0,
-                }),
-                last_log_id: None,
-                conflict_hint: None,
-            },
-            raft_types::AppendEntriesResponse::HigherVote(vote) => pb::AppendResponse {
-                rejected_by: Some(pb::Vote::from(vote)),
-                conflict_log_id: None,
-                last_log_id: None,
-                conflict_hint: None,
-            },
-        }
-    }
-
-    fn into_raft_response(self) -> raft_types::AppendEntriesResponse {
-        if let Some(vote) = self.rejected_by {
-            return raft_types::AppendEntriesResponse::HigherVote(vote.into());
-        }
-
-        if self.conflict_log_id.is_some() {
-            return raft_types::AppendEntriesResponse::Conflict;
-        }
-
-        match self.last_log_id {
-            Some(log_id) => raft_types::AppendEntriesResponse::PartialSuccess(Some(log_id.into())),
-            None => raft_types::AppendEntriesResponse::Success,
-        }
-    }
-
     fn from_append_result(r: raft_types::AppendResult) -> pb::AppendResponse {
         match r {
             Ok(log_id) => pb::AppendResponse {
@@ -631,41 +581,6 @@ mod tests {
         let pb_req = pb::AppendRequest::from_raft(req.clone());
         let back = pb_req.try_into_raft().unwrap();
         assert_append_request_eq(&req, &back);
-    }
-
-    #[test]
-    fn test_append_response_success() {
-        let resp = raft_types::AppendEntriesResponse::Success;
-        let pb_resp = pb::AppendResponse::from_raft_response(resp.clone());
-        let back = pb_resp.into_raft_response();
-        assert_eq!(resp, back);
-    }
-
-    #[test]
-    fn test_append_response_partial_success() {
-        let resp = raft_types::AppendEntriesResponse::PartialSuccess(Some(raft_types::new_log_id(
-            5, 1, 101,
-        )));
-        let pb_resp = pb::AppendResponse::from_raft_response(resp.clone());
-        let back = pb_resp.into_raft_response();
-        assert_eq!(resp, back);
-    }
-
-    #[test]
-    fn test_append_response_conflict() {
-        let resp = raft_types::AppendEntriesResponse::Conflict;
-        let pb_resp = pb::AppendResponse::from_raft_response(resp.clone());
-        let back = pb_resp.into_raft_response();
-        assert_eq!(resp, back);
-    }
-
-    #[test]
-    fn test_append_response_higher_vote() {
-        let resp =
-            raft_types::AppendEntriesResponse::HigherVote(raft_types::Vote::new_committed(10, 2));
-        let pb_resp = pb::AppendResponse::from_raft_response(resp.clone());
-        let back = pb_resp.into_raft_response();
-        assert_eq!(resp, back);
     }
 
     fn conflict(hint: Option<Vec<raft_types::LogId>>) -> raft_types::AppendResult {

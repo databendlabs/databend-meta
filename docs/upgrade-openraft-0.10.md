@@ -43,10 +43,12 @@ this way, read the current state to see whether it was applied.
 - `pb::VoteRequest` has a new field `leadership_transfer_from`, and
   `pb::AppendResponse` has `conflict_hint`. Set them, for example to `None`,
   where these messages are built with struct literals.
-- `PbAppendResponseExt` no longer has `from_stream_result()` or
-  `into_stream_result()`. Use `from_append_result()` and
+- `PbAppendResponseExt` keeps only `from_append_result()` and
   `into_append_result()`, which convert `AppendResult` and keep the conflict
-  hint.
+  hint. `from_stream_result()`, `into_stream_result()`, `from_raft_response()`
+  and `into_raft_response()` are removed, and `raft_types` no longer exports
+  `StreamAppendResult` or `StreamAppendError`; use `AppendResult` and
+  `AppendError` instead.
 - `SnapshotChunkRequestV003::new_end_chunk()` takes the snapshot ID as a third
   argument, because `SnapshotMeta` no longer carries it. Read it from
   `DB::snapshot_id`.
