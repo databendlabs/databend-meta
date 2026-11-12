@@ -22,6 +22,7 @@ python3 test_meta_meta.py --test ElectionAfterLeaderLoss
 python3 test_meta_meta.py --test LaggedFollowerLogCatchup
 python3 test_meta_meta.py --old-version v1.2.873              # one old version, both directions
 python3 test_meta_meta.py --old-version v260205.4.0
+python3 test_meta_meta.py --old-version v260629.7.0              # last openraft alpha.29 release
 python3 test_meta_meta.py --direction current-to-old          # current is leader
 python3 test_meta_meta.py --direction old-to-current          # old version is leader
 python3 test_meta_meta.py --keep-data                         # preserve .test-data
@@ -41,6 +42,7 @@ crates/tests/raft-protocol-compat/
 ├── bin-current/         # standalone workspace, path deps on the working source tree
 ├── bin-v1.2.873/        # standalone workspace, git deps pinned to v1.2.873
 ├── bin-v260205.4.0/     # standalone workspace, git deps pinned to v260205.4.0
+├── bin-v260629.7.0/     # standalone workspace, git deps pinned to v260629.7.0
 ├── bin-v<TAG>/          # add more old versions by creating directories here
 └── test_meta_meta.py    # orchestrator (auto-discovers bin-current + bin-v*)
 ```
