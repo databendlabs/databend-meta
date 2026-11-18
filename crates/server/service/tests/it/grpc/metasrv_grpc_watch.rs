@@ -29,6 +29,8 @@ use databend_meta_client::MetaGrpcClient;
 use databend_meta_kvapi::KvApiExt;
 use databend_meta_runtime_api::SpawnApi;
 use databend_meta_runtime_api::TokioRuntime;
+use databend_meta_snapshot_store::MetaSnapshotId;
+use databend_meta_snapshot_store::SnapshotStore;
 use databend_meta_types::ConditionResult;
 use databend_meta_types::MatchSeq;
 use databend_meta_types::Operation;
@@ -37,6 +39,7 @@ use databend_meta_types::TxnDeleteByPrefixRequest;
 use databend_meta_types::TxnOp;
 use databend_meta_types::UpsertKV;
 use databend_meta_types::normalize_meta::NormalizeMeta;
+use databend_meta_types::protobuf as pb;
 use databend_meta_types::protobuf::Event;
 use databend_meta_types::protobuf::KvMeta;
 use databend_meta_types::protobuf::SeqV;
@@ -44,9 +47,14 @@ use databend_meta_types::protobuf::TxnRequest;
 use databend_meta_types::protobuf::WatchRequest;
 use databend_meta_types::protobuf::meta_service_client::MetaServiceClient;
 use databend_meta_types::protobuf::watch_request::FilterType;
+use databend_meta_types::raft_types::TypeConfig;
+use databend_meta_types::raft_types::Vote;
+use databend_meta_types::sys_data::SysData;
 use databend_meta_types::txn_condition;
 use databend_meta_types::txn_op;
+use futures::stream;
 use log::info;
+use openraft::testing::log_id;
 use test_harness::test;
 use tokio::time::sleep;
 use tonic::Code;
@@ -655,6 +663,80 @@ async fn test_watch_refuses_a_client_that_did_not_handshake() -> anyhow::Result<
     // The message names the missing token, which is what tells this refusal
     // apart from one the handshake version gate would produce.
     assert_eq!(status.message(), "Error auth-token-bin is empty");
+
+    Ok(())
+}
+
+/// A watch stream ends when a snapshot replaces the state machine: it would receive none of the
+/// changes the snapshot carries. A new watch reads the data of the snapshot.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_watch_ends_when_a_snapshot_is_installed() -> anyhow::Result<()> {
+    let (tc, _addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = grpc_client(&tc).await?;
+    client.upsert_kv(UpsertKV::update("a", b"a")).await?;
+
+    let watch = || WatchRequest::new(s("a"), Some(s("e"))).with_initial_flush(true);
+    let mut strm = client.watch_with_initialization(watch()).await?;
+    let first = strm.message().await?.unwrap();
+    assert_eq!(first.event.unwrap().current.unwrap().data, b("a"));
+    assert!(
+        strm.message()
+            .await?
+            .unwrap()
+            .is_initialization_complete_flag()
+    );
+
+    // A snapshot of a later log, in which `a` is `foo`, installed through the raft service. Its
+    // index must be above the locally committed ones.
+    let last_log_id = log_id::<TypeConfig>(10, 2, 100);
+    let snapshot_id = MetaSnapshotId::new(Some(last_log_id), 1);
+    let ss_store: SnapshotStore<TokioRuntime> = SnapshotStore::new(tc.config.raft_config.clone());
+    let db = {
+        let mut sys_data = SysData::default();
+        *sys_data.last_applied_mut() = Some(last_log_id);
+        let writer = ss_store.new_writer()?;
+        writer
+            .write_kv_stream(stream::iter([]), snapshot_id.clone(), sys_data)
+            .await?
+    };
+    let mut sys_data = db.sys_data().clone();
+    // The entry below has seq 1, and no entry may have a seq above `curr_seq`.
+    sys_data.update_seq(1);
+    let foo = databend_meta_types::SeqV::new(1, b("foo"));
+    let entries = vec![
+        pb::InstallEntryV004 {
+            version: 1,
+            key_values: vec![pb::StreamItem::new(s("kv--/a"), Some(foo.into()))],
+            commit: None,
+        },
+        pb::InstallEntryV004 {
+            version: 1,
+            key_values: vec![],
+            commit: Some(pb::Commit {
+                snapshot_id: snapshot_id.to_string(),
+                sys_data: serde_json::to_string(&sys_data)?,
+                vote: Some(pb::Vote::from(Vote::new_committed(10, 2))),
+            }),
+        },
+    ];
+    let mut raft_client = tc.raft_client().await?;
+    raft_client
+        .install_snapshot_v004(stream::iter(entries))
+        .await?;
+
+    let ended = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Ok(Some(_)) = strm.message().await {}
+    })
+    .await;
+    assert!(
+        ended.is_ok(),
+        "the watch stream is still open after a snapshot replaced the state machine"
+    );
+
+    let mut strm = client.watch_with_initialization(watch()).await?;
+    let first = strm.message().await?.unwrap();
+    assert_eq!(first.event.unwrap().current.unwrap().data, b("foo"));
 
     Ok(())
 }

@@ -308,6 +308,13 @@ impl<SP: SpawnApi> RaftStateMachineStore<SP> {
 
         self.set_inner(Arc::new(new_sm));
 
+        // Still under the writer permit: a watcher registered before the swap read the replaced
+        // state machine, and receives none of the changes the snapshot carries, while one
+        // registered after it reads the new state machine.
+        if let Some(on_snapshot_installed) = sm.get_on_snapshot_installed().as_ref() {
+            on_snapshot_installed();
+        }
+
         Ok(())
     }
 

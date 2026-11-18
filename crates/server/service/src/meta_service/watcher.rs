@@ -21,6 +21,7 @@ use std::ops::Deref;
 use databend_meta_types::SeqV;
 use databend_meta_types::protobuf::WatchResponse;
 use log::debug;
+use log::info;
 use tonic::Status;
 use watcher::dispatch::DispatcherHandle as GenericDispatcherHandle;
 use watcher::type_config::KVChange;
@@ -95,5 +96,27 @@ impl DispatcherHandle {
         };
         debug!("{}: new", h);
         h
+    }
+
+    /// Close every watch stream: the dispatcher drops their senders, so each stream ends after
+    /// the events already queued for it, and its client watches again, with a new initial flush.
+    pub fn close_all_watchers(&self, reason: &'static str) {
+        let name = self.name.clone();
+        self.request(move |dispatcher| {
+            let senders = dispatcher
+                .watch_senders()
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>();
+            info!(
+                "{}: close {} watch streams: {}",
+                name,
+                senders.len(),
+                reason
+            );
+            for sender in senders {
+                dispatcher.remove_watcher(sender);
+            }
+        });
     }
 }
