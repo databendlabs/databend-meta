@@ -103,7 +103,7 @@ async fn test_meta_node_graceful_shutdown() -> anyhow::Result<()> {
     let mut rx0 = mn0.raft.metrics();
 
     let joined = mn0.stop().await?;
-    assert_eq!(3, joined);
+    assert_eq!(4, joined);
 
     // tx closed:
     loop {
@@ -791,9 +791,9 @@ async fn test_meta_node_restart() -> anyhow::Result<()> {
     info!("shutting down all");
 
     let n = mn0.stop().await?;
-    assert_eq!(3, n);
+    assert_eq!(4, n);
     let n = mn1.stop().await?;
-    assert_eq!(3, n);
+    assert_eq!(4, n);
 
     info!("restart all");
 
