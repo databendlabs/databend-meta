@@ -37,6 +37,10 @@ use crate::applier::applier_data::ApplierData;
 use crate::applier::applier_data::OnChange;
 use crate::kv_api::StateMachineKVApi;
 
+/// Called when a snapshot replaced the state machine, see
+/// [`RaftStateMachineStore::do_install_snapshot`](crate::RaftStateMachineStore::do_install_snapshot).
+pub type OnSnapshotInstalled = Box<dyn Fn() + Send + Sync>;
+
 pub struct StateMachine {
     leveled_map: LeveledMap,
 
@@ -45,6 +49,9 @@ pub struct StateMachine {
 
     /// Callback when a change is applied to state machine
     pub(crate) on_change_applied: Arc<Mutex<Arc<Option<OnChange>>>>,
+
+    /// Callback when a snapshot replaced the state machine, shared with the replacement.
+    pub(crate) on_snapshot_installed: Arc<Mutex<Arc<Option<OnSnapshotInstalled>>>>,
 }
 
 impl Default for StateMachine {
@@ -53,6 +60,7 @@ impl Default for StateMachine {
             leveled_map: Default::default(),
             cleanup_start_time: Arc::new(Mutex::new(Duration::ZERO)),
             on_change_applied: Arc::new(Mutex::new(Arc::new(None))),
+            on_snapshot_installed: Arc::new(Mutex::new(Arc::new(None))),
         }
     }
 }
@@ -95,6 +103,7 @@ impl StateMachine {
             leveled_map: self.leveled_map.install_persisted(db),
             cleanup_start_time: self.cleanup_start_time.clone(),
             on_change_applied: self.on_change_applied.clone(),
+            on_snapshot_installed: self.on_snapshot_installed.clone(),
         };
 
         new_sm.leveled_map.with_sys_data(|s| *s = sys_data);
@@ -198,6 +207,15 @@ impl StateMachine {
     pub fn set_on_change_applied(&self, on_change_applied: OnChange) {
         let mut g = self.on_change_applied.lock().unwrap();
         *g = Arc::new(Some(on_change_applied));
+    }
+
+    pub fn get_on_snapshot_installed(&self) -> Arc<Option<OnSnapshotInstalled>> {
+        self.on_snapshot_installed.lock().unwrap().clone()
+    }
+
+    pub fn set_on_snapshot_installed(&self, on_snapshot_installed: OnSnapshotInstalled) {
+        let mut g = self.on_snapshot_installed.lock().unwrap();
+        *g = Arc::new(Some(on_snapshot_installed));
     }
 
     /// Get a singleton `Compactor` instance specific to `self`.

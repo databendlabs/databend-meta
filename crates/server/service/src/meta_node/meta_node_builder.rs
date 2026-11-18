@@ -94,6 +94,15 @@ impl<SP: SpawnApi> MetaNodeBuilder<SP> {
         sto.get_state_machine()
             .set_on_change_applied(Box::new(on_change_applied));
 
+        // A watch stream opened before a snapshot replaced the state machine misses the changes the
+        // snapshot carries: end it, so that its client watches again.
+        let on_snapshot_installed = {
+            let h = handle.clone();
+            move || h.close_all_watchers("a snapshot replaced the state machine")
+        };
+        sto.get_state_machine()
+            .set_on_snapshot_installed(Box::new(on_snapshot_installed));
+
         let meta_node = Arc::new(MetaNode {
             raft_store: sto.clone(),
             dispatcher_handle: handle,
