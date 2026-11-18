@@ -765,11 +765,12 @@ class RestartReplication(TestCase):
     follower — exercising AppendEntries against state loaded from disk.
     Run in both directions so log decoding is exercised on each version.
 
-    Note: openraft's leader-continuity optimization lets a node with a
-    committed Vote resume leadership at the same term without a fresh
-    RequestVote, so this restart pattern does not reliably trigger the vote
-    RPC. Forcing a real cross-version vote needs leader transfer or a 3-node
-    quorum-loss scenario.
+    Note: a restarted leader of openraft 0.10, the current version, runs a
+    new election, so with the current version as leader the restart triggers
+    a cross-version RequestVote. Older versions resume leadership at the same
+    term without one, by openraft's leader-continuity optimization. Forcing a
+    vote in both directions needs leader transfer or a 3-node quorum-loss
+    scenario.
     """
 
     def run(self, ctx: TestContext) -> dict[str, str]:
@@ -790,6 +791,13 @@ class RestartReplication(TestCase):
 
         ctx.leader.start(["--single"])
         ctx.follower.start(["--join", ctx.leader.raft_addr])
+        # The follower reports the leader of before the restart until it
+        # votes again, so only node 1 tells that it leads again: until then a
+        # write to it fails with no known leader.
+        ctx.leader.wait_status(
+            lambda s: s["state"] == "Leader" and s["current_leader"] == 1,
+            "node 1 leads again after restart",
+        )
         ctx.follower.wait_status(
             lambda s: s["current_leader"] is not None
             and (s["last_applied_index"] or 0) >= pre_restart_applied,
