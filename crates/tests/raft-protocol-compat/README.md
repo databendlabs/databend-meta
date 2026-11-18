@@ -95,13 +95,15 @@ to replicate cross-version.
 
 1. Start leader + follower; feed 5 KV pairs.
 2. Stop both; restart both with the same data dirs.
-3. Wait for follower's `last_applied_index` to match pre-restart value.
+3. Wait for the leader to lead again, and for follower's `last_applied_index`
+   to match pre-restart value.
 4. Feed 5 more; wait for follower to apply them.
 
-This restart pattern doesn't reliably trigger a vote RPC — openraft's
-leader-continuity optimization lets a restarted leader resume at the same
-term without a fresh `RequestVote`. A real cross-version vote test would
-need leader transfer or a 3-node quorum-loss scenario.
+A restarted leader of openraft 0.10, the current version, runs a new
+election, so with the current version as leader this restart triggers a
+cross-version `RequestVote`. Older versions resume at the same term without
+one, by openraft's leader-continuity optimization. A vote test in both
+directions would need leader transfer or a 3-node quorum-loss scenario.
 
 **`ElectionAfterLeaderLoss`** — a 3-voter mixed-version cluster elects a
 new leader after the original leader is stopped.
