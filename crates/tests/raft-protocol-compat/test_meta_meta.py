@@ -1049,6 +1049,7 @@ def main():
     last_ctx: Optional[TestContext] = None
     total = len(selected_tests) * len(selected_olds) * len(selected_dirs)
 
+    failed = True
     try:
         for test in selected_tests:
             for old in selected_olds:
@@ -1058,16 +1059,35 @@ def main():
                     last_ctx = ctx
                     test.execute(ctx)
         hr(f"ALL TESTS PASSED ({total}/{total})")
+        failed = False
     finally:
         # `stop_all` always runs so we don't leak processes; data wipe is
         # gated on --keep-data so failures or explicit requests can be
         # inspected after the run.
         if last_ctx is not None:
             last_ctx.stop_all()
+            if failed:
+                dump_logs(last_ctx)
             if args.keep_data:
                 banner(f"test data preserved at {last_ctx.data_dir}")
             else:
                 last_ctx.cleanup()
+
+
+def dump_logs(ctx: TestContext) -> None:
+    """Print the log of each node of `ctx`, of its last start, without the span lines.
+
+    Temporary: CI deletes the logs, and a failure of `RestartReplication` on
+    databend-meta#194 needs the log of the restarted leader.
+    """
+    for node in ctx.nodes():
+        banner(f"LOG of {node.role}: {node.log_path}")
+        if not node.log_path.exists():
+            print("  (missing)")
+            continue
+        for line in node.log_path.read_text(errors="replace").splitlines():
+            if "DEBUG tracing::span" not in line:
+                print(line)
 
 
 if __name__ == "__main__":
