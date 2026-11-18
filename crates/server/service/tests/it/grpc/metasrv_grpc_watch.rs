@@ -45,6 +45,7 @@ use databend_meta_types::protobuf::KvMeta;
 use databend_meta_types::protobuf::SeqV;
 use databend_meta_types::protobuf::TxnRequest;
 use databend_meta_types::protobuf::WatchRequest;
+use databend_meta_types::protobuf::WatchResponse;
 use databend_meta_types::protobuf::meta_service_client::MetaServiceClient;
 use databend_meta_types::protobuf::watch_request::FilterType;
 use databend_meta_types::raft_types::TypeConfig;
@@ -58,6 +59,7 @@ use openraft::testing::log_id;
 use test_harness::test;
 use tokio::time::sleep;
 use tonic::Code;
+use tonic::Streaming;
 
 use crate::testing::meta_service_test_harness;
 use crate::tests::service::grpc_client;
@@ -738,6 +740,68 @@ async fn test_watch_ends_when_a_snapshot_is_installed() -> anyhow::Result<()> {
     let first = strm.message().await?.unwrap();
     assert_eq!(first.event.unwrap().current.unwrap().data, b("foo"));
 
+    Ok(())
+}
+
+/// A leader cut off from a quorum still leads in its own view, but changes may be committed
+/// without it: once its lease expires, it ends its watch streams and refuses new ones.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_watch_ends_on_a_leader_without_a_quorum() -> anyhow::Result<()> {
+    let mut tcs = crate::tests::start_metasrv_cluster::<TokioRuntime>(&[0, 1, 2]).await?;
+    let client = make_client(tcs[0].config.grpc.api_address().unwrap())?;
+    let mut strm = open_watch(&client).await?;
+
+    tcs[1].grpc_srv.take().unwrap().do_stop(None).await;
+    tcs[2].grpc_srv.take().unwrap().do_stop(None).await;
+
+    // The lease is the maximal election timeout, 3 s by default, and the node checks it every
+    // heartbeat interval, 1 s.
+    assert_watch_ends(&mut strm, Duration::from_secs(15)).await;
+    assert_watch_refused(&client).await
+}
+
+/// A follower that has known no leader for longer than the election timeout ends its watch
+/// streams and refuses new ones.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_watch_ends_on_a_follower_without_a_leader() -> anyhow::Result<()> {
+    let mut tcs = crate::tests::start_metasrv_cluster::<TokioRuntime>(&[0, 1, 2]).await?;
+    let client = make_client(tcs[2].config.grpc.api_address().unwrap())?;
+    let mut strm = open_watch(&client).await?;
+
+    tcs[0].grpc_srv.take().unwrap().do_stop(None).await;
+    tcs[1].grpc_srv.take().unwrap().do_stop(None).await;
+
+    // An election timeout to give up the stopped leader, then another without a leader.
+    assert_watch_ends(&mut strm, Duration::from_secs(20)).await;
+    assert_watch_refused(&client).await
+}
+
+async fn open_watch(
+    client: &ClientHandle<TokioRuntime>,
+) -> anyhow::Result<Streaming<WatchResponse>> {
+    let mut established = client.make_established_client().await?;
+    let watch = WatchRequest::new(s("a"), Some(s("e")));
+    Ok(established.watch(watch).await?.into_inner())
+}
+
+async fn assert_watch_ends(strm: &mut Streaming<WatchResponse>, within: Duration) {
+    let ended = tokio::time::timeout(within, async {
+        while let Ok(Some(_)) = strm.message().await {}
+    })
+    .await;
+    assert!(
+        ended.is_ok(),
+        "the watch stream is still open after {within:?}"
+    );
+}
+
+async fn assert_watch_refused(client: &ClientHandle<TokioRuntime>) -> anyhow::Result<()> {
+    let mut established = client.make_established_client().await?;
+    let watch = WatchRequest::new(s("a"), Some(s("e")));
+    let err = established.watch(watch).await.unwrap_err();
+    assert_eq!(err.code(), Code::Unavailable, "{err}");
     Ok(())
 }
 

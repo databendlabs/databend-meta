@@ -18,6 +18,7 @@ use std::future;
 use std::io;
 use std::sync::Arc;
 use std::sync::Weak;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
 use std::time::Duration;
 
@@ -77,6 +78,7 @@ use openraft;
 use openraft::ChangeMembers;
 use openraft::Config;
 use openraft::Raft;
+use openraft::ReadPolicy;
 use openraft::ServerState;
 use openraft::SnapshotPolicy;
 use openraft::async_runtime::RecvError;
@@ -151,6 +153,10 @@ pub struct MetaNode<SP: SpawnApi> {
     pub running_rx: watch::Receiver<()>,
     pub join_handles: Mutex<Vec<JoinHandle<Result<(), AnyError>>>>,
     pub joined_tasks: AtomicI32,
+
+    /// Whether this node serves watch streams. It does not while it cannot tell that its state
+    /// machine is current, see [`Self::check_watch_streams_loop`].
+    pub(crate) serves_watches: AtomicBool,
 }
 
 impl<SP: SpawnApi> Drop for MetaNode<SP> {
@@ -300,6 +306,124 @@ impl<SP: SpawnApi> MetaNode<SP> {
         {
             let mut jh = mn.join_handles.lock().await;
             jh.push(h);
+        }
+    }
+
+    /// Spawn a task that ends the watch streams of this node, and refuses new ones, while it cannot
+    /// tell that its state machine is current, see [`Self::check_watch_streams_loop`].
+    pub async fn spawn_watch_streams_check(mn: Arc<Self>) {
+        let fut = Self::check_watch_streams_loop(mn.clone());
+
+        let h = SP::spawn(
+            fut.in_span(Span::enter_with_local_parent("check-watch-streams")),
+            Some("check-watch-streams".into()),
+        );
+
+        let mut jh = mn.join_handles.lock().await;
+        jh.push(h);
+    }
+
+    /// Every heartbeat interval, check whether this node can tell that its state machine is
+    /// current, see [`Self::stale_reason`].
+    ///
+    /// A node that cannot may be cut off from the leader, or be a leader cut off from a quorum,
+    /// which still leads in its own view: its watch streams miss changes with no sign of it. When
+    /// this node becomes such a node, end its watch streams, so that their clients watch elsewhere,
+    /// and refuse new ones until it can tell again.
+    async fn check_watch_streams_loop(mn: Arc<Self>) -> Result<(), AnyError> {
+        let config = mn.raft_store.config.clone();
+        let interval = Duration::from_millis(config.heartbeat_interval);
+        let election_timeout = Duration::from_millis(config.election_timeout().1);
+
+        let mut running_rx = mn.running_rx.clone();
+        let mut leaderless_since = None;
+
+        loop {
+            // `Ok` when the node stops, `Err` when the interval elapses.
+            if tokio::time::timeout(interval, running_rx.changed())
+                .await
+                .is_ok()
+            {
+                info!("quit check_watch_streams_loop: the node stops");
+                return Ok(());
+            }
+
+            let stale = mn
+                .stale_reason(election_timeout, &mut leaderless_since)
+                .await;
+
+            let Some(reason) = stale else {
+                let served = mn
+                    .serves_watches
+                    .swap(true, std::sync::atomic::Ordering::Relaxed);
+                if !served {
+                    info!("the state machine is known current again: serve watch streams");
+                }
+                continue;
+            };
+
+            if !mn.serves_watches.load(std::sync::atomic::Ordering::Relaxed) {
+                continue;
+            }
+
+            // Under the writer permit, under which `handle_watch` checks `serves_watches` and
+            // registers a watcher: a watcher is registered either before, and is closed, or after,
+            // and is refused.
+            let _permit = mn
+                .raft_store
+                .get_state_machine()
+                .acquire_writer_permit()
+                .await;
+            mn.serves_watches
+                .store(false, std::sync::atomic::Ordering::Relaxed);
+            warn!(
+                "{}: the state machine may not be current: end the watch streams and refuse new ones",
+                reason
+            );
+            mn.dispatcher_handle
+                .close_all_watchers("the state machine may not be current");
+        }
+    }
+
+    /// Why this node cannot tell that its state machine is current, or `None` if it can:
+    ///
+    /// - a leader whose lease expired: no quorum acknowledged it within the lease, so another node
+    ///   may lead and commit changes this one does not receive;
+    /// - a follower or candidate that has known no leader for longer than the election timeout.
+    ///
+    /// A learner is not checked. `leaderless_since` keeps, across the calls, since when this node
+    /// has known no leader.
+    async fn stale_reason(
+        &self,
+        election_timeout: Duration,
+        leaderless_since: &mut Option<Instant>,
+    ) -> Option<String> {
+        let (state, leader) = {
+            let rx = self.raft.metrics();
+            let m = rx.borrow_watched();
+            // A leader that is not a voter is no leader, see `get_leader`.
+            let leader = m
+                .current_leader
+                .filter(|id| m.membership_config.voter_ids().any(|v| &v == id));
+            (m.state, leader)
+        };
+
+        match state {
+            ServerState::Follower | ServerState::Candidate if leader.is_none() => {
+                let since = *leaderless_since.get_or_insert_with(Instant::now);
+                let elapsed = since.elapsed();
+                (elapsed > election_timeout).then(|| format!("no leader for {:?}", elapsed))
+            }
+            ServerState::Leader => {
+                *leaderless_since = None;
+                let res = self.raft.get_read_linearizer(ReadPolicy::LeaseRead).await;
+                res.err()
+                    .map(|e| format!("the leader lease expired: {}", e))
+            }
+            _ => {
+                *leaderless_since = None;
+                None
+            }
         }
     }
 
@@ -1318,6 +1442,13 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 .get_state_machine()
                 .acquire_writer_permit()
                 .await;
+
+            // Checked under the permit, see `check_watch_streams_loop`.
+            if !mn.serves_watches.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(Status::unavailable(
+                    "this node cannot tell that its state machine is current: watch another node",
+                ));
+            }
 
             let sm = mn.raft_store.get_state_machine();
 
