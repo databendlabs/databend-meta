@@ -778,6 +778,38 @@ async fn test_watch_ends_on_a_follower_without_a_leader() -> anyhow::Result<()> 
     assert_watch_refused(&client).await
 }
 
+/// A follower still connected to a leader in a minority must stop serving
+/// watches. The leader's quiet period lets the follower time out and campaign.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_watch_ends_on_a_follower_in_the_leaders_minority() -> anyhow::Result<()> {
+    let mut tcs = crate::tests::start_metasrv_cluster::<TokioRuntime>(&[0, 1, 2, 3, 4]).await?;
+    let follower = tcs[1].grpc_srv.as_ref().unwrap();
+    let node = follower.get_meta_node().await;
+    let wait = node.raft.wait(Some(Duration::from_secs(5)));
+    wait.metrics(
+        |m| {
+            let voters = m.membership_config.membership().voter_ids().count();
+            m.current_leader == Some(0) && voters == 5
+        },
+        "follower sees the leader and all five voters",
+    )
+    .await?;
+
+    let address = tcs[1].config.grpc.api_address().unwrap();
+    let client = make_client(address)?;
+    let mut stream = open_watch(&client).await?;
+
+    // Nodes 0 and 1 can still communicate, but cannot form a quorum.
+    for tc in &mut tcs[2..] {
+        let mut server = tc.grpc_srv.take().unwrap();
+        server.do_stop(None).await;
+    }
+
+    assert_watch_ends(&mut stream, Duration::from_secs(15)).await;
+    assert_watch_refused(&client).await
+}
+
 /// A Raft failure leaves the client-facing listener and handshake up. Both public
 /// watch APIs must move off that endpoint when it refuses a stream.
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
