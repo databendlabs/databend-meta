@@ -112,7 +112,7 @@ impl<SP: SpawnApi> MetaNodeBuilder<SP> {
             running_rx: rx,
             join_handles: Mutex::new(Vec::new()),
             joined_tasks: AtomicI32::new(1),
-            watches_admitted: Mutex::new(false),
+            watches_admitted: std::sync::Mutex::new(false),
         });
 
         MetaNode::subscribe_metrics(meta_node.clone(), raft.metrics()).await;
