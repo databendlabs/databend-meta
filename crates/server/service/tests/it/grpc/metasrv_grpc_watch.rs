@@ -32,6 +32,8 @@ use databend_meta_runtime_api::TokioRuntime;
 use databend_meta_snapshot_store::MetaSnapshotId;
 use databend_meta_snapshot_store::SnapshotStore;
 use databend_meta_types::ConditionResult;
+use databend_meta_types::Endpoint;
+use databend_meta_types::GrpcHelper;
 use databend_meta_types::MatchSeq;
 use databend_meta_types::Operation;
 use databend_meta_types::TxnCondition;
@@ -57,7 +59,6 @@ use databend_meta_types::txn_condition;
 use databend_meta_types::txn_op;
 use futures::stream;
 use log::info;
-use openraft::ServerState;
 use openraft::testing::log_id;
 use test_harness::test;
 use tokio::time::sleep;
@@ -740,11 +741,9 @@ async fn test_watch_ends_when_a_snapshot_is_installed() -> anyhow::Result<()> {
         "the watch stream is still open after a snapshot replaced the state machine"
     );
 
-    let mut strm = client.watch_with_initialization(watch()).await?;
-    let first = strm.message().await?.unwrap();
-    assert_eq!(first.event.unwrap().current.unwrap().data, b("foo"));
-
-    Ok(())
+    // The snapshot carries the vote of leader 2: this node follows it, and no longer serves
+    // watches.
+    assert_watch_refused(&client).await
 }
 
 /// A leader cut off from a quorum still leads in its own view, but changes may be committed
@@ -765,120 +764,72 @@ async fn test_watch_ends_on_a_leader_without_a_quorum() -> anyhow::Result<()> {
     assert_watch_refused(&client).await
 }
 
-/// A follower that has known no leader for longer than the election timeout ends its watch
-/// streams and refuses new ones.
+/// A leader whose state machine stops applying sends no changes, though its lease holds. It
+/// ends its watch streams within an election timeout, and serves watches again once it applies.
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
 #[fastrace::trace]
-async fn test_watch_ends_on_a_follower_without_a_leader() -> anyhow::Result<()> {
-    let mut tcs = crate::tests::start_metasrv_cluster::<TokioRuntime>(&[0, 1, 2]).await?;
-    let client = make_client(tcs[2].config.grpc.api_address().unwrap())?;
+async fn test_watch_ends_on_a_leader_that_stops_applying() -> anyhow::Result<()> {
+    let (tc, addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = make_client(&addr)?;
     let mut strm = open_watch(&client).await?;
 
-    tcs[0].grpc_srv.take().unwrap().do_stop(None).await;
-    tcs[1].grpc_srv.take().unwrap().do_stop(None).await;
-
-    // Allow one election timeout without fresh leader contact plus a watch check.
-    assert_watch_ends(&mut strm, Duration::from_secs(6)).await;
-    assert_watch_refused(&client).await
-}
-
-/// A follower still connected to a leader in a minority must stop serving
-/// watches. The leader's quiet period lets the follower time out and campaign.
-#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
-#[fastrace::trace]
-async fn test_watch_ends_on_a_follower_in_the_leaders_minority() -> anyhow::Result<()> {
-    let mut tcs = crate::tests::start_metasrv_cluster::<TokioRuntime>(&[0, 1, 2, 3, 4]).await?;
-    let follower = tcs[1].grpc_srv.as_ref().unwrap();
-    let node = follower.get_meta_node().await;
-    let wait = node.raft.wait(Some(Duration::from_secs(5)));
-    wait.metrics(
-        |m| {
-            let voters = m.membership_config.membership().voter_ids().count();
-            m.current_leader == Some(0) && voters == 5
+    let node = tc.grpc_srv.as_ref().unwrap().get_meta_node().await;
+    let sm = node.raft_store.get_state_machine();
+    let permit = sm.acquire_writer_permit().await;
+    let writer = make_client(&addr)?;
+    let _write = TokioRuntime::spawn(
+        async move {
+            let _ = writer.upsert_kv(UpsertKV::update("a", b"live")).await;
         },
-        "follower sees the leader and all five voters",
-    )
-    .await?;
+        None,
+    );
 
-    let address = tcs[1].config.grpc.api_address().unwrap();
-    let client = make_client(address)?;
-    let mut stream = open_watch(&client).await?;
+    // A 3 s election timeout to apply, after a 1 s check interval.
+    assert_watch_ends(&mut strm, Duration::from_secs(8)).await;
+    assert_watch_refused(&client).await?;
 
-    // Nodes 0 and 1 can still communicate, but cannot form a quorum.
-    for tc in &mut tcs[2..] {
-        let mut server = tc.grpc_srv.take().unwrap();
-        server.do_stop(None).await;
-    }
-
-    assert_watch_ends(&mut stream, Duration::from_secs(15)).await;
-    assert_watch_refused(&client).await
+    drop(permit);
+    open_watch(&client).await?;
+    Ok(())
 }
 
-/// A learner does not campaign, so the old leader can remain in its vote after
-/// replication stops and across a restart. Neither is evidence of fresh contact.
+/// Only the leader serves watches: a follower or learner cannot tell whether the leader that
+/// replicates to it still has a quorum. Each refuses a watch and names the leader, as it does
+/// for a request that it forwards.
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
 #[fastrace::trace]
-async fn test_watch_refuses_a_learner_without_fresh_leader_contact() -> anyhow::Result<()> {
-    let (mut leader, _) = crate::tests::start_metasrv::<TokioRuntime>().await?;
-    let leader_raft_address = leader
+async fn test_watch_refused_on_a_follower_and_a_learner() -> anyhow::Result<()> {
+    let mut tcs = crate::tests::start_metasrv_cluster::<TokioRuntime>(&[0, 1, 2]).await?;
+    let leader_raft_address = tcs[0]
         .config
         .raft_config
         .raft_api_addr::<TokioRuntime>()
         .await?;
-    let mut learner = MetaSrvTestContext::<TokioRuntime>::new(1);
+    let mut learner = MetaSrvTestContext::<TokioRuntime>::new(3);
     learner.config.raft_config.single = false;
     learner.config.raft_config.learner = true;
     learner.config.raft_config.join = vec![leader_raft_address.to_string()];
     crate::tests::start_metasrv_with_context(&mut learner).await?;
-    {
-        let server = learner.grpc_srv.as_ref().unwrap();
-        let node = server.get_meta_node().await;
+    tcs.push(learner);
+
+    let leader = Endpoint::parse(&tcs[0].config.grpc.api_address().unwrap())?;
+    for tc in &tcs[2..] {
+        let node = tc.grpc_srv.as_ref().unwrap().get_meta_node().await;
         let wait = node.raft.wait(Some(Duration::from_secs(5)));
-        wait.metrics(
-            |m| {
-                let membership = &m.committed_membership_config;
-                let Some(membership_id) = membership.log_id() else {
-                    return false;
-                };
-                membership.get_node(&1).is_some()
-                    && m.last_applied
-                        .is_some_and(|id| id.index >= membership_id.index)
-            },
-            "learner has applied its own membership",
-        )
-        .await?;
+        wait.current_leader(0, "the node knows the leader").await?;
+
+        let client = grpc_client(tc).await?;
+        let mut established = client.make_established_client().await?;
+        let watch = WatchRequest::new(s("a"), Some(s("e")));
+        let err = established.watch(watch).await.unwrap_err();
+        assert_eq!(err.code(), Code::Unavailable, "{err}");
+        let named = GrpcHelper::parse_leader_from_metadata(err.metadata());
+        assert_eq!(named, Some(leader.clone()));
     }
-    let client = grpc_client(&learner).await?;
-    let mut stream = open_watch(&client).await?;
-
-    let mut leader_server = leader.grpc_srv.take().unwrap();
-    leader_server.do_stop(None).await;
-    assert_watch_ends(&mut stream, Duration::from_secs(6)).await;
-    assert_watch_refused(&client).await?;
-
-    let mut learner_server = learner.grpc_srv.take().unwrap();
-    learner_server.do_stop(None).await;
-    // Disable joining on restart: the learner already has the on-disk cluster state.
-    learner.config.raft_config.join.clear();
-    learner.config.grpc.listen_port = None;
-    sleep(Duration::from_secs(1)).await;
-    crate::tests::start_metasrv_with_context(&mut learner).await?;
-    let server = learner.grpc_srv.as_ref().unwrap();
-    let node = server.get_meta_node().await;
-    let metrics = node
-        .raft
-        .wait(Some(Duration::from_secs(2)))
-        .current_leader(0, "a committed vote survives restart")
-        .await?;
-    assert_eq!(metrics.state, ServerState::Learner);
-    let member = metrics.membership_config.get_node(&1);
-    assert!(member.is_some());
-
-    let client = grpc_client(&learner).await?;
-    assert_watch_refused(&client).await
+    Ok(())
 }
 
-/// A Raft failure leaves the client-facing listener and handshake up. Both public
+/// A node that refuses a watch keeps its client-facing listener and handshake up. Both public
 /// watch APIs must move off that endpoint when it refuses a stream.
 #[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
 #[fastrace::trace]
@@ -890,20 +841,16 @@ async fn test_watch_reconnects_on_another_node_after_refusal() -> anyhow::Result
         .collect();
     let stale_addr = addresses[2].clone();
     let client = make_client_with_endpoints(addresses.clone())?;
-    client.set_current_endpoint(stale_addr.clone());
     let request = || WatchRequest::new(s("a"), Some(s("e")));
-    let mut stream = open_watch(&client).await?;
 
     let server = tcs[2].grpc_srv.as_ref().unwrap();
     let node = server.get_meta_node().await;
     node.raft.shutdown().await?;
-    // A stopped Raft must end watches on the next check, not after an election timeout.
-    assert_watch_ends(&mut stream, Duration::from_secs(3)).await;
-
     let stale_client = make_client(&stale_addr)?;
     assert_watch_refused(&stale_client).await?;
 
     // Exercise both APIs independently, starting from the stale endpoint each time.
+    client.set_current_endpoint(stale_addr.clone());
     let mut stream = client.watch(request()).await?;
     let leader = make_client(&addresses[0])?;
     leader.upsert_kv(UpsertKV::update("a", b"live")).await?;

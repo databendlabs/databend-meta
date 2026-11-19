@@ -76,7 +76,6 @@ use maplit::btreemap;
 use openraft;
 use openraft::ChangeMembers;
 use openraft::Config;
-use openraft::Instant as _;
 use openraft::LinearizerOption;
 use openraft::Raft;
 use openraft::ServerState;
@@ -84,7 +83,6 @@ use openraft::SnapshotPolicy;
 use openraft::async_runtime::RecvError;
 use openraft::async_runtime::WatchReceiver as WatchReceiverTrait;
 use openraft::error::RaftError;
-use openraft::errors::ForwardReason;
 use openraft::errors::LinearizableReadError;
 use peel_off::Peel;
 use state_machine_api::UserKey;
@@ -331,10 +329,10 @@ impl<SP: SpawnApi> MetaNode<SP> {
     /// Every heartbeat interval, check whether this node can tell that its state machine is
     /// current, see [`Self::stale_reason`].
     ///
-    /// A node that cannot may be cut off from the leader, or be a leader cut off from a quorum,
-    /// which still leads in its own view: its watch streams miss changes with no sign of it. When
-    /// this node becomes such a node, end its watch streams, so that their clients watch elsewhere,
-    /// and refuse new ones until it can tell again.
+    /// A leader cut off from a quorum still leads in its own view, and a leader whose state
+    /// machine stops applying sends no changes: its watch streams miss changes with no sign of
+    /// it. When this node can no longer tell, end its watch streams, so that their clients watch
+    /// elsewhere, and refuse new ones until it can tell again.
     async fn check_watch_streams_loop(mn: Arc<Self>) -> Result<(), AnyError> {
         let interval = Duration::from_millis(mn.raft_store.config.heartbeat_interval);
         let mut running_rx = mn.running_rx.clone();
@@ -367,20 +365,39 @@ impl<SP: SpawnApi> MetaNode<SP> {
             .close_all_watchers("the state machine may not be current");
     }
 
-    /// A leader needs its quorum lease; a follower or learner needs recent
-    /// replication from the voter it currently recognizes as leader.
+    /// Build the status that refuses a watch. Like a forwarded request, it names the leader
+    /// when this node knows another node leads, so that the client watches there.
+    async fn watch_refused(&self, reason: &str) -> Status {
+        info!("refuse a watch: {reason}");
+
+        let leader = self.raft.metrics().borrow_watched().current_leader;
+        let leader = leader.filter(|id| *id != self.raft_store.id);
+        if leader.is_none() {
+            return Status::unavailable(
+                "this node cannot tell that its state machine is current: watch another node",
+            );
+        }
+        let endpoint = self.get_leader_endpoint(leader).await;
+        GrpcHelper::status_forward_to_leader(endpoint.as_ref())
+    }
+
+    /// Only a leader serves watches. A follower or learner cannot tell whether the leader that
+    /// replicates to it still has a quorum: a leader in a minority keeps replicating to it.
+    ///
+    /// The leader needs its quorum lease, and must apply through the log that the lease confirms
+    /// within an election timeout: a state machine that stops applying sends no changes either.
     async fn stale_reason(&self) -> Option<String> {
         // A new leader may not have received its first quorum acknowledgement yet.
         let option = LinearizerOption::new(None, true);
         let option = option.with_wait_timeout(Duration::from_millis(200));
-        let leadership = match self.raft.get_read_linearizer(option).await {
-            Ok(read) => Ok(*read.read_log_id().committed_leader_id()),
+        let read = match self.raft.get_read_linearizer(option).await {
+            Ok(read) => read,
             Err(RaftError::APIError(LinearizableReadError::QuorumNotEnough(err))) => {
                 return Some(format!("the leader has no quorum lease: {err}"));
             }
             Err(RaftError::Fatal(err)) => return Some(format!("raft stopped: {err}")),
             Err(RaftError::APIError(LinearizableReadError::ForwardToLeader(forward))) => {
-                Err(forward)
+                return Some(format!("only the leader serves watches: {forward}"));
             }
         };
         let id = self.raft_store.id;
@@ -389,10 +406,9 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 state.membership_state.effective().clone(),
                 *state.vote_ref(),
                 state.server_state,
-                state.last_leader_contact(),
             )
         });
-        let (membership, vote, server_state, last_leader_contact) = match raft_state.await {
+        let (membership, vote, server_state) = match raft_state.await {
             Ok(state) => state,
             Err(err) => return Some(format!("raft stopped: {err}")),
         };
@@ -401,34 +417,23 @@ impl<SP: SpawnApi> MetaNode<SP> {
         }
 
         let leader = vote.leader_id();
-        let leader_id = leader.node_id;
-        let leader_is_voter = membership.voter_ids().any(|id| id == leader_id);
-        let forward = match leadership {
-            Ok(lease_leader) => {
-                if server_state == ServerState::Leader && leader_is_voter && lease_leader == *leader
-                {
-                    return None;
-                }
-                return Some("leadership changed while checking the watch lease".to_string());
-            }
-            Err(forward) => forward,
-        };
-        if forward.reason != ForwardReason::NotLeader
-            || forward.leader_id != Some(leader_id)
-            || leader_id == id
-            || !leader_is_voter
-        {
-            return Some(format!("no active voter leader: {forward}"));
+        let leader_is_voter = membership.voter_ids().any(|id| id == leader.node_id);
+        let lease_leader = *read.read_log_id().committed_leader_id();
+        if server_state != ServerState::Leader || !leader_is_voter || lease_leader != *leader {
+            return Some("leadership changed while checking the watch lease".to_string());
         }
 
         let election_timeout = Duration::from_millis(self.raft_store.config.election_timeout().1);
-        let Some(contact) = last_leader_contact else {
-            return Some(format!("no replication from leader {leader_id} yet"));
-        };
-        if contact.elapsed() < election_timeout {
-            return None;
+        match read
+            .try_await_ready(&self.raft, Some(election_timeout))
+            .await
+        {
+            Ok(Ok(_applied)) => None,
+            Ok(Err(state)) => Some(format!(
+                "the state machine has not applied the lease-confirmed log in {election_timeout:?}: {state}"
+            )),
+            Err(err) => Some(format!("raft stopped: {err}")),
         }
-        Some(format!("no recent replication from leader {leader_id}"))
     }
 
     /// Report metrics changes periodically.
@@ -1409,9 +1414,7 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 mn.close_stale_watches(&reason);
                 *admitted = false;
             }
-            return Err(Status::unavailable(
-                "this node cannot tell that its state machine is current: watch another node",
-            ));
+            return Err(mn.watch_refused(&reason).await);
         }
 
         // Atomically:
