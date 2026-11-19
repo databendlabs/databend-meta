@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
 
 use databend_meta_raft_config::MetaStartupError;
@@ -113,7 +112,7 @@ impl<SP: SpawnApi> MetaNodeBuilder<SP> {
             running_rx: rx,
             join_handles: Mutex::new(Vec::new()),
             joined_tasks: AtomicI32::new(1),
-            serves_watches: AtomicBool::new(true),
+            watches_admitted: Mutex::new(false),
         });
 
         MetaNode::subscribe_metrics(meta_node.clone(), raft.metrics()).await;
