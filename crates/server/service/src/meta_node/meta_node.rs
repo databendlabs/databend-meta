@@ -15,6 +15,7 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::future;
+use std::future::Future;
 use std::io;
 use std::sync::Arc;
 use std::sync::Weak;
@@ -154,9 +155,9 @@ pub struct MetaNode<SP: SpawnApi> {
     pub join_handles: Mutex<Vec<JoinHandle<Result<(), AnyError>>>>,
     pub joined_tasks: AtomicI32,
 
-    /// Serializes watch admission with invalidation. True once a watch has been
-    /// admitted since the last invalidation.
-    pub(crate) watches_admitted: Mutex<bool>,
+    /// True once a watch has been admitted since the watch streams were last ended. Held only
+    /// briefly, never across an await, see [`Self::admit_watch`].
+    pub(crate) watches_admitted: std::sync::Mutex<bool>,
 }
 
 impl<SP: SpawnApi> Drop for MetaNode<SP> {
@@ -347,22 +348,38 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 return Ok(());
             }
 
-            let mut admitted = mn.watches_admitted.lock().await;
-            if !*admitted {
+            // Skip the check while no watch has been admitted since the streams were last ended.
+            if !*mn.watches_admitted.lock().unwrap() {
                 continue;
             }
             if let Some(reason) = mn.stale_reason().await {
                 mn.close_stale_watches(&reason);
-                *admitted = false;
             }
         }
     }
 
-    /// Call with `watches_admitted` locked so a new watch cannot slip past the closure.
+    /// End the watch streams, if any has been admitted since they were last ended.
     fn close_stale_watches(&self, reason: &str) {
+        let mut admitted = self.watches_admitted.lock().unwrap();
+        if !*admitted {
+            return;
+        }
+        *admitted = false;
+
         warn!("{reason}: the state machine may not be current: end the watch streams");
         self.dispatcher_handle
             .close_all_watchers("the state machine may not be current");
+    }
+
+    /// Admit a watch, and return the future that completes when the watch streams are ended,
+    /// see [`DispatcherHandle::closed`].
+    ///
+    /// Both under one lock: an ending that runs concurrently either ends this watch or leaves
+    /// it admitted, so that the next check covers it.
+    fn admit_watch(&self) -> impl Future<Output = ()> + Send + 'static {
+        let mut admitted = self.watches_admitted.lock().unwrap();
+        *admitted = true;
+        self.dispatcher_handle.closed()
     }
 
     /// Build the status that refuses a watch. Like a forwarded request, it names the leader
@@ -1408,12 +1425,9 @@ impl<SP: SpawnApi> MetaNode<SP> {
         let (tx, rx) = mpsc::channel(4);
 
         let mn = self;
-        let mut admitted = mn.watches_admitted.lock().await;
+        // Refuse early, before waiting for the writer permit, e.g. on a follower.
         if let Some(reason) = mn.stale_reason().await {
-            if *admitted {
-                mn.close_stale_watches(&reason);
-                *admitted = false;
-            }
+            mn.close_stale_watches(&reason);
             return Err(mn.watch_refused(&reason).await);
         }
 
@@ -1462,13 +1476,12 @@ impl<SP: SpawnApi> MetaNode<SP> {
 
             let sm = mn.raft_store.get_state_machine();
 
-            // Subscribed under the permit: a snapshot installed after this ends the stream.
-            let closed = mn.dispatcher_handle.closed();
+            // Admitted under the permit: a snapshot installed after this ends the stream.
+            let closed = mn.admit_watch();
 
             let sender = mn.new_watch_sender(watch, tx.clone())?;
             let sender_str = sender.to_string();
             let weak_sender = mn.insert_watch_sender(sender);
-            *admitted = true;
 
             // Build a closure to remove the stream tx from Dispatcher when the stream is dropped.
             let on_drop = {
@@ -1532,6 +1545,14 @@ impl<SP: SpawnApi> MetaNode<SP> {
 
             stream
         };
+
+        // This node may have become stale while waiting for the permit, and a check that ended
+        // the watch streams meanwhile did not cover this one. Check again: from here on, the
+        // periodic check covers it.
+        if let Some(reason) = mn.stale_reason().await {
+            mn.close_stale_watches(&reason);
+            return Err(mn.watch_refused(&reason).await);
+        }
         Ok(Box::pin(stream))
     }
 

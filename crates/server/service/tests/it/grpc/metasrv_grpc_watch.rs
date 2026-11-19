@@ -902,6 +902,38 @@ async fn test_watch_ends_while_a_slow_watcher_blocks_the_dispatcher() -> anyhow:
     Ok(())
 }
 
+/// A watch setup that waits for the state machine writer permit must not delay ending the
+/// other watch streams, and is refused once it gets the permit if this node became stale
+/// meanwhile.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_watch_ends_while_a_watch_setup_waits_for_the_permit() -> anyhow::Result<()> {
+    let (tc, addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = make_client(&addr)?;
+    let mut strm = open_watch(&client).await?;
+
+    let node = tc.grpc_srv.as_ref().unwrap().get_meta_node().await;
+    let sm = node.raft_store.get_state_machine();
+    let permit = sm.acquire_writer_permit().await;
+    let mut established = client.make_established_client().await?;
+    let watch = WatchRequest::new(s("a"), Some(s("e")));
+    let mut opening = std::pin::pin!(established.watch(watch));
+    let waiting = tokio::time::timeout(Duration::from_millis(500), &mut opening).await;
+    assert!(
+        waiting.is_err(),
+        "the watch setup does not wait for the permit"
+    );
+
+    node.raft.shutdown().await?;
+    assert_watch_ends(&mut strm, Duration::from_secs(3)).await;
+
+    drop(permit);
+    let opened = tokio::time::timeout(Duration::from_secs(2), opening).await?;
+    let err = opened.unwrap_err();
+    assert_eq!(err.code(), Code::Unavailable, "{err}");
+    Ok(())
+}
+
 async fn open_watch(
     client: &ClientHandle<TokioRuntime>,
 ) -> anyhow::Result<Streaming<WatchResponse>> {
