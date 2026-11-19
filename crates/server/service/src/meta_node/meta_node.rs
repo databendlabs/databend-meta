@@ -18,7 +18,6 @@ use std::future;
 use std::io;
 use std::sync::Arc;
 use std::sync::Weak;
-use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
 use std::time::Duration;
 
@@ -77,6 +76,7 @@ use maplit::btreemap;
 use openraft;
 use openraft::ChangeMembers;
 use openraft::Config;
+use openraft::Instant as _;
 use openraft::LinearizerOption;
 use openraft::Raft;
 use openraft::ServerState;
@@ -84,6 +84,7 @@ use openraft::SnapshotPolicy;
 use openraft::async_runtime::RecvError;
 use openraft::async_runtime::WatchReceiver as WatchReceiverTrait;
 use openraft::error::RaftError;
+use openraft::errors::ForwardReason;
 use openraft::errors::LinearizableReadError;
 use peel_off::Peel;
 use state_machine_api::UserKey;
@@ -155,9 +156,9 @@ pub struct MetaNode<SP: SpawnApi> {
     pub join_handles: Mutex<Vec<JoinHandle<Result<(), AnyError>>>>,
     pub joined_tasks: AtomicI32,
 
-    /// Whether this node serves watch streams. It does not while it cannot tell that its state
-    /// machine is current, see [`Self::check_watch_streams_loop`].
-    pub(crate) serves_watches: AtomicBool,
+    /// Serializes watch admission with invalidation. True once a watch has been
+    /// admitted since the last invalidation.
+    pub(crate) watches_admitted: Mutex<bool>,
 }
 
 impl<SP: SpawnApi> Drop for MetaNode<SP> {
@@ -335,12 +336,8 @@ impl<SP: SpawnApi> MetaNode<SP> {
     /// this node becomes such a node, end its watch streams, so that their clients watch elsewhere,
     /// and refuse new ones until it can tell again.
     async fn check_watch_streams_loop(mn: Arc<Self>) -> Result<(), AnyError> {
-        let config = mn.raft_store.config.clone();
-        let interval = Duration::from_millis(config.heartbeat_interval);
-        let election_timeout = Duration::from_millis(config.election_timeout().1);
-
+        let interval = Duration::from_millis(mn.raft_store.config.heartbeat_interval);
         let mut running_rx = mn.running_rx.clone();
-        let mut leaderless_since = None;
 
         loop {
             // `Ok` when the node stops, `Err` when the interval elapses.
@@ -352,85 +349,86 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 return Ok(());
             }
 
-            let stale = mn
-                .stale_reason(election_timeout, &mut leaderless_since)
-                .await;
-
-            let Some(reason) = stale else {
-                let served = mn
-                    .serves_watches
-                    .swap(true, std::sync::atomic::Ordering::Relaxed);
-                if !served {
-                    info!("the state machine is known current again: serve watch streams");
-                }
-                continue;
-            };
-
-            if !mn.serves_watches.load(std::sync::atomic::Ordering::Relaxed) {
+            let mut admitted = mn.watches_admitted.lock().await;
+            if !*admitted {
                 continue;
             }
-
-            // Under the writer permit, under which `handle_watch` checks `serves_watches` and
-            // registers a watcher: a watcher is registered either before, and is closed, or after,
-            // and is refused.
-            let _permit = mn
-                .raft_store
-                .get_state_machine()
-                .acquire_writer_permit()
-                .await;
-            mn.serves_watches
-                .store(false, std::sync::atomic::Ordering::Relaxed);
-            warn!(
-                "{}: the state machine may not be current: end the watch streams and refuse new ones",
-                reason
-            );
-            mn.dispatcher_handle
-                .close_all_watchers("the state machine may not be current");
+            if let Some(reason) = mn.stale_reason().await {
+                mn.close_stale_watches(&reason);
+                *admitted = false;
+            }
         }
     }
 
-    /// Why this node cannot tell that its state machine is current, or `None` if it can. A lease
-    /// read tells: only a leader whose lease is valid serves it, and any other node names the
-    /// leader to forward to, if it knows one.
-    ///
-    /// - If no quorum acknowledged a leader within its lease, ask for a heartbeat and wait briefly.
-    ///   This gives a newly elected leader time to receive its first acknowledgement without
-    ///   giving an isolated leader another election timeout.
-    /// - A stopped Raft core is stale without waiting for an election.
-    /// - A node that knows no leader is stale once that lasts longer than the election timeout.
-    ///   `leaderless_since` keeps, across the calls, since when it has known no leader.
-    ///
-    /// A node that knows a leader, a learner included, counts as current.
-    async fn stale_reason(
-        &self,
-        election_timeout: Duration,
-        leaderless_since: &mut Option<Instant>,
-    ) -> Option<String> {
+    /// Call with `watches_admitted` locked so a new watch cannot slip past the closure.
+    fn close_stale_watches(&self, reason: &str) {
+        warn!("{reason}: the state machine may not be current: end the watch streams");
+        self.dispatcher_handle
+            .close_all_watchers("the state machine may not be current");
+    }
+
+    /// A leader needs its quorum lease; a follower or learner needs recent
+    /// replication from the voter it currently recognizes as leader.
+    async fn stale_reason(&self) -> Option<String> {
+        // A new leader may not have received its first quorum acknowledgement yet.
         let option = LinearizerOption::new(None, true);
         let option = option.with_wait_timeout(Duration::from_millis(200));
-        let res = self.raft.get_read_linearizer(option).await;
-        let forward = match res {
-            Ok(_) => {
-                *leaderless_since = None;
-                return None;
-            }
+        let leadership = match self.raft.get_read_linearizer(option).await {
+            Ok(read) => Ok(*read.read_log_id().committed_leader_id()),
             Err(RaftError::APIError(LinearizableReadError::QuorumNotEnough(err))) => {
-                *leaderless_since = None;
                 return Some(format!("the leader has no quorum lease: {err}"));
             }
-            Err(RaftError::Fatal(err)) => {
-                return Some(format!("raft stopped: {err}"));
+            Err(RaftError::Fatal(err)) => return Some(format!("raft stopped: {err}")),
+            Err(RaftError::APIError(LinearizableReadError::ForwardToLeader(forward))) => {
+                Err(forward)
             }
-            Err(RaftError::APIError(LinearizableReadError::ForwardToLeader(forward))) => forward,
         };
-        if forward.leader_id.is_some() {
-            *leaderless_since = None;
-            return None;
+        let id = self.raft_store.id;
+        let raft_state = self.raft.with_raft_state(|state| {
+            (
+                state.membership_state.effective().clone(),
+                *state.vote_ref(),
+                state.server_state,
+                state.last_leader_contact(),
+            )
+        });
+        let (membership, vote, server_state, last_leader_contact) = match raft_state.await {
+            Ok(state) => state,
+            Err(err) => return Some(format!("raft stopped: {err}")),
+        };
+        if membership.get_node(&id).is_none() {
+            return Some("this node is not in the cluster membership".to_string());
         }
 
-        let since = *leaderless_since.get_or_insert_with(Instant::now);
-        let elapsed = since.elapsed();
-        (elapsed > election_timeout).then(|| format!("no leader for {elapsed:?}: {forward}"))
+        let leader = vote.leader_id();
+        let leader_id = leader.node_id;
+        let leader_is_voter = membership.voter_ids().any(|id| id == leader_id);
+        let forward = match leadership {
+            Ok(lease_leader) => {
+                if server_state == ServerState::Leader && leader_is_voter && lease_leader == *leader
+                {
+                    return None;
+                }
+                return Some("leadership changed while checking the watch lease".to_string());
+            }
+            Err(forward) => forward,
+        };
+        if forward.reason != ForwardReason::NotLeader
+            || forward.leader_id != Some(leader_id)
+            || leader_id == id
+            || !leader_is_voter
+        {
+            return Some(format!("no active voter leader: {forward}"));
+        }
+
+        let election_timeout = Duration::from_millis(self.raft_store.config.election_timeout().1);
+        let Some(contact) = last_leader_contact else {
+            return Some(format!("no replication from leader {leader_id} yet"));
+        };
+        if contact.elapsed() < election_timeout {
+            return None;
+        }
+        Some(format!("no recent replication from leader {leader_id}"))
     }
 
     /// Report metrics changes periodically.
@@ -1405,6 +1403,16 @@ impl<SP: SpawnApi> MetaNode<SP> {
         let (tx, rx) = mpsc::channel(4);
 
         let mn = self;
+        let mut admitted = mn.watches_admitted.lock().await;
+        if let Some(reason) = mn.stale_reason().await {
+            if *admitted {
+                mn.close_stale_watches(&reason);
+                *admitted = false;
+            }
+            return Err(Status::unavailable(
+                "this node cannot tell that its state machine is current: watch another node",
+            ));
+        }
 
         // Atomically:
         // - add watcher tx to dispatcher;
@@ -1449,18 +1457,12 @@ impl<SP: SpawnApi> MetaNode<SP> {
                 .acquire_writer_permit()
                 .await;
 
-            // Checked under the permit, see `check_watch_streams_loop`.
-            if !mn.serves_watches.load(std::sync::atomic::Ordering::Relaxed) {
-                return Err(Status::unavailable(
-                    "this node cannot tell that its state machine is current: watch another node",
-                ));
-            }
-
             let sm = mn.raft_store.get_state_machine();
 
             let sender = mn.new_watch_sender(watch, tx.clone())?;
             let sender_str = sender.to_string();
             let weak_sender = mn.insert_watch_sender(sender);
+            *admitted = true;
 
             // Build a closure to remove the stream tx from Dispatcher when the stream is dropped.
             let on_drop = {

@@ -886,7 +886,7 @@ dependencies = [
  "databend-meta-types",
  "databend-meta-version",
  "derive_more 2.1.1",
- "display-more 0.2.6",
+ "display-more 0.2.7",
  "fastrace",
  "feature-set",
  "futures",
@@ -923,7 +923,7 @@ dependencies = [
  "anyerror",
  "deepsize",
  "derive_more 2.1.1",
- "display-more 0.2.6",
+ "display-more 0.2.7",
  "map-api",
  "seq-marked",
  "serde",
@@ -948,7 +948,7 @@ dependencies = [
  "databend-meta-runtime-api",
  "databend-meta-version",
  "derive_more 2.1.1",
- "display-more 0.2.6",
+ "display-more 0.2.7",
  "fastrace",
  "futures",
  "futures-util",
@@ -1009,7 +1009,7 @@ version = "260629.7.0"
 dependencies = [
  "async-trait",
  "databend-meta-client-types",
- "display-more 0.2.6",
+ "display-more 0.2.7",
  "futures-util",
  "log",
  "serde",
@@ -1023,7 +1023,7 @@ dependencies = [
  "anyhow",
  "databend-meta-client-types",
  "databend-meta-kvapi",
- "display-more 0.2.6",
+ "display-more 0.2.7",
  "fastrace",
  "futures-util",
  "log",
@@ -1040,7 +1040,7 @@ dependencies = [
  "databend-base",
  "databend-meta-snapshot-db",
  "databend-meta-types",
- "display-more 0.2.6",
+ "display-more 0.2.7",
  "futures",
  "futures-async-stream",
  "futures-util",
@@ -1075,7 +1075,7 @@ dependencies = [
  "databend-meta-base",
  "deepsize",
  "derive_more 2.1.1",
- "display-more 0.2.6",
+ "display-more 0.2.7",
  "map-api",
  "num-derive",
  "num-traits",
@@ -1118,7 +1118,7 @@ dependencies = [
  "anyerror",
  "databend-meta-types",
  "deepsize",
- "display-more 0.2.6",
+ "display-more 0.2.7",
  "fastrace",
  "itertools 0.13.0",
  "log",
@@ -1208,7 +1208,7 @@ dependencies = [
  "databend-meta-snapshot-db",
  "databend-meta-snapshot-store",
  "databend-meta-types",
- "display-more 0.2.6",
+ "display-more 0.2.7",
  "fastrace",
  "futures",
  "futures-util",
@@ -1261,7 +1261,7 @@ dependencies = [
  "databend-meta-proto",
  "deepsize",
  "derive_more 2.1.1",
- "display-more 0.2.6",
+ "display-more 0.2.7",
  "log",
  "map-api",
  "num-traits",
@@ -1379,13 +1379,9 @@ dependencies = [
 
 [[package]]
 name = "display-more"
-version = "0.2.6"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf8aaad655bf39f0691f6f4025a8b58f1ff46fb12cb70f6d69e4f0dd2eb717a8"
-dependencies = [
- "chrono",
- "chrono-tz",
-]
+checksum = "00f2a9f14c274f4514d5f1590da31c8a74659f557df982361d036cb3432f89a1"
 
 [[package]]
 name = "dtoa"
@@ -2452,17 +2448,16 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "openraft"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2628033834a66c7c5bf54c49673a5bbba7192fbcf529314449a0393cb15f7ad0"
+checksum = "d327a24b1daed791b4aaf14f6f6b5a23abf7b1952afad6f091e8fc5f71403222"
 dependencies = [
  "anyerror",
  "backoff-series",
  "base2histogram",
- "chrono",
  "clap",
  "derive_more 2.1.1",
- "display-more 0.2.6",
+ "display-more 0.2.7",
  "futures-util",
  "itertools 0.15.0",
  "maplit",
@@ -2483,11 +2478,10 @@ dependencies = [
 
 [[package]]
 name = "openraft-macros"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb0e4b4a60803c9e1be56f6d68a3792b55575800e12632702b4917462dfcbe3a"
+checksum = "f3b10ab72e76b9be32669b7e650b67fe3db825b5bb41d9d47c4dc782355fcdd3"
 dependencies = [
- "chrono",
  "proc-macro2",
  "quote",
  "semver",
@@ -2496,9 +2490,9 @@ dependencies = [
 
 [[package]]
 name = "openraft-rt"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1089aaaeca4e4e3a1381492d7d0e2fddff5a25120f692c6398376070ae7746f9"
+checksum = "45f10019e3c1bfc75a6270addac570d692588c3bebcd18f60a2cbd6cbd0655fc"
 dependencies = [
  "futures-channel",
  "futures-util",
@@ -2509,9 +2503,9 @@ dependencies = [
 
 [[package]]
 name = "openraft-rt-tokio"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad2945155051eadf1c7dd4c8626192fc63203d6178c49658c15db945b93bb1a4"
+checksum = "346d0d56c907f19682088616c286a95e479af9475618c754ba902fab3fb6756c"
 dependencies = [
  "futures-util",
  "openraft-rt",
@@ -2986,7 +2980,7 @@ dependencies = [
  "byteorder",
  "chunked-wal",
  "codeq 0.6.0",
- "display-more 0.2.6",
+ "display-more 0.2.7",
  "log",
  "thiserror 1.0.69",
 ]
