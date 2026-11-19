@@ -192,6 +192,9 @@ impl<SP: SpawnApi> MetaNode<SP> {
             heartbeat_interval: hb,
             election_timeout_min: election_timeouts.0,
             election_timeout_max: election_timeouts.1,
+            // After losing quorum, leave room for a follower's lease and election timer to expire
+            // before probing again. OpenRaft uses election_timeout_max as the leader lease.
+            quorum_loss_probe_interval: Some(election_timeouts.1.saturating_mul(2)),
             install_snapshot_timeout: config.install_snapshot_timeout,
             snapshot_policy: SnapshotPolicy::LogsSinceLast(config.snapshot_logs_since_last),
             max_in_snapshot_log_to_keep: config.max_applied_log_to_keep,
