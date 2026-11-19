@@ -77,14 +77,14 @@ use maplit::btreemap;
 use openraft;
 use openraft::ChangeMembers;
 use openraft::Config;
+use openraft::LinearizerOption;
 use openraft::Raft;
-use openraft::ReadPolicy;
 use openraft::ServerState;
 use openraft::SnapshotPolicy;
 use openraft::async_runtime::RecvError;
 use openraft::async_runtime::WatchReceiver as WatchReceiverTrait;
 use openraft::error::RaftError;
-use openraft::errors::ForwardReason;
+use openraft::errors::LinearizableReadError;
 use peel_off::Peel;
 use state_machine_api::UserKey;
 use tokio::sync::Mutex;
@@ -390,8 +390,10 @@ impl<SP: SpawnApi> MetaNode<SP> {
     /// read tells: only a leader whose lease is valid serves it, and any other node names the
     /// leader to forward to, if it knows one.
     ///
-    /// - A leader whose lease expired is stale at once: no quorum acknowledged it within the lease,
-    ///   so another node may lead and commit changes this one does not receive.
+    /// - If no quorum acknowledged a leader within its lease, ask for a heartbeat and wait briefly.
+    ///   This gives a newly elected leader time to receive its first acknowledgement without
+    ///   giving an isolated leader another election timeout.
+    /// - A stopped Raft core is stale without waiting for an election.
     /// - A node that knows no leader is stale once that lasts longer than the election timeout.
     ///   `leaderless_since` keeps, across the calls, since when it has known no leader.
     ///
@@ -401,31 +403,31 @@ impl<SP: SpawnApi> MetaNode<SP> {
         election_timeout: Duration,
         leaderless_since: &mut Option<Instant>,
     ) -> Option<String> {
-        let res = self.raft.get_read_linearizer(ReadPolicy::LeaseRead).await;
-        let err = match res {
+        let option = LinearizerOption::new(None, true);
+        let option = option.with_wait_timeout(Duration::from_millis(200));
+        let res = self.raft.get_read_linearizer(option).await;
+        let forward = match res {
             Ok(_) => {
                 *leaderless_since = None;
                 return None;
             }
-            Err(err) => err,
-        };
-
-        let leader_known = match err.forward_to_leader() {
-            Some(forward) if forward.reason == ForwardReason::LeaseExpired => {
+            Err(RaftError::APIError(LinearizableReadError::QuorumNotEnough(err))) => {
                 *leaderless_since = None;
-                return Some(format!("the leader lease expired: {}", err));
+                return Some(format!("the leader has no quorum lease: {err}"));
             }
-            Some(forward) => forward.leader_id.is_some(),
-            None => false,
+            Err(RaftError::Fatal(err)) => {
+                return Some(format!("raft stopped: {err}"));
+            }
+            Err(RaftError::APIError(LinearizableReadError::ForwardToLeader(forward))) => forward,
         };
-        if leader_known {
+        if forward.leader_id.is_some() {
             *leaderless_since = None;
             return None;
         }
 
         let since = *leaderless_since.get_or_insert_with(Instant::now);
         let elapsed = since.elapsed();
-        (elapsed > election_timeout).then(|| format!("no leader for {:?}: {}", elapsed, err))
+        (elapsed > election_timeout).then(|| format!("no leader for {elapsed:?}: {forward}"))
     }
 
     /// Report metrics changes periodically.
