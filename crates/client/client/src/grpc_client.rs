@@ -362,7 +362,7 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
                 Response::Watch(resp)
             }
             message::Request::WatchWithInitialization((r, _)) => {
-                let resp = self.watch_with_initialization(r).await;
+                let resp = self.watch(r).await;
                 Response::WatchWithInitialization(resp)
             }
             message::Request::Export(r) => {
@@ -709,30 +709,33 @@ impl<RT: RuntimeApi> MetaGrpcClient<RT> {
         &self,
         watch_request: WatchRequest,
     ) -> Result<Streaming<WatchResponse>, MetaClientError> {
-        debug!("{}: handle watch request: {:?}", self, watch_request);
-
-        let mut client = self.get_established_client().await?;
-
-        let res = client.watch(watch_request).await?;
-        Ok(res.into_inner())
+        tokio::time::timeout(
+            self.read_response_timeout,
+            self.open_watch_with_retries(watch_request),
+        )
+        .await
+        .map_err(|_| Status::deadline_exceeded("meta watch response retry budget exhausted"))?
     }
 
-    /// Create a watching stream that receives KV change events.
-    ///
-    /// This method is similar to `watch`, but it also sends all existing key-values with `is_initialization=true`
-    /// before starting the watch stream.
-    #[fastrace::trace]
-    #[async_backtrace::framed]
-    pub(crate) async fn watch_with_initialization(
+    async fn open_watch_with_retries(
         &self,
         watch_request: WatchRequest,
     ) -> Result<Streaming<WatchResponse>, MetaClientError> {
         debug!("{}: handle watch request: {:?}", self, watch_request);
 
-        let mut client = self.get_established_client().await?;
+        let mut rpc_handler = RpcHandler::new_read(self);
+        for _ in 0..RPC_RETRIES {
+            let client = rpc_handler.new_established_client().await?;
+            let result = client.watch(watch_request.clone()).await;
+            let action = rpc_handler.process_response_result(&watch_request, result)?;
+            match action {
+                ResponseAction::Success(response) => return Ok(response.into_inner()),
+                ResponseAction::ShouldRetry => continue,
+            }
+        }
 
-        let res = client.watch(watch_request).await?;
-        Ok(res.into_inner())
+        let err = rpc_handler.create_network_error();
+        Err(err.into())
     }
 
     /// Export all data in json from metasrv.
