@@ -778,6 +778,49 @@ async fn test_watch_ends_on_a_follower_without_a_leader() -> anyhow::Result<()> 
     assert_watch_refused(&client).await
 }
 
+/// A Raft failure leaves the client-facing listener and handshake up. Both public
+/// watch APIs must move off that endpoint when it refuses a stream.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_watch_reconnects_on_another_node_after_refusal() -> anyhow::Result<()> {
+    let tcs = crate::tests::start_metasrv_cluster::<TokioRuntime>(&[0, 1, 2]).await?;
+    let addresses: Vec<_> = tcs
+        .iter()
+        .map(|tc| tc.config.grpc.api_address().unwrap())
+        .collect();
+    let stale_addr = addresses[2].clone();
+    let client = make_client_with_endpoints(addresses.clone())?;
+    client.set_current_endpoint(stale_addr.clone());
+    let request = || WatchRequest::new(s("a"), Some(s("e")));
+    let mut stream = client.watch(request()).await?;
+
+    let server = tcs[2].grpc_srv.as_ref().unwrap();
+    let node = server.get_meta_node().await;
+    node.raft.shutdown().await?;
+    assert_watch_ends(&mut stream, Duration::from_secs(15)).await;
+
+    let stale_client = make_client(&stale_addr)?;
+    assert_watch_refused(&stale_client).await?;
+
+    // Exercise both APIs independently, starting from the stale endpoint each time.
+    let mut stream = client.watch(request()).await?;
+    let leader = make_client(&addresses[0])?;
+    leader.upsert_kv(UpsertKV::update("a", b"live")).await?;
+    let response = tokio::time::timeout(Duration::from_secs(5), stream.message()).await??;
+    let event = response.unwrap().event.unwrap();
+    assert_eq!(event.current.unwrap().data, b("live"));
+
+    client.set_current_endpoint(stale_addr);
+    let mut stream = client
+        .watch_with_initialization(request().with_initial_flush(true))
+        .await?;
+    let response = tokio::time::timeout(Duration::from_secs(5), stream.message()).await??;
+    let event = response.unwrap().event.unwrap();
+    assert_eq!(event.current.unwrap().data, b("live"));
+
+    Ok(())
+}
+
 async fn open_watch(
     client: &ClientHandle<TokioRuntime>,
 ) -> anyhow::Result<Streaming<WatchResponse>> {
@@ -837,8 +880,14 @@ fn add_event(key: &str, res_seq: u64, res_val: &str, meta: Option<KvMeta>) -> Ev
 }
 
 fn make_client(addr: impl ToString) -> anyhow::Result<Arc<ClientHandle<TokioRuntime>>> {
+    make_client_with_endpoints(vec![addr.to_string()])
+}
+
+fn make_client_with_endpoints(
+    addresses: Vec<String>,
+) -> anyhow::Result<Arc<ClientHandle<TokioRuntime>>> {
     let client = MetaGrpcClient::<TokioRuntime>::try_create(
-        vec![addr.to_string()],
+        addresses,
         "root",
         "xxx",
         None,
