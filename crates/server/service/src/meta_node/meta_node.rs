@@ -1459,6 +1459,9 @@ impl<SP: SpawnApi> MetaNode<SP> {
 
             let sm = mn.raft_store.get_state_machine();
 
+            // Subscribed under the permit: a snapshot installed after this ends the stream.
+            let closed = mn.dispatcher_handle.closed();
+
             let sender = mn.new_watch_sender(watch, tx.clone())?;
             let sender_str = sender.to_string();
             let weak_sender = mn.insert_watch_sender(sender);
@@ -1473,6 +1476,9 @@ impl<SP: SpawnApi> MetaNode<SP> {
             };
 
             let stream = WatchStream::new(rx, Box::new(on_drop));
+
+            // End the stream when the watchers are closed, even while the dispatcher is blocked.
+            let stream = stream.take_until(closed);
 
             let stream = stream.map(move |item| {
                 if let Ok(ref resp) = item {

@@ -15,6 +15,7 @@
 //! This mod integrates watcher into meta service
 
 use std::fmt;
+use std::future::Future;
 use std::io::Error;
 use std::ops::Deref;
 
@@ -22,6 +23,7 @@ use databend_meta_types::SeqV;
 use databend_meta_types::protobuf::WatchResponse;
 use log::debug;
 use log::info;
+use tokio::sync::watch;
 use tonic::Status;
 use watcher::dispatch::DispatcherHandle as GenericDispatcherHandle;
 use watcher::type_config::KVChange;
@@ -66,6 +68,9 @@ impl TypeConfig for WatchTypes {
 pub struct DispatcherHandle {
     handle: GenericDispatcherHandle<WatchTypes>,
     name: String,
+
+    /// Incremented by [`Self::close_all_watchers`]; see [`Self::closed`].
+    close_generation: watch::Sender<u64>,
 }
 
 impl Drop for DispatcherHandle {
@@ -93,14 +98,34 @@ impl DispatcherHandle {
         let h = DispatcherHandle {
             handle,
             name: id.to_string(),
+            close_generation: watch::channel(0).0,
         };
         debug!("{}: new", h);
         h
     }
 
-    /// Close every watch stream: the dispatcher drops their senders, so each stream ends after
-    /// the events already queued for it, and its client watches again, with a new initial flush.
+    /// Return a future that completes when [`Self::close_all_watchers`] is called after this
+    /// call returns, or when this handle is dropped. A watch stream ends when it completes.
+    ///
+    /// Call it under the state machine writer permit, as the snapshot installation calls
+    /// `close_all_watchers`, so that a stream opened on a replaced state machine is closed.
+    pub fn closed(&self) -> impl Future<Output = ()> + Send + 'static {
+        let mut generation = self.close_generation.subscribe();
+        async move {
+            // An error means this handle is dropped: the stream receives no more changes.
+            let _ = generation.changed().await;
+        }
+    }
+
+    /// Close every watch stream: each stream ends at once and drops the events still queued for
+    /// it, and its client watches again, with a new initial flush.
+    ///
+    /// The streams end without waiting for the dispatcher, which may be blocked sending to a
+    /// watcher whose client does not read. The dispatcher drops their senders later.
     pub fn close_all_watchers(&self, reason: &'static str) {
+        self.close_generation
+            .send_modify(|generation| *generation += 1);
+
         let name = self.name.clone();
         self.request(move |dispatcher| {
             let senders = dispatcher

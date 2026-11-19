@@ -922,6 +922,39 @@ async fn test_watch_reconnects_on_another_node_after_refusal() -> anyhow::Result
     Ok(())
 }
 
+/// A watcher whose client does not read blocks the dispatcher in a send. The other watch
+/// streams must still end when this node stops serving watches.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_watch_ends_while_a_slow_watcher_blocks_the_dispatcher() -> anyhow::Result<()> {
+    let (tc, addr) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let client = make_client(&addr)?;
+    let mut strm = open_watch(&client).await?;
+
+    // Its channel holds one event: the dispatcher blocks sending it the second.
+    let node = tc.grpc_srv.as_ref().unwrap().get_meta_node().await;
+    let (tx, slow_rx) = tokio::sync::mpsc::channel(1);
+    let key = s("slow");
+    let range = watcher::key_range::build_key_range(&key, &None).unwrap();
+    let filter = watcher::EventFilter::all();
+    node.dispatcher_handle
+        .add_watcher(range, filter, tx)
+        .await
+        .unwrap();
+    client.upsert_kv(UpsertKV::update(&key, b"one")).await?;
+    client.upsert_kv(UpsertKV::update(&key, b"two")).await?;
+    let idle = node.dispatcher_handle.request_blocking(|_| ());
+    let blocked = tokio::time::timeout(Duration::from_millis(500), idle).await;
+    assert!(blocked.is_err(), "the dispatcher is not blocked");
+
+    node.raft.shutdown().await?;
+    assert_watch_ends(&mut strm, Duration::from_secs(3)).await;
+    assert_watch_refused(&client).await?;
+
+    drop(slow_rx);
+    Ok(())
+}
+
 async fn open_watch(
     client: &ClientHandle<TokioRuntime>,
 ) -> anyhow::Result<Streaming<WatchResponse>> {
