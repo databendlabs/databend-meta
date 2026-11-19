@@ -15,8 +15,10 @@
 //! Meta service impl a grpc server that serves both raft protocol: append_entries, vote and install_snapshot.
 //! It also serves RPC for user-data access.
 
+use std::collections::VecDeque;
 use std::io;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use databend_base::counter::Counter;
 use databend_meta_client::MetaGrpcReadReq;
@@ -46,9 +48,12 @@ use databend_meta_types::protobuf::SnapshotResponseV003;
 use databend_meta_types::protobuf::StreamItem;
 use databend_meta_types::protobuf::raft_service_server::RaftService;
 use databend_meta_types::raft_types::AppendEntriesRequest;
+use databend_meta_types::raft_types::AppendError;
+use databend_meta_types::raft_types::AppendResult;
 use databend_meta_types::raft_types::SnapshotMeta;
 use databend_meta_types::raft_types::TransferLeaderRequest;
 use databend_meta_types::raft_types::TransferLeaderResponse;
+use databend_meta_types::raft_types::Vote;
 use databend_meta_types::raft_types::VoteRequest;
 use databend_meta_types::sys_data::SysData;
 use fastrace::func_name;
@@ -63,6 +68,7 @@ use raft_metrics::network::incr_snapshot_recvfrom_result;
 use seq_marked::SeqMarked;
 use state_machine_api::MetaValue;
 use state_machine_api::SeqV;
+use tokio::time::Instant;
 use tonic::Request;
 use tonic::Response;
 use tonic::Status;
@@ -88,6 +94,17 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
             let message: &RaftRequest = request.get_ref();
             let bytes = message.data.len() as u64;
             raft_metrics::network::incr_recvfrom_bytes(addr.to_string(), bytes);
+        }
+    }
+
+    fn record_append_contact(
+        node: &MetaNode<SP>,
+        vote: Vote,
+        received_at: Instant,
+        result: &AppendResult,
+    ) {
+        if matches!(result, Ok(_) | Err(AppendError::Conflict { .. })) {
+            node.record_leader_contact(vote, received_at);
         }
     }
 
@@ -128,6 +145,7 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
             snapshot: db,
         };
 
+        let received_at = Instant::now();
         let res = self
             .meta_node
             .raft
@@ -138,6 +156,9 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
         incr_snapshot_recvfrom_result(addr.clone(), res.is_ok());
 
         let resp = res?;
+        if resp.vote == req_vote {
+            self.meta_node.record_leader_contact(req_vote, received_at);
+        }
 
         let resp = SnapshotResponseV003::new_with_vote(resp.vote);
         Ok(Response::new(resp))
@@ -238,6 +259,7 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
             snapshot: db,
         };
 
+        let received_at = Instant::now();
         let res = self
             .meta_node
             .raft
@@ -248,6 +270,9 @@ impl<SP: SpawnApi> RaftServiceImpl<SP> {
         incr_snapshot_recvfrom_result(addr.clone(), res.is_ok());
 
         let snapshot_response = res?;
+        if snapshot_response.vote == req_vote {
+            self.meta_node.record_leader_contact(req_vote, received_at);
+        }
 
         info!("V004 snapshot installation completed successfully");
 
@@ -392,6 +417,8 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
             self.incr_meta_metrics_recv_bytes_from_peer(&request);
 
             let ae_req: AppendEntriesRequest = GrpcHelper::parse_req(request)?;
+            let vote = ae_req.vote;
+            let received_at = Instant::now();
             let req_summary = ae_req.summary();
             let raft = &self.meta_node.raft;
 
@@ -409,6 +436,8 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
                 "RaftServiceImpl::append_entries: from:{remote_addr} done: {}",
                 req_summary
             );
+
+            Self::record_append_contact(&self.meta_node, vote, received_at, &resp);
 
             // Keep the existing unary wire response; AppendResult itself is not a wire type.
             let response = databend_meta_types::raft_types::AppendEntriesResponse::from(resp);
@@ -535,11 +564,25 @@ impl<SP: SpawnApi> RaftService for RaftServiceImpl<SP> {
             );
         });
 
-        let raft = &self.meta_node.raft;
-        let output = raft.stream_append(input_stream);
+        // OpenRaft returns results in input order and bounds the number of
+        // outstanding requests. Track each vote until its result is known.
+        let pending = Arc::new(Mutex::new(VecDeque::new()));
+        let input_pending = pending.clone();
+        let input_stream = input_stream.inspect(move |request| {
+            let contact = (request.vote, Instant::now());
+            input_pending.lock().unwrap().push_back(contact);
+        });
 
-        let output_stream = output.map(|result| match result {
-            Ok(append_result) => Ok(pb::AppendResponse::from_append_result(append_result)),
+        let node = self.meta_node.clone();
+        let output = node.raft.stream_append(input_stream);
+        let output_stream = output.map(move |result| match result {
+            Ok(append_result) => {
+                let contact = pending.lock().unwrap().pop_front();
+                if let Some((vote, received_at)) = contact {
+                    Self::record_append_contact(&node, vote, received_at, &append_result);
+                }
+                Ok(pb::AppendResponse::from_append_result(append_result))
+            }
             Err(fatal) => Err(Status::internal(fatal.to_string())),
         });
 

@@ -48,6 +48,8 @@ use databend_meta_types::protobuf::WatchRequest;
 use databend_meta_types::protobuf::WatchResponse;
 use databend_meta_types::protobuf::meta_service_client::MetaServiceClient;
 use databend_meta_types::protobuf::watch_request::FilterType;
+use databend_meta_types::raft_types::Membership;
+use databend_meta_types::raft_types::StoredMembership;
 use databend_meta_types::raft_types::TypeConfig;
 use databend_meta_types::raft_types::Vote;
 use databend_meta_types::sys_data::SysData;
@@ -55,6 +57,7 @@ use databend_meta_types::txn_condition;
 use databend_meta_types::txn_op;
 use futures::stream;
 use log::info;
+use openraft::ServerState;
 use openraft::testing::log_id;
 use test_harness::test;
 use tokio::time::sleep;
@@ -62,6 +65,7 @@ use tonic::Code;
 use tonic::Streaming;
 
 use crate::testing::meta_service_test_harness;
+use crate::tests::service::MetaSrvTestContext;
 use crate::tests::service::grpc_client;
 
 async fn test_watch_main(
@@ -697,6 +701,10 @@ async fn test_watch_ends_when_a_snapshot_is_installed() -> anyhow::Result<()> {
     let db = {
         let mut sys_data = SysData::default();
         *sys_data.last_applied_mut() = Some(last_log_id);
+        let voters = [0, 2].into_iter().collect();
+        let membership = Membership::new_with_defaults(vec![voters], []);
+        let membership_id = log_id::<TypeConfig>(10, 2, 99);
+        *sys_data.last_membership_mut() = StoredMembership::new(Some(membership_id), membership);
         let writer = ss_store.new_writer()?;
         writer
             .write_kv_stream(stream::iter([]), snapshot_id.clone(), sys_data)
@@ -807,6 +815,66 @@ async fn test_watch_ends_on_a_follower_in_the_leaders_minority() -> anyhow::Resu
     }
 
     assert_watch_ends(&mut stream, Duration::from_secs(15)).await;
+    assert_watch_refused(&client).await
+}
+
+/// A learner does not campaign, so the old leader can remain in its vote after
+/// replication stops and across a restart. Neither is evidence of fresh contact.
+#[test(harness = meta_service_test_harness::<TokioRuntime, _, _>)]
+#[fastrace::trace]
+async fn test_watch_refuses_a_learner_without_fresh_leader_contact() -> anyhow::Result<()> {
+    let (mut leader, _) = crate::tests::start_metasrv::<TokioRuntime>().await?;
+    let leader_raft_address = leader
+        .config
+        .raft_config
+        .raft_api_addr::<TokioRuntime>()
+        .await?;
+    let mut learner = MetaSrvTestContext::<TokioRuntime>::new(1);
+    learner.config.raft_config.single = false;
+    learner.config.raft_config.learner = true;
+    learner.config.raft_config.join = vec![leader_raft_address.to_string()];
+    crate::tests::start_metasrv_with_context(&mut learner).await?;
+    let client = grpc_client(&learner).await?;
+    let mut stream = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match open_watch(&client).await {
+                Ok(stream) => return Ok::<_, anyhow::Error>(stream),
+                Err(err) => {
+                    let Some(status) = err.downcast_ref::<tonic::Status>() else {
+                        return Err(err);
+                    };
+                    if status.code() != Code::Unavailable {
+                        return Err(err);
+                    }
+                }
+            }
+            sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await??;
+
+    let mut leader_server = leader.grpc_srv.take().unwrap();
+    leader_server.do_stop(None).await;
+    assert_watch_ends(&mut stream, Duration::from_secs(6)).await;
+    assert_watch_refused(&client).await?;
+
+    let mut learner_server = learner.grpc_srv.take().unwrap();
+    learner_server.do_stop(None).await;
+    // Disable joining on restart: the learner already has the on-disk cluster state.
+    learner.config.raft_config.join.clear();
+    learner.config.grpc.listen_port = None;
+    sleep(Duration::from_secs(1)).await;
+    crate::tests::start_metasrv_with_context(&mut learner).await?;
+    let server = learner.grpc_srv.as_ref().unwrap();
+    let node = server.get_meta_node().await;
+    let metrics = node
+        .raft
+        .wait(Some(Duration::from_secs(2)))
+        .current_leader(0, "a committed vote survives restart")
+        .await?;
+    assert_eq!(metrics.state, ServerState::Learner);
+
+    let client = grpc_client(&learner).await?;
     assert_watch_refused(&client).await
 }
 
