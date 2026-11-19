@@ -49,9 +49,14 @@ use crate::rpc_handler::is_local_h2_goaway;
 use crate::rpc_handler::observe_read_stream;
 use crate::types::protobuf::HandshakeResponse;
 use crate::types::protobuf::StreamItem;
+use crate::types::protobuf::WatchRequest;
 
 fn worker(address: &str, budget: Duration) -> MetaGrpcClient<TokioRuntime> {
-    let endpoints = Arc::new(Mutex::new(Endpoints::new([address])));
+    worker_with_endpoints(&[address], budget)
+}
+
+fn worker_with_endpoints(addresses: &[&str], budget: Duration) -> MetaGrpcClient<TokioRuntime> {
+    let endpoints = Arc::new(Mutex::new(Endpoints::new(addresses.iter().copied())));
     let manager = MetaChannelManager::new(
         "root",
         "",
@@ -64,7 +69,7 @@ fn worker(address: &str, budget: Duration) -> MetaGrpcClient<TokioRuntime> {
     MetaGrpcClient {
         conn_pool: Pool::new(manager, Duration::from_millis(1)),
         endpoints,
-        endpoints_str: vec![address.to_string()],
+        endpoints_str: addresses.iter().map(ToString::to_string).collect(),
         auto_sync_interval: None,
         read_response_timeout: budget,
         _phantom: PhantomData,
@@ -328,6 +333,20 @@ async fn test_actual_read_loop_exhausts_attempts_without_retrying_quota() {
     })
     .await
     .unwrap();
+}
+
+#[tokio::test]
+async fn test_watch_setup_rotates_after_unavailable() {
+    let (stale, stale_requests, _stale_server) = failing_peer(Code::Unavailable).await;
+    let (other, other_requests, _other_server) = failing_peer(Code::PermissionDenied).await;
+    let client = worker_with_endpoints(&[&stale, &other], Duration::from_secs(2));
+    client.endpoints.lock().set_current(Some(&stale)).unwrap();
+
+    let request = WatchRequest::new("a".to_string(), None);
+    let error = client.watch(request).await.unwrap_err();
+
+    assert_eq!(stale_requests.load(Ordering::SeqCst), 1, "{error}");
+    assert_eq!(other_requests.load(Ordering::SeqCst), 1, "{error}");
 }
 
 #[tokio::test]
