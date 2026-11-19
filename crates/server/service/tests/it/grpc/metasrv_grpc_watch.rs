@@ -755,9 +755,9 @@ async fn test_watch_ends_on_a_leader_without_a_quorum() -> anyhow::Result<()> {
     tcs[1].grpc_srv.take().unwrap().do_stop(None).await;
     tcs[2].grpc_srv.take().unwrap().do_stop(None).await;
 
-    // The lease is the maximal election timeout, 3 s by default, and the node checks it every
-    // heartbeat interval, 1 s.
-    assert_watch_ends(&mut strm, Duration::from_secs(15)).await;
+    // The lease is 3 s by default. A 1 s check interval and a short quorum probe
+    // may delay closure, but another election timeout would exceed this bound.
+    assert_watch_ends(&mut strm, Duration::from_secs(6)).await;
     assert_watch_refused(&client).await
 }
 
@@ -797,7 +797,8 @@ async fn test_watch_reconnects_on_another_node_after_refusal() -> anyhow::Result
     let server = tcs[2].grpc_srv.as_ref().unwrap();
     let node = server.get_meta_node().await;
     node.raft.shutdown().await?;
-    assert_watch_ends(&mut stream, Duration::from_secs(15)).await;
+    // A stopped Raft must end watches on the next check, not after an election timeout.
+    assert_watch_ends(&mut stream, Duration::from_secs(3)).await;
 
     let stale_client = make_client(&stale_addr)?;
     assert_watch_refused(&stale_client).await?;
