@@ -612,7 +612,7 @@ checksum = "cfec3827d0ac8bce1998c2991795f3ec0ea45b4fb2f14b87585a57fb35b5c039"
 dependencies = [
  "base2histogram",
  "byteorder",
- "codeq 0.6.0",
+ "codeq",
  "fs2",
  "log",
  "thiserror 1.0.69",
@@ -660,22 +660,9 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "codeq"
-version = "0.5.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a72a59f33777d39160f5b4a8a258732cb6b538607c28b65eaa3b96f7cd35b994"
-dependencies = [
- "anyhow",
- "byteorder",
- "crc32fast",
- "derive_more 1.0.0",
- "serde",
-]
-
-[[package]]
-name = "codeq"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ed6506d61f6bd1ee4f67f589c632cd3ee6fbbf468a00c166785d466f8bae81e"
+checksum = "221906fe77cc0646950a3d768e14d3cc780c3c499f10eae5737ea42441486fd1"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -2972,14 +2959,14 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "raft-log"
-version = "0.4.6"
+version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d01737994dee2308488e1009544d3898991a9fb2282673a57f6e8b67e242bdc9"
+checksum = "e0a612d4c6238dab43f68118f47c26bac08fd50b80a060c2073c3177c084ec1f"
 dependencies = [
  "base2histogram",
  "byteorder",
  "chunked-wal",
- "codeq 0.6.0",
+ "codeq",
  "display-more 0.2.7",
  "log",
  "thiserror 1.0.69",
@@ -3137,15 +3124,15 @@ dependencies = [
 
 [[package]]
 name = "rotbl"
-version = "0.2.10"
+version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf37e1298a4aaeaf19f7f9aaa4ef56088459016403127e51787c7031c013aab3"
+checksum = "ef02f5f6551f3065cd5b6eac3827f9d71ff1c4e507702af57746f0198e4fcb75"
 dependencies = [
  "bincode",
  "byteorder",
  "bytes",
  "clap",
- "codeq 0.5.2",
+ "codeq",
  "futures",
  "futures-async-stream",
  "log",
