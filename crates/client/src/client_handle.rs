@@ -287,10 +287,11 @@ impl<RT: SpawnApi> ClientHandle<RT> {
             MetaClientError::from(conn_err)
         })?;
 
-        let res: Result<Reply, E> = response
-            .try_into()
-            .map_err(|e| format!("expect: {}, got: {}", std::any::type_name::<Reply>(), e))
-            .unwrap();
+        let res: Result<Reply, E> = response.try_into().map_err(|e| {
+            let msg = format!("expect: {}, got: {}", std::any::type_name::<Reply>(), e);
+            let conn_err = ConnectionError::new(AnyError::error(&msg), "response type mismatch");
+            E::from(MetaClientError::from(conn_err))
+        })?;
 
         res
     }
@@ -325,4 +326,24 @@ impl<RT: SpawnApi> ClientHandle<RT> {
 /// Create a counter function for tracking in-flight requests.
 fn request_inflight<RT: SpawnApi>() -> impl FnMut(i64) {
     |delta: i64| RT::ClientMetrics::request_inflight(delta)
+}
+
+#[cfg(test)]
+mod tests {
+    use databend_meta_runtime_api::TokioRuntime;
+
+    use super::*;
+
+    #[test]
+    fn test_parse_worker_result_reports_response_type_mismatch() {
+        let response = Response::GetEndpoints(Ok(vec![]));
+        let err = ClientHandle::<TokioRuntime>::parse_worker_result::<TxnReply, MetaClientError>(
+            Ok(response),
+        )
+        .unwrap_err();
+
+        let msg = err.to_string();
+        assert!(msg.contains("response type mismatch"), "{msg}");
+        assert!(msg.contains("TxnReply"), "{msg}");
+    }
 }
