@@ -41,6 +41,7 @@ use databend_meta_types::protobuf::RaftReply;
 use databend_meta_types::protobuf::SnapshotChunkRequestV003;
 use databend_meta_types::raft_types::AppendEntriesRequest;
 use databend_meta_types::raft_types::AppendEntriesResponse;
+use databend_meta_types::raft_types::AppendResult;
 use databend_meta_types::raft_types::MembershipNode;
 use databend_meta_types::raft_types::NetworkError;
 use databend_meta_types::raft_types::NodeId;
@@ -439,7 +440,7 @@ impl<SP: SpawnApi> Network<SP> {
 
         info!("build snapshot end chunk");
 
-        let end = SnapshotChunkRequestV003::new_end_chunk(vote, snapshot_meta.clone());
+        let end = SnapshotChunkRequestV003::new_end_chunk(vote, snapshot_meta, db.snapshot_id);
         let send_res = tx.blocking_send(end);
         if let Err(e) = send_res {
             error!(
@@ -545,7 +546,7 @@ impl<SP: SpawnApi> Network<SP> {
         let pb_vote = pb::Vote::from(vote);
 
         let commit = pb::Commit {
-            snapshot_id: snapshot_meta.snapshot_id.to_string(),
+            snapshot_id: db.snapshot_id.clone(),
             sys_data: sys_data_json,
             vote: Some(pb_vote),
         };
@@ -739,7 +740,7 @@ impl<SP: SpawnApi> RaftNetworkV2<TypeConfig> for Network<SP> {
         &mut self,
         rpc: AppendEntriesRequest,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse, RPCError> {
+    ) -> Result<AppendResult, RPCError> {
         debug!(
             id = self.id,
             target = self.target,
@@ -747,7 +748,6 @@ impl<SP: SpawnApi> RaftNetworkV2<TypeConfig> for Network<SP> {
             "send_append_entries",
         );
 
-        let total = rpc.entries.len();
         let mut entries_to_send = rpc.entries.len();
 
         loop {
@@ -794,13 +794,11 @@ impl<SP: SpawnApi> RaftNetworkV2<TypeConfig> for Network<SP> {
                 Ok(_) => {
                     self.client.lock().await.replace(client);
 
-                    // If we sent partial entries, return PartialSuccess
-                    if entries_to_send < total {
-                        let last_log_id = partial_rpc.entries.last().map(|e| e.log_id);
-                        return Ok(AppendEntriesResponse::PartialSuccess(last_log_id));
-                    }
-
-                    return self.parse_grpc_resp::<_, openraft::error::Infallible>(grpc_res);
+                    let response: AppendEntriesResponse =
+                        self.parse_grpc_resp::<_, openraft::error::Infallible>(grpc_res)?;
+                    // Use the actual sent prefix, but never turn a rejection into success.
+                    return Ok(response
+                        .into_append_result(partial_rpc.prev_log_id, partial_rpc.last_log_id()));
                 }
                 Err(status) if status.code() == tonic::Code::ResourceExhausted => {
                     match self.try_reduce_entries(entries_to_send, "ResourceExhausted") {
@@ -816,7 +814,16 @@ impl<SP: SpawnApi> RaftNetworkV2<TypeConfig> for Network<SP> {
                 }
                 Err(e) => {
                     warn!(target = self.target, rpc = partial_rpc.summary(); "append_entries failed: {}", e);
-                    return self.parse_grpc_resp::<_, openraft::error::Infallible>(grpc_res);
+                    return self
+                        .parse_grpc_resp::<AppendEntriesResponse, openraft::error::Infallible>(
+                            grpc_res,
+                        )
+                        .map(|response| {
+                            response.into_append_result(
+                                partial_rpc.prev_log_id,
+                                partial_rpc.last_log_id(),
+                            )
+                        });
                 }
             }
         }

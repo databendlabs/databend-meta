@@ -100,14 +100,21 @@ async fn test_kv_api_restart_cluster_write_read() -> anyhow::Result<()> {
         }
 
         for tc in &tcs {
-            info!("--- wait until a leader is observed");
+            info!("--- wait until the leader commits in its current term");
             // Every tcs[i] contains one meta node in this context.
             let g = tc.grpc_srv.as_ref().unwrap();
             let meta_node = g.get_meta_handle();
             let metrics = meta_node
                 .handle_raft_metrics_wait(timeout())
                 .await?
-                .metrics(|m| m.current_leader.is_some(), "a leader is observed")
+                .metrics(
+                    |m| {
+                        m.current_leader.is_some()
+                            && m.last_applied
+                                .is_some_and(|id| id.leader_id.term == m.current_term)
+                    },
+                    "a leader has committed in its current term",
+                )
                 .await?;
 
             info!("got leader, metrics: {:?}", metrics);
@@ -219,14 +226,21 @@ async fn test_kv_api_restart_cluster_token_expired() -> anyhow::Result<()> {
         }
 
         for tc in &tcs {
-            info!("--- wait until a leader is observed");
+            info!("--- wait until the leader commits in its current term");
             // Every tcs[i] contains one meta node in this context.
             let g = tc.grpc_srv.as_ref().unwrap();
             let meta_node = g.get_meta_handle();
             let metrics = meta_node
                 .handle_raft_metrics_wait(timeout())
                 .await?
-                .metrics(|m| m.current_leader.is_some(), "a leader is observed")
+                .metrics(
+                    |m| {
+                        m.current_leader.is_some()
+                            && m.last_applied
+                                .is_some_and(|id| id.leader_id.term == m.current_term)
+                    },
+                    "a leader has committed in its current term",
+                )
                 .await?;
 
             info!("got leader, metrics: {:?}", metrics);

@@ -175,7 +175,6 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
     let snapshot_meta = SnapshotMeta {
         last_log_id: Some(last_log_id),
         last_membership: StoredMembership::default(),
-        snapshot_id: snapshot_id.to_string(),
     };
 
     // build a temp snapshot data
@@ -188,7 +187,9 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
         let strm = futures::stream::iter([]);
         let mut sys_data = SysData::default();
         *sys_data.last_applied_mut() = Some(last_log_id);
-        let db = writer.write_kv_stream(strm, snapshot_id, sys_data).await?;
+        let db = writer
+            .write_kv_stream(strm, snapshot_id.clone(), sys_data)
+            .await?;
 
         // read the snapshot data
         let mut f = fs::File::open(db.path())?;
@@ -207,6 +208,7 @@ async fn test_raft_service_install_snapshot_v003() -> anyhow::Result<()> {
     strm_data.push(SnapshotChunkRequestV003::new_end_chunk(
         Vote::new_committed(10, 2),
         snapshot_meta,
+        snapshot_id.to_string(),
     ));
 
     // Complete transmit

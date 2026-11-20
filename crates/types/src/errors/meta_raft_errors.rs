@@ -31,6 +31,10 @@ impl From<RaftChangeMembershipError> for MetaOperationError {
             RaftChangeMembershipError::ForwardToLeader(to_leader) => to_leader.into(),
             // TODO: change-membership-error is not a data error.
             RaftChangeMembershipError::ChangeMembershipError(c) => Self::DataError(c.into()),
+            e @ (RaftChangeMembershipError::LogEntryDiscarded(_)
+            | RaftChangeMembershipError::PreconditionFailed(_)) => {
+                Self::DataError(MetaDataError::WriteRequestError(e))
+            }
         }
     }
 }

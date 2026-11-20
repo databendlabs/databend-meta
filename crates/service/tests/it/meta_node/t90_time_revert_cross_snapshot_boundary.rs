@@ -117,6 +117,19 @@ async fn write_two_logs(
         sleep(Duration::from_secs(2)).await;
 
         meta_node = MetaNode::<TokioRuntime>::open(&tc0.config.raft_config).await?;
+        // A restarted leader must win a new election and commit its term first.
+        meta_node
+            .raft
+            .wait(timeout())
+            .metrics(
+                |m| {
+                    m.current_leader == Some(m.id)
+                        && m.last_applied
+                            .is_some_and(|id| id.leader_id.term == m.current_term)
+                },
+                "restarted leader committed its new term",
+            )
+            .await?;
     }
 
     // Apply second log

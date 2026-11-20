@@ -33,6 +33,8 @@ use crate::sys_data::SysData;
 pub struct DB {
     pub storage_path: String,
     pub rel_path: String,
+    /// Databend's file identity is independent of Openraft's snapshot metadata.
+    pub snapshot_id: SnapshotId,
     pub meta: SnapshotMeta,
     pub sys_data: SysData,
     pub rotbl: Arc<Rotbl>,
@@ -43,6 +45,7 @@ impl fmt::Debug for DB {
         f.debug_struct("DB")
             .field("storage_path", &self.storage_path)
             .field("rel_path", &self.rel_path)
+            .field("snapshot_id", &self.snapshot_id)
             .field("meta", &self.meta)
             .field("sys_data", &self.sys_data)
             .finish()
@@ -68,12 +71,12 @@ impl DB {
         let snapshot_meta = SnapshotMeta {
             last_log_id: *sys_data.last_applied_ref(),
             last_membership: sys_data.last_membership_ref().clone(),
-            snapshot_id,
         };
 
         let s = Self {
             storage_path: storage_path.to_string(),
             rel_path: rel_path.to_string(),
+            snapshot_id,
             meta: snapshot_meta,
             sys_data,
             rotbl: r,
@@ -202,6 +205,7 @@ mod tests {
         let db = DB {
             storage_path: "a".to_string(),
             rel_path: "b".to_string(),
+            snapshot_id: "snapshot-file-id".to_string(),
             meta: Default::default(),
             sys_data: Default::default(),
             rotbl: Arc::new(rotbl),
@@ -209,7 +213,7 @@ mod tests {
 
         assert_eq!(
             format!("{:?}", db),
-            r#"DB { storage_path: "a", rel_path: "b", meta: SnapshotMeta { last_log_id: None, last_membership: StoredMembership { log_id: None, membership: Membership { configs: [], nodes: {} } }, snapshot_id: "" }, sys_data: SysData { last_applied: None, last_membership: StoredMembership { log_id: None, membership: Membership { configs: [], nodes: {} } }, nodes: {}, sequence: 0, data_seq: None, key_counts: {}, sm_features: {} } }"#
+            r#"DB { storage_path: "a", rel_path: "b", snapshot_id: "snapshot-file-id", meta: SnapshotMeta { last_log_id: None, last_membership: StoredMembership { log_id: None, membership: Membership { configs: [], nodes: {} } } }, sys_data: SysData { last_applied: None, last_membership: StoredMembership { log_id: None, membership: Membership { configs: [], nodes: {} } }, nodes: {}, sequence: 0, data_seq: None, key_counts: {}, sm_features: {} } }"#
         );
     }
 }

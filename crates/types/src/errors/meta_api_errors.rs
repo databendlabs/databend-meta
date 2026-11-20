@@ -69,17 +69,15 @@ impl MetaAPIError {
                 // Leader is not ready, wait a while and retry
                 true
             }
-            MetaAPIError::RemoteError(data_err) => match data_err {
-                MetaDataError::ChangeMembershipError(cm_err) => match cm_err {
-                    ChangeMembershipError::InProgress(_) => {
-                        // Another node is joining, wait a while and retry
-                        true
-                    }
-                    ChangeMembershipError::EmptyMembership(_) => false,
-                    ChangeMembershipError::LearnerNotFound(_) => false,
-                },
-                MetaDataError::WriteError(_) => false,
-                MetaDataError::ReadError(_) => false,
+            MetaAPIError::RemoteError(e) | MetaAPIError::DataError(e) => match e {
+                MetaDataError::ChangeMembershipError(e) => matches!(
+                    e,
+                    ChangeMembershipError::InProgress(_)
+                        | ChangeMembershipError::UncommittedLeaderLog(_)
+                ),
+                MetaDataError::WriteError(_)
+                | MetaDataError::WriteRequestError(_)
+                | MetaDataError::ReadError(_) => false,
             },
             MetaAPIError::ForwardToLeader(_) => {
                 // Leader is changing, wait a while and retry
@@ -89,11 +87,6 @@ impl MetaAPIError {
                 // Network is always unstable, retry.
                 true
             }
-            MetaAPIError::DataError(data_err) => match data_err {
-                MetaDataError::WriteError(_) => false,
-                MetaDataError::ChangeMembershipError(_) => true,
-                MetaDataError::ReadError(_) => false,
-            },
         }
     }
 
@@ -150,6 +143,10 @@ pub enum MetaDataError {
     /// Error occurred when writing a raft log.
     #[error(transparent)]
     WriteError(#[from] Fatal),
+
+    /// A rejected or discarded write. It may already have committed elsewhere.
+    #[error(transparent)]
+    WriteRequestError(ClientWriteError),
 
     /// Error occurred when change raft membership.
     #[error(transparent)]
@@ -236,6 +233,10 @@ impl From<RaftError<ClientWriteError>> for MetaAPIError {
                     ClientWriteError::ForwardToLeader(f) => MetaAPIError::ForwardToLeader(f),
                     ClientWriteError::ChangeMembershipError(c) => {
                         MetaAPIError::DataError(MetaDataError::ChangeMembershipError(c))
+                    }
+                    e @ (ClientWriteError::LogEntryDiscarded(_)
+                    | ClientWriteError::PreconditionFailed(_)) => {
+                        MetaAPIError::DataError(MetaDataError::WriteRequestError(e))
                     }
                 }
             }

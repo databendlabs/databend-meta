@@ -20,7 +20,6 @@ use crate::MetaAPIError;
 use crate::protobuf::RaftReply;
 use crate::protobuf::RaftRequest;
 use crate::raft_types::AppendEntriesRequest;
-use crate::raft_types::InstallSnapshotRequest;
 use crate::raft_types::VoteRequest;
 
 impl tonic::IntoRequest<RaftRequest> for LogEntry {
@@ -48,20 +47,6 @@ impl tonic::IntoRequest<RaftRequest> for AppendEntriesRequest {
 }
 
 impl tonic::IntoRequest<RaftRequest> for &AppendEntriesRequest {
-    fn into_request(self) -> tonic::Request<RaftRequest> {
-        let mes = GrpcHelper::encode_raft_request(self).expect("fail to serialize");
-        tonic::Request::new(mes)
-    }
-}
-
-impl tonic::IntoRequest<RaftRequest> for InstallSnapshotRequest {
-    fn into_request(self) -> tonic::Request<RaftRequest> {
-        let mes = GrpcHelper::encode_raft_request(&self).expect("fail to serialize");
-        tonic::Request::new(mes)
-    }
-}
-
-impl tonic::IntoRequest<RaftRequest> for &InstallSnapshotRequest {
     fn into_request(self) -> tonic::Request<RaftRequest> {
         let mes = GrpcHelper::encode_raft_request(self).expect("fail to serialize");
         tonic::Request::new(mes)
