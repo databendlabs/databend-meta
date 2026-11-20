@@ -847,7 +847,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "anyerror",
  "anyhow",
@@ -905,7 +905,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-base"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "anyerror",
  "deepsize",
@@ -920,7 +920,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-client"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "anyerror",
  "arrow-flight",
@@ -955,7 +955,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-client-types"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "anyerror",
  "databend-meta-proto",
@@ -992,7 +992,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-kvapi"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "async-trait",
  "databend-meta-client-types",
@@ -1005,7 +1005,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-kvapi-test-suite"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "anyhow",
  "databend-meta-client-types",
@@ -1020,7 +1020,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-leveled-store"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1045,7 +1045,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-metrics"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "databend-base",
  "databend-meta-raft-log",
@@ -1056,7 +1056,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-proto"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "anyerror",
  "databend-meta-base",
@@ -1079,7 +1079,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-raft-config"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "anyerror",
  "databend-meta-runtime-api",
@@ -1100,7 +1100,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-raft-log"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "anyerror",
  "databend-meta-types",
@@ -1119,7 +1119,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-runtime-api"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "env_logger",
  "log",
@@ -1130,7 +1130,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-sled-store"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "anyerror",
  "byteorder",
@@ -1147,7 +1147,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-snapshot-db"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "bincode",
  "databend-meta-types",
@@ -1163,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-snapshot-store"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "databend-meta-leveled-store",
  "databend-meta-raft-config",
@@ -1183,7 +1183,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-state-machine"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "async-trait",
  "databend-base",
@@ -1211,7 +1211,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-store-compat"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "anyerror",
  "anyhow",
@@ -1241,7 +1241,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-types"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "anyerror",
  "databend-meta-base",
@@ -1263,7 +1263,7 @@ dependencies = [
 
 [[package]]
 name = "databend-meta-version"
-version = "260629.10.0"
+version = "260629.11.0"
 dependencies = [
  "semver",
 ]
