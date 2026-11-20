@@ -189,7 +189,7 @@ pub trait SpawnApi: Clone + Debug + Send + Sync + 'static {
     ///
     /// # Implementations
     ///
-    /// * `TokioRuntime` uses `hickory_resolver::TokioResolver`.
+    /// * `TokioRuntime` uses the platform resolver via `tokio::net::lookup_host`.
     /// * `DatabendRuntime` uses `databend_common_grpc::DNSResolver`.
     fn resolve(hostname: &str) -> BoxFuture<'static, std::io::Result<Vec<IpAddr>>>
     where Self: Sized;

@@ -16,11 +16,9 @@ use std::future::Future;
 use std::io;
 use std::net::IpAddr;
 use std::sync::Arc;
-use std::sync::LazyLock;
 use std::thread::JoinHandle as ThreadJoinHandle;
 use std::time::Duration;
 
-use hickory_resolver::TokioResolver;
 use tokio::runtime::Handle;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -37,12 +35,22 @@ use crate::SpawnApi;
 use crate::TlsConfig;
 use crate::TrackingData;
 
-/// Global DNS resolver instance for TokioRuntime.
-static DNS_RESOLVER: LazyLock<io::Result<TokioResolver>> =
-    LazyLock::new(|| match TokioResolver::builder_tokio() {
-        Ok(builder) => Ok(builder.build()),
-        Err(e) => Err(io::Error::other(e)),
-    });
+const RESOLVE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Bound the caller's wait; the platform's blocking lookup may finish later.
+async fn with_resolve_timeout<T>(
+    hostname: &str,
+    lookup: impl Future<Output = io::Result<T>>,
+) -> io::Result<T> {
+    tokio::time::timeout(RESOLVE_TIMEOUT, lookup)
+        .await
+        .map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("resolving {hostname} took longer than {RESOLVE_TIMEOUT:?}"),
+            )
+        })?
+}
 
 /// No-op metrics implementation for lightweight/testing scenarios.
 #[derive(Clone, Copy, Debug)]
@@ -243,16 +251,26 @@ impl SpawnApi for TokioRuntime {
     }
 
     fn resolve(hostname: &str) -> BoxFuture<'static, io::Result<Vec<IpAddr>>> {
+        if let Ok(ip) = hostname.parse::<IpAddr>() {
+            return Box::pin(std::future::ready(Ok(vec![ip])));
+        }
+
         let hostname = hostname.to_string();
         Box::pin(async move {
-            let resolver = DNS_RESOLVER
-                .as_ref()
-                .map_err(|e: &io::Error| io::Error::other(e.to_string()))?;
-            let lookup = resolver
-                .lookup_ip(&hostname)
-                .await
-                .map_err(|e| io::Error::other(e.to_string()))?;
-            Ok(lookup.into_iter().collect())
+            let lookup = tokio::net::lookup_host((hostname.as_str(), 0));
+            let mut ips: Vec<_> = with_resolve_timeout(&hostname, lookup)
+                .await?
+                .map(|addr| addr.ip())
+                .collect();
+
+            if ips.is_empty() {
+                return Err(io::Error::other(format!(
+                    "no IP address found for hostname: {hostname}"
+                )));
+            }
+            // Callers may take just the first address for an IPv4 listener.
+            ips.sort_by_key(|ip| ip.is_ipv6());
+            Ok(ips)
         })
     }
 
@@ -367,5 +385,35 @@ mod tests {
     async fn test_spawn_blocking() {
         let handle = TokioRuntime::spawn_blocking(|| 42);
         assert_eq!(handle.await.unwrap(), 42);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_address_literals() -> io::Result<()> {
+        for literal in ["127.0.0.1", "::1", "fe80::1"] {
+            assert_eq!(TokioRuntime::resolve(literal).await?, vec![
+                literal.parse::<IpAddr>().unwrap()
+            ]);
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_resolve_localhost_puts_ipv4_first() -> io::Result<()> {
+        let ips = TokioRuntime::resolve("localhost").await?;
+        assert!(ips.contains(&IpAddr::from([127, 0, 0, 1])), "{ips:?}");
+        assert!(
+            ips.windows(2).all(|w| w[0].is_ipv6() <= w[1].is_ipv6()),
+            "{ips:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_resolve_timeout_reports_hostname() {
+        let err = with_resolve_timeout("stuck.example", std::future::pending::<io::Result<()>>())
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+        assert!(err.to_string().contains("stuck.example"), "{err}");
     }
 }
