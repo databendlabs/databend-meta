@@ -162,7 +162,10 @@ impl RaftLogStorage<TypeConfig> for MetaRaftLog {
             let mut log = self.write().await;
 
             log.save_vote(Cw(*vote))?;
-            log.flush(Some(raft_log_v004::Callback::new_oneshot(tx, io.clone())))?;
+            log.flush(
+                true,
+                Some(raft_log_v004::Callback::new_oneshot(tx, io.clone())),
+            )?;
         }
 
         rx.await.map_err(io::Error::other)??;
@@ -186,7 +189,7 @@ impl RaftLogStorage<TypeConfig> for MetaRaftLog {
         {
             let mut log = self.write().await;
             log.commit(Cw(committed))?;
-            log.flush(None)?;
+            log.flush(true, None)?;
         }
 
         debug!(
@@ -228,10 +231,13 @@ impl RaftLogStorage<TypeConfig> for MetaRaftLog {
 
         debug!("{}", io.ok_submit());
 
-        log.flush(Some(raft_log_v004::Callback::new_io_flushed(
-            callback,
-            io.clone(),
-        )))?;
+        log.flush(
+            true,
+            Some(raft_log_v004::Callback::new_io_flushed(
+                callback,
+                io.clone(),
+            )),
+        )?;
 
         info!("{}", io.ok_submit_flush());
 

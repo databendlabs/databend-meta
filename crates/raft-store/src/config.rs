@@ -260,13 +260,14 @@ impl RaftConfig {
         let dir = p.to_str().unwrap().to_string();
 
         raft_log_v004::RaftLogConfig {
-            dir,
+            wal: raft_log::chunked_wal::Config {
+                dir,
+                chunk_max_records: Some(self.log_wal_chunk_max_records as usize),
+                chunk_max_size: Some(self.log_wal_chunk_max_size as usize),
+                ..Default::default()
+            },
             log_cache_max_items: Some(self.log_cache_max_items as usize),
             log_cache_capacity: Some(self.log_cache_capacity as usize),
-            chunk_max_records: Some(self.log_wal_chunk_max_records as usize),
-            chunk_max_size: Some(self.log_wal_chunk_max_size as usize),
-            read_buffer_size: None,
-            truncate_incomplete_record: None,
         }
     }
 
