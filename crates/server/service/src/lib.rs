@@ -40,6 +40,9 @@ pub extern crate databend_meta_types as types;
 pub extern crate databend_meta_version as version;
 pub extern crate openraft;
 
+/// A redacted configuration value, including the password in the Meta RPC client config.
+pub use raft_config::Secret;
+
 pub(crate) mod analysis;
 pub mod api;
 pub mod configs;
