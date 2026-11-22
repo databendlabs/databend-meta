@@ -14,6 +14,7 @@
 
 pub(crate) mod meta_node_kv_api_expire;
 pub(crate) mod meta_node_lifecycle;
+pub(crate) mod meta_node_quorum_loss;
 pub(crate) mod meta_node_raft_secret;
 pub(crate) mod meta_node_raft_tls;
 pub(crate) mod meta_node_replication;
