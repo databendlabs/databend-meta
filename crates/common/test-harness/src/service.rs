@@ -16,7 +16,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Result;
-use databend_base::testutil::next_port;
 use databend_meta::api::GrpcServer;
 use databend_meta::configs;
 use databend_meta::message::ForwardRequest;
@@ -28,6 +27,8 @@ use databend_meta_types::protobuf::raft_service_client::RaftServiceClient;
 use databend_meta_types::raft_types::NodeId;
 use log::info;
 use tonic::transport::server::TcpIncoming;
+
+use crate::port::reserve_port;
 
 /// Start one random service and get the session manager.
 #[fastrace::trace]
@@ -136,12 +137,12 @@ impl<R: RuntimeApi> MetaSrvTestContext<R> {
         // By default, create a meta node instead of open an existent one.
         config.raft_config.single = true;
 
-        config.raft_config.raft_api_port = next_port();
+        config.raft_config.raft_api_port = reserve_port();
 
         // Reserved unconditionally, the same way the raft port is: the TLS
         // listener also needs a certificate and a key, so a test that sets
         // neither does not open this port and only pays for the reservation.
-        config.raft_config.raft_tls_port = Some(next_port());
+        config.raft_config.raft_tls_port = Some(reserve_port());
 
         // when running unit tests, set raft_listen_host to "127.0.0.1" and raft_advertise_host to localhost,
         // so if something wrong in raft meta nodes communication we will catch bug in unit tests.
@@ -152,7 +153,7 @@ impl<R: RuntimeApi> MetaSrvTestContext<R> {
         config.grpc = configs::GrpcConfig::new_local("127.0.0.1");
 
         let admin = {
-            let http_port = next_port();
+            let http_port = reserve_port();
             configs::AdminConfig {
                 api_address: format!("127.0.0.1:{}", http_port),
                 tls: configs::TlsConfig::default(),

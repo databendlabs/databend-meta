@@ -22,12 +22,14 @@
 //! - Fixture raft logs and their expected snapshot
 
 mod harness;
+mod port;
 mod service;
 mod snapshot_logs;
 
 pub use databend_meta_runtime_api::TokioRuntime;
 pub use harness::meta_service_test_harness;
 pub use harness::meta_service_test_harness_sync;
+pub use port::reserve_port;
 pub use service::MetaSrvTestContext;
 pub use service::start_metasrv;
 pub use service::start_metasrv_cluster;

@@ -16,6 +16,7 @@
 
 pub mod cargo_metadata;
 pub mod meta_node;
+pub mod reserve_port;
 pub mod service;
 pub mod tls_constants;
 

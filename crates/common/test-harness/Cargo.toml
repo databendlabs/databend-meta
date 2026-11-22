@@ -13,7 +13,6 @@ test = false
 
 [dependencies]
 anyhow = { workspace = true }
-databend-base = { workspace = true }
 databend-meta = { workspace = true }
 databend-meta-runtime-api = { workspace = true }
 databend-meta-types = { workspace = true }
